@@ -22,3 +22,19 @@ body.private {
   --teal-dark: #6b21a8;
 }
 
+
+/* Pixel slider switch (the AI on/off control). */
+.pxswitch {
+  position: relative; width: 58px; height: 30px; flex: none; cursor: pointer;
+  background: var(--bg); border: 3px solid var(--edge); box-shadow: 3px 3px 0 #05050f;
+  font: 7px 'Press Start 2P', monospace; color: var(--muted);
+}
+.pxswitch .knob {
+  position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+  background: var(--muted); transition: left .12s steps(3);
+}
+.pxswitch .lbl { position: absolute; right: 6px; top: 8px; }
+.pxswitch.on { border-color: var(--teal-dark); background: var(--teal); color: var(--bg); }
+.pxswitch.on .knob { left: 31px; background: var(--bg); }
+.pxswitch.on .lbl { right: auto; left: 6px; }
+.pxswitch:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }

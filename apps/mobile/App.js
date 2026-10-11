@@ -10,22 +10,24 @@ import { WebView } from 'react-native-webview'
 import * as Crypto from 'expo-crypto'
 import { looksLikeQuestion, isAllowedUrl } from '@pixelbrowser/ai-core'
 import { loadStore, getState, putRecord, addHistory, useStore } from './src/store'
+import { setAIEnabled } from './src/ai'
 import { startSync } from './src/sync'
 import AIPanel from './src/AIPanel'
 import SettingsSheet from './src/SettingsSheet'
 import TabsSheet from './src/TabsSheet'
-import { PButton } from './src/ui'
+import { PButton, PSwitch } from './src/ui'
 import { C, PIXEL_FONT } from './src/theme'
 
 const HOME_URL = 'https://duckduckgo.com'
 let nextTabId = 1
 
-function normalizeInput(input) {
+function normalizeInput(input, aiEnabled = true) {
   const text = String(input || '').trim()
   if (!text) return HOME_URL
   if (/^https?:\/\//i.test(text)) return text
   if (/^[^\s]+\.[^\s]{2,}$/.test(text)) return `https://${text}`
-  return `https://duckduckgo.com/?q=${encodeURIComponent(text)}`
+  // With the AI slider off, search with DuckDuckGo's no-AI results too.
+  return `https://${aiEnabled ? 'duckduckgo.com' : 'noai.duckduckgo.com'}/?q=${encodeURIComponent(text)}`
 }
 
 const newTab = (url = HOME_URL, opts = {}) => ({ id: nextTabId++, url, source: url, title: 'New tab', loading: true, canGoBack: false, canGoForward: false, private: !!opts.private })
@@ -47,6 +49,7 @@ export default function App() {
 
 function Browser() {
   useStore((s) => s.deviceName)
+  const aiEnabled = useStore((s) => s.aiEnabled)
   const [tabs, setTabs] = useState(() => [newTab()])
   const [activeId, setActiveId] = useState(tabs[0].id)
   const [address, setAddress] = useState('')
@@ -145,7 +148,7 @@ function Browser() {
   const go = (text) => {
     setEditing(false)
     const q = String(text || '').trim()
-    if (!active.private && (q.startsWith('?') || looksLikeQuestion(q))) {
+    if (!active.private && aiEnabled && (q.startsWith('?') || looksLikeQuestion(q))) {
       // Comet-style: results in the tab, AI answer in the panel.
       const question = q.replace(/^\?\s*/, '')
       navigate(active.id, `https://duckduckgo.com/?q=${encodeURIComponent(question)}`)
@@ -153,7 +156,7 @@ function Browser() {
       setAiRequest({ input: question, search: true, includePage: false, nonce: Date.now() })
       return
     }
-    navigate(active.id, normalizeInput(q))
+    navigate(active.id, normalizeInput(q, aiEnabled))
   }
 
   const openUrl = (url) => {
@@ -189,8 +192,19 @@ function Browser() {
           autoCorrect={false}
           keyboardType="web-search"
           returnKeyType="go"
-          placeholder="Search, URL, or ask AI"
+          placeholder={aiEnabled ? 'Search, URL, or ask AI' : 'Search or URL'}
           placeholderTextColor={C.muted}
+        />
+        <PSwitch
+          value={aiEnabled}
+          accessibilityLabel={aiEnabled ? 'AI on. Turn off for private browsing.' : 'AI off. Nothing is sent to any AI.'}
+          onChange={(on) => {
+            setAIEnabled(on)
+            if (!on) {
+              setAiOpen(false)
+              setAgentActive(false)
+            }
+          }}
         />
       </View>
       {active.loading && <View style={[st.progress, { backgroundColor: C.orange }]} />}
@@ -217,15 +231,17 @@ function Browser() {
             onLoadEnd={() => patchTab(t.id, { loading: false })}
           />
         ))}
-        <AIPanel
-          browser={browser}
-          visible={aiOpen}
-          request={aiRequest}
-          onClose={() => setAiOpen(false)}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onAgent={setAgentActive}
-          openUrl={openUrl}
-        />
+        {aiEnabled && (
+          <AIPanel
+            browser={browser}
+            visible={aiOpen}
+            request={aiRequest}
+            onClose={() => setAiOpen(false)}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onAgent={setAgentActive}
+            openUrl={openUrl}
+          />
+        )}
       </View>
 
       {/* bottom bar */}
@@ -234,7 +250,7 @@ function Browser() {
         <PButton label=">" disabled={!active.canGoForward} onPress={() => views.current[active.id]?.goForward()} />
         <PButton label={active.loading ? 'X' : 'R'} onPress={() => (active.loading ? views.current[active.id]?.stopLoading() : views.current[active.id]?.reload())} />
         <PButton label={String(tabs.length)} onPress={() => setTabsOpen(true)} />
-        <PButton label="AI" hot={aiOpen} onPress={() => setAiOpen(!aiOpen)} />
+        {aiEnabled && <PButton label="AI" hot={aiOpen} onPress={() => setAiOpen(!aiOpen)} />}
         <PButton label="SET" onPress={() => setSettingsOpen(true)} />
       </View>
 

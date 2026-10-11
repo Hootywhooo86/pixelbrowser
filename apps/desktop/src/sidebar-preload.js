@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('pixelAI', {
   getState: () => ipcRenderer.invoke('sidebar:get-state'),
   tabs: () => ipcRenderer.invoke('sidebar:tabs'),
   saveSettings: (values) => ipcRenderer.invoke('ai:save-settings', values),
+  setEnabled: (on) => ipcRenderer.invoke('ai:set-enabled', on),
   ask: (request) => ipcRenderer.send('ai:ask', request),
   stop: () => ipcRenderer.send('ai:stop'),
   newChat: () => ipcRenderer.send('ai:new-chat'),

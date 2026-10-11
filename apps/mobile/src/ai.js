@@ -71,7 +71,14 @@ export const session = {
 }
 
 /** Run one question. onEvent receives the same events as desktop. */
+/** The AI slider. Off stops anything running and blocks every AI call. */
+export function setAIEnabled(on) {
+  if (!on) session.stop()
+  update((s) => (s.aiEnabled = !!on))
+}
+
 export async function ask({ browser, input, mode, tabIds, search = false, includePage = true, onEvent }) {
+  if (!getState().aiEnabled) return onEvent({ type: 'error', message: 'AI is off. Turn on the AI slider to use Pixel.' })
   if (session.abort) session.stop()
   const provider = await currentProvider()
   onEvent({ type: 'user', text: input, mode })

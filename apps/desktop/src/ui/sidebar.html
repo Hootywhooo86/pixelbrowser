@@ -13,12 +13,21 @@
     <div id="brand" class="brand"><span class="mark">P</span> PIXEL AI</div>
     <div id="appname" class="brand" hidden></div>
     <span class="spacer"></span>
+    <button id="ai-switch" class="pxswitch on" role="switch" aria-checked="true" title="AI on/off. Off = private: nothing is sent to any AI."><span class="knob"></span><span class="lbl">AI</span></button>
     <button id="btn-share" class="px hot" hidden title="Paste this page into the AI app">SHARE PAGE</button>
     <button id="btn-apps" class="px" title="Open ChatGPT, Claude, Gemini and other AI apps here">APPS</button>
     <button id="btn-new" class="px" title="New chat">NEW</button>
     <button id="btn-settings" class="px" title="AI settings, memory and sync">SET</button>
     <button id="btn-close" class="px" title="Close (Ctrl+J)">X</button>
   </header>
+
+  <!-- AI switched off -->
+  <section id="off-view" class="view" hidden>
+    <h2>AI IS OFF</h2>
+    <p>Pixelbrowser is in private mode. Nothing you browse, type or read is sent to any AI, and AI apps are closed.</p>
+    <p class="muted">Address-bar questions go to a normal private search (DuckDuckGo with its AI answers turned off) instead. Your AI settings, keys and memory stay saved on this device for when you turn it back on.</p>
+    <div class="row"><button id="off-on" class="px hot">TURN AI ON</button></div>
+  </section>
 
   <!-- chat -->
   <section id="chat-view" class="view">

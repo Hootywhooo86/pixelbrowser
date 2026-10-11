@@ -37,6 +37,7 @@ LM Studio so nothing leaves their computer. No key at all? The AI apps
 panel opens ChatGPT, Claude, Gemini and others with the user's own account.
 
 **Privacy rules for the AI**
+- An **AI slider** in the toolbar (desktop) and top bar (phone) turns all AI off. When it's off, nothing is sent to any AI, a running agent stops, AI apps close, and searches use DuckDuckGo's no-AI site. It's a per-device setting and is never synced.
 - The AI reads a page only when you ask. It's off in private windows and tabs.
 - Banking, health, password and login pages need your OK before the AI reads them.
 - Agent mode asks before buying, paying, sending, posting, deleting, logging in or typing secrets.

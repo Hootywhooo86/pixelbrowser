@@ -41,6 +41,7 @@ const settings = new JsonFile('pixel-settings.json', {
   deviceName: `${process.platform === 'darwin' ? 'Mac' : process.platform === 'win32' ? 'Windows PC' : 'Linux PC'}`,
   ai: { provider: 'anthropic', providers: {} }, // providers[id] = { model, baseUrl }
   memoryEnabled: true,
+  aiEnabled: true, // the AI slider; off = nothing is sent to any AI (per device, never synced)
   sync: { server: '', cursor: 0, lastPushedAt: 0, lastSyncAt: 0, syncKeys: false },
   updatedAt: { ai: 0 },
 })

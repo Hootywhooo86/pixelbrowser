@@ -127,3 +127,9 @@ label.check input { width: auto; margin: 0; }
 .words { font-family: ui-monospace, Menlo, monospace; background: var(--panel); padding: 8px; word-spacing: 4px; }
 #remote-tabs .device { margin-top: 8px; color: var(--ink); font-weight: 600; }
 #remote-tabs a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+
+#ai-switch { width: 50px; height: 26px; box-shadow: 2px 2px 0 #05050f; }
+#ai-switch .knob { width: 14px; height: 14px; }
+#ai-switch.on .knob { left: 27px; }
+#ai-switch .lbl { top: 6px; }
+#off-view p { margin-top: 10px; }

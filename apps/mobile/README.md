@@ -13,6 +13,7 @@ The app uses native modules (camera, secure storage, WebView), so it needs a
 development build rather than Expo Go. To build in the cloud without Xcode:
 `npx eas-cli@latest build --profile development`.
 
+- The **AI slider** in the top bar turns all AI off for private browsing.
 - **AI** opens the Pixel AI panel. You can still watch the page above it while the agent works.
 - Type a question in the address bar for a Comet-style answer.
 - **SET**: choose any AI and add its key, memory, and sync (scan the QR code shown by the desktop app).

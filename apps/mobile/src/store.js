@@ -23,6 +23,7 @@ function defaults() {
     ai: { provider: 'anthropic', providers: {} },
     keysPresent: {},
     memoryEnabled: true,
+    aiEnabled: true, // the AI slider; off = nothing is sent to any AI (per device, never synced)
     sync: { server: '', enabled: false, cursor: 0, lastPushedAt: 0, lastSyncAt: 0, syncKeys: false, error: '' },
     updatedAt: { ai: 0 },
     records: { memory: {}, history: {}, tabs: {}, settings: {} },

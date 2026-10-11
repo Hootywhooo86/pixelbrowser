@@ -9,6 +9,7 @@ npm install        # at the repo root
 npm run desktop
 ```
 
+- The **AI slider** next to the AI button turns all AI off for private browsing. Nothing is sent to any AI until you slide it back on.
 - **AI** (Ctrl/Cmd+J) opens the Pixel AI sidebar. **ASK** asks about the current page,
   **AGENT** lets Pixel click, type and navigate for you. **+ TABS** chooses which tabs it can read.
 - Type a question in the address bar (or press Shift+Enter) for a Comet-style answer:

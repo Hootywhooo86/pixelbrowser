@@ -35,6 +35,7 @@ function publicState() {
     ),
     webApps: WEB_APPS,
     memoryEnabled: store.settings.data.memoryEnabled,
+    aiEnabled: store.settings.data.aiEnabled,
     memory: store.memory.items(),
   }
 }
@@ -201,6 +202,10 @@ class AISession {
   }
 
   async ask({ input, mode = 'ask', tabIds, search = false, includePage = true }) {
+    if (!store.settings.data.aiEnabled) {
+      this.emit({ type: 'error', message: 'AI is off. Turn on the AI slider to use Pixel.' })
+      return
+    }
     if (this.pw.isPrivate) {
       this.emit({ type: 'error', message: 'The assistant is off in private windows, so nothing you do here leaves this device.' })
       return
@@ -253,7 +258,7 @@ class AISession {
   /** Paste the current page into an AI web app open in the sidebar. */
   async sharePageWithApp(appWc) {
     const tab = this.pw.activeTab()
-    if (!tab || !appWc) return
+    if (!tab || !appWc || !store.settings.data.aiEnabled) return
     const page = await withTimeout(tab.view.webContents.executeJavaScript(EXTRACT_PAGE, true), SCRIPT_TIMEOUT_MS, 'timeout').catch(() => null)
     if (!page) return
     const text = `Here is the page I'm looking at.\nTitle: ${page.title}\nURL: ${page.url}\n\n${(page.selection || page.text).slice(0, 12000)}\n\n`

@@ -483,10 +483,35 @@ $('sync-leave').onclick = () =>
 $('sync-keys').onchange = () => syncAction(() => ai.sync.setOptions({ syncKeys: $('sync-keys').checked }))
 $('device-name').onchange = () => syncAction(() => ai.sync.setOptions({ deviceName: $('device-name').value }))
 
+// ---------- AI on/off slider ----------
+
+function renderEnabled() {
+  const on = state.aiEnabled !== false
+  $('ai-switch').classList.toggle('on', on)
+  $('ai-switch').setAttribute('aria-checked', String(on))
+  $('ai-switch').title = on ? 'AI is on. Slide off to keep everything private.' : 'AI is off: nothing is sent to any AI.'
+  if (!on) setAppMode(null)
+  for (const id of ['btn-apps', 'btn-new', 'btn-settings']) $(id).hidden = !on || !!state.app
+  if (!on) {
+    for (const v of ['chat', 'apps', 'settings']) $(`${v}-view`).hidden = true
+    $('off-view').hidden = false
+  } else if (!$('off-view').hidden) {
+    $('off-view').hidden = true
+    show('chat')
+  }
+}
+
+async function setEnabled(on) {
+  applyState(await ai.setEnabled(on))
+}
+$('ai-switch').onclick = () => setEnabled(state.aiEnabled === false)
+$('off-on').onclick = () => setEnabled(true)
+
 // ---------- state ----------
 
 function applyState(next) {
   state = { ...state, ...next }
+  renderEnabled()
   renderProviderLabel()
   if (!$('settings-view').hidden) renderSettings()
 }
@@ -504,6 +529,8 @@ async function init() {
   renderApps()
   await renderContext()
   if (state.app) setAppMode(state.app)
+  renderEnabled()
+  if (state.aiEnabled === false) return
   const p = state.providers[state.provider]
   if (!p.hasKey && !p.noKey && !p.keyOptional && !isPrivate) show('settings')
 }

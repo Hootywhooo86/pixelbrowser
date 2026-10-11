@@ -10,6 +10,7 @@ if (new URLSearchParams(location.search).get('private') === '1') {
   $('store').hidden = true
   $('ask').hidden = true
   $('ai').hidden = true
+  $('aitoggle').hidden = true
 }
 
 function render() {
@@ -45,6 +46,15 @@ function render() {
   if (active && document.activeElement !== address) address.value = active.url
   $('actions').setAttribute('tab', String(state.activeId ?? ''))
   $('ai').classList.toggle('on', !!state.sidebarOpen)
+  const aiOn = state.aiEnabled !== false
+  $('aitoggle').classList.toggle('on', aiOn)
+  $('aitoggle').setAttribute('aria-checked', String(aiOn))
+  $('aitoggle').title = aiOn ? 'AI is on. Slide off to keep everything private.' : 'AI is off: nothing is sent to any AI. Slide on to use Pixel AI.'
+  if (!state.isPrivate) {
+    $('ask').hidden = !aiOn
+    $('ai').hidden = !aiOn
+    address.placeholder = aiOn ? 'Search, type a URL, or ask AI a question' : 'Search or type a URL'
+  }
   $('agentbadge').hidden = !state.agentActive
   document.body.classList.toggle('agent', !!state.agentActive)
 }
@@ -59,9 +69,9 @@ $('addressform').addEventListener('submit', (e) => {
   window.pixel.go(address.value)
   address.blur()
 })
-// Shift+Enter always sends the address bar to the AI.
+// Shift+Enter always sends the address bar to the AI (when AI is on).
 address.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.shiftKey) {
+  if (e.key === 'Enter' && e.shiftKey && state.aiEnabled !== false) {
     e.preventDefault()
     window.pixel.ask(address.value)
     address.blur()
@@ -72,6 +82,7 @@ $('ask').onclick = () => {
   else window.pixel.toggleSidebar()
 }
 $('ai').onclick = () => window.pixel.toggleSidebar()
+$('aitoggle').onclick = () => window.pixel.setAIEnabled(state.aiEnabled === false)
 address.addEventListener('focus', () => address.select())
 $('newtab').onclick = () => window.pixel.newTab()
 $('back').onclick = () => window.pixel.back()

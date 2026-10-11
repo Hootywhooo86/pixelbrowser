@@ -35,7 +35,9 @@ function normalizeInput(input) {
   if (!text) return HOME_URL
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text) || text.startsWith('about:')) return text
   if (/^[^\s]+\.[^\s]{2,}$/.test(text) || text.startsWith('localhost')) return `https://${text}`
-  return `https://duckduckgo.com/?q=${encodeURIComponent(text)}`
+  // With the AI slider off, search with DuckDuckGo's no-AI results too.
+  const host = store.settings.data.aiEnabled ? 'duckduckgo.com' : 'noai.duckduckgo.com'
+  return `https://${host}/?q=${encodeURIComponent(text)}`
 }
 
 class PixelWindow {
@@ -104,6 +106,7 @@ class PixelWindow {
       blockedCount: this.blockedCount,
       isPrivate: this.isPrivate,
       sidebarOpen: this.sidebar.open,
+      aiEnabled: store.settings.data.aiEnabled,
       agentActive: this.agentActive,
     })
   }
@@ -138,7 +141,7 @@ class PixelWindow {
       if (params.linkURL) {
         items.unshift({ label: 'Open link in new tab', click: () => this.createTab(params.linkURL) })
       }
-      if (params.selectionText && !this.isPrivate) {
+      if (params.selectionText && !this.isPrivate && store.settings.data.aiEnabled) {
         const quote = params.selectionText.trim().slice(0, 80)
         items.unshift(
           { label: `Ask Pixel AI about "${quote}${params.selectionText.length > 80 ? '…' : ''}"`, click: () => this.askAI({ input: `Explain this: "${params.selectionText.trim()}"` }) },
@@ -258,7 +261,7 @@ class PixelWindow {
 
   /** Open an AI web app (ChatGPT, Claude, Gemini…) inside the sidebar. */
   openApp(appId, url) {
-    if (!isAllowedUrl(url)) return
+    if (!isAllowedUrl(url) || !store.settings.data.aiEnabled) return
     let view = this.sidebar.appView
     if (!view) {
       view = new WebContentsView({ webPreferences: { session: this.ses, sandbox: true, contextIsolation: true } })
@@ -311,7 +314,7 @@ function askFromAddressBar(pw, text) {
   const tab = pw.activeTab()
   if (tab) tab.view.webContents.loadURL(results)
   else pw.createTab(results)
-  if (pw.isPrivate) return
+  if (pw.isPrivate || !store.settings.data.aiEnabled) return
   pw.askAI({ input: question, search: true, includePage: false })
 }
 
@@ -427,7 +430,7 @@ ipcMain.on('nav:go', (e, input) => {
   const pw = fromSender(e)
   if (!pw) return
   const text = String(input || '').trim()
-  if (!pw.isPrivate && (text.startsWith('?') || looksLikeQuestion(text))) return askFromAddressBar(pw, text)
+  if (!pw.isPrivate && store.settings.data.aiEnabled && (text.startsWith('?') || looksLikeQuestion(text))) return askFromAddressBar(pw, text)
   pw.activeTab()?.view.webContents.loadURL(normalizeInput(text))
 })
 ipcMain.on('nav:ask', (e, input) => {
@@ -435,6 +438,21 @@ ipcMain.on('nav:ask', (e, input) => {
   if (pw) askFromAddressBar(pw, String(input || ''))
 })
 ipcMain.on('sidebar:toggle', (e) => fromSender(e)?.toggleSidebar())
+ipcMain.on('ai:set-enabled', (_e, on) => setAIEnabled(on))
+
+/** The AI slider. Off stops any running agent, closes AI apps, and blocks every AI call. */
+function setAIEnabled(on) {
+  store.settings.data.aiEnabled = !!on
+  store.settings.save()
+  for (const pw of windows.values()) {
+    if (!on) {
+      pw.ai.stop()
+      if (pw.sidebar.app) pw.closeApp()
+    }
+    pw.pushState()
+    pw.sendSidebar('sidebar:state', { ...publicState(), app: pw.sidebar.app })
+  }
+}
 ipcMain.on('nav:back', (e) => fromSender(e)?.activeTab()?.view.webContents.navigationHistory.goBack())
 ipcMain.on('nav:forward', (e) => fromSender(e)?.activeTab()?.view.webContents.navigationHistory.goForward())
 ipcMain.on('nav:reload', (e) => fromSender(e)?.activeTab()?.view.webContents.reload())
@@ -462,6 +480,10 @@ ipcMain.handle('sidebar:tabs', (e) => {
   return pw ? sidebarTabs(pw) : []
 })
 ipcMain.handle('ai:save-settings', (_e, values) => saveSettings(values))
+ipcMain.handle('ai:set-enabled', (_e, on) => {
+  setAIEnabled(on)
+  return publicState()
+})
 ipcMain.on('ai:ask', (e, request) => fromSidebar(e)?.ai.ask(request))
 ipcMain.on('ai:stop', (e) => fromSidebar(e)?.ai.stop())
 ipcMain.on('ai:new-chat', (e) => fromSidebar(e)?.ai.newChat())

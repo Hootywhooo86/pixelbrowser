@@ -6,9 +6,9 @@ import { CameraView, useCameraPermissions } from 'expo-camera'
 import { PROVIDERS, } from '@pixelbrowser/ai-core'
 import { parseSyncQr } from '@pixelbrowser/sync-core'
 import { useStore, update, memory, getState } from './store'
-import { saveAISettings } from './ai'
+import { saveAISettings, setAIEnabled } from './ai'
 import { createChain, joinChain, leaveChain, showCode, syncNow, remoteTabs } from './sync'
-import { PButton, PText, Field } from './ui'
+import { PButton, PText, Field, PSwitch } from './ui'
 import { C } from './theme'
 
 export default function SettingsSheet({ visible, onClose, openUrl }) {
@@ -58,6 +58,15 @@ export default function SettingsSheet({ visible, onClose, openUrl }) {
           <PButton small label="DONE" hot onPress={onClose} />
         </View>
         <ScrollView contentContainerStyle={st.body} keyboardShouldPersistTaps="handled">
+          <PText style={[st.h, { marginTop: 4 }]}>AI</PText>
+          <View style={st.row}>
+            <PSwitch value={state.aiEnabled} onChange={setAIEnabled} />
+            <Text style={{ color: C.ink, flex: 1 }}>
+              {state.aiEnabled ? 'AI is on.' : 'AI is off: private mode. Nothing is sent to any AI.'}
+            </Text>
+          </View>
+          <Text style={st.muted}>Turn AI off any time to browse privately. Your AI settings and memory stay saved on this phone.</Text>
+
           <PText style={st.h}>AI MODEL</PText>
           <Text style={st.muted}>Pick any AI. Bring your own key, or point it at a model running on your own computer.</Text>
           <View style={st.providers}>
