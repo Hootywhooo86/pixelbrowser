@@ -1,0 +1,21 @@
+{
+  "name": "@pixelbrowser/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pixelbrowser desktop: Chromium engine (via Electron), pixel shell, Chrome extensions, built-in ad/tracker blocking.",
+  "main": "src/main.js",
+  "license": "GPL-3.0",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/ui/ui.js"
+  },
+  "dependencies": {
+    "@fontsource/press-start-2p": "^5.3.0",
+    "@ghostery/adblocker-electron": "^2.20.1",
+    "electron-chrome-extensions": "^4.9.0",
+    "electron-chrome-web-store": "^0.13.0"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0"
+  }
+}

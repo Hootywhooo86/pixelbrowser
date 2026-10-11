@@ -1,0 +1,20 @@
+// Preload for the pixel shell only (never for web tabs).
+const { contextBridge, ipcRenderer } = require('electron')
+const { injectBrowserAction } = require('electron-chrome-extensions/browser-action')
+
+// Adds the <browser-action-list> element: extension icons + popups.
+injectBrowserAction()
+
+contextBridge.exposeInMainWorld('pixel', {
+  newTab: (url) => ipcRenderer.send('tab:new', url),
+  selectTab: (id) => ipcRenderer.send('tab:select', id),
+  closeTab: (id) => ipcRenderer.send('tab:close', id),
+  go: (input) => ipcRenderer.send('nav:go', input),
+  back: () => ipcRenderer.send('nav:back'),
+  forward: () => ipcRenderer.send('nav:forward'),
+  reload: () => ipcRenderer.send('nav:reload'),
+  stop: () => ipcRenderer.send('nav:stop'),
+  newPrivateWindow: () => ipcRenderer.send('window:private'),
+  openExtensionStore: () => ipcRenderer.send('extensions:store'),
+  onState: (fn) => ipcRenderer.on('tabs:state', (_e, state) => fn(state)),
+})

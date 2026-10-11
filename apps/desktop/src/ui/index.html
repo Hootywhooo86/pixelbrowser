@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' crx: data:; style-src 'self' 'unsafe-inline'; font-src 'self'">
+<title>Pixelbrowser</title>
+<link rel="stylesheet" href="ui.css">
+</head>
+<body>
+  <div id="tabstrip">
+    <div class="logo" title="Pixelbrowser">P</div>
+    <div id="tabs"></div>
+    <button id="newtab" class="pxbtn" title="New tab (Ctrl+T)">+</button>
+  </div>
+  <div id="toolbar">
+    <button id="back" class="pxbtn" title="Back">&lt;</button>
+    <button id="forward" class="pxbtn" title="Forward">&gt;</button>
+    <button id="reload" class="pxbtn" title="Reload">R</button>
+    <form id="addressform">
+      <span id="shield" title="Ads &amp; trackers blocked in this window">0</span>
+      <input id="address" spellcheck="false" autocomplete="off" placeholder="Search or type a URL">
+    </form>
+    <browser-action-list id="actions" alignment="bottom right"></browser-action-list>
+    <button id="store" class="pxbtn" title="Get extensions (Chrome Web Store)">EXT</button>
+    <button id="private" class="pxbtn" title="New private window (Ctrl+Shift+N)">PVT</button>
+  </div>
+  <script src="ui.js"></script>
+</body>
+</html>

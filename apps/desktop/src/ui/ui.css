@@ -1,0 +1,106 @@
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('../../node_modules/@fontsource/press-start-2p/files/press-start-2p-latin-400-normal.woff2') format('woff2');
+}
+
+/* Same palette as the landing page (index.html at repo root). */
+:root {
+  --bg: #0b0b16;
+  --panel: #141428;
+  --edge: #26264a;
+  --teal: #2dd4bf;
+  --teal-dark: #0e7c6f;
+  --orange: #ff9f1c;
+  --pink: #ff5d8f;
+  --ink: #f4f1ff;
+  --muted: #9a97b8;
+}
+body.private {
+  --panel: #1f1033;
+  --edge: #3d1f63;
+  --teal: #c084fc;
+  --teal-dark: #6b21a8;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 96px; overflow: hidden; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 9px 'Press Start 2P', monospace;
+  user-select: none;
+}
+
+.pxbtn {
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 3px solid var(--edge);
+  box-shadow: 3px 3px 0 #05050f;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
+  cursor: pointer;
+}
+.pxbtn:hover { border-color: var(--teal); }
+.pxbtn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #05050f; }
+.pxbtn:disabled { color: var(--muted); border-color: var(--edge); cursor: default; }
+
+/* ---------- tab strip ---------- */
+#tabstrip {
+  height: 46px;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 0 10px;
+  -webkit-app-region: drag;
+}
+#tabstrip > * { -webkit-app-region: no-drag; }
+.logo {
+  width: 26px; height: 26px; margin: 0 6px 10px 2px;
+  background: var(--teal); color: var(--bg);
+  display: grid; place-items: center; font-size: 12px;
+  box-shadow: 0 3px 0 var(--teal-dark), 3px 0 0 var(--teal-dark), -3px 0 0 var(--teal-dark), 0 -3px 0 var(--teal-dark);
+}
+#tabs { display: flex; gap: 6px; flex: 1; min-width: 0; overflow: hidden; }
+.tab {
+  flex: 0 1 200px; min-width: 60px; height: 34px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 8px 0 10px;
+  background: var(--bg);
+  border: 3px solid var(--edge); border-bottom: none;
+  color: var(--muted); cursor: pointer;
+}
+.tab.active { background: var(--panel); color: var(--ink); border-color: var(--teal); }
+.tab .title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.4; }
+.tab .close { background: none; border: none; color: inherit; font: inherit; cursor: pointer; padding: 2px; }
+.tab .close:hover { color: var(--pink); }
+.tab.loading .title::before { content: '▮ '; color: var(--orange); animation: blink .6s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+#newtab { margin-bottom: 4px; }
+
+/* ---------- toolbar ---------- */
+#toolbar {
+  height: 50px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 10px;
+  background: var(--panel);
+  border-top: 3px solid var(--teal);
+  border-bottom: 3px solid var(--edge);
+}
+#addressform {
+  flex: 1; display: flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 8px;
+  background: var(--bg); border: 3px solid var(--edge);
+}
+#addressform:focus-within { border-color: var(--teal); }
+#address {
+  flex: 1; background: none; border: none; outline: none;
+  color: var(--ink); font: 13px ui-monospace, 'Cascadia Mono', Menlo, monospace;
+}
+#shield {
+  min-width: 22px; padding: 4px 5px; text-align: center;
+  background: var(--orange); color: var(--bg);
+  box-shadow: 0 2px 0 #a05e00;
+}
+#actions { display: flex; align-items: center; }

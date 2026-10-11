@@ -4,9 +4,10 @@ The 128bit family's window to the internet. A fast, private, pixel-styled
 browser that turns browsing into quests, streaks, and XP. The web, but
 chunkier. Part of the 128bit family.
 
-> Product direction is Daniel's call — this README is a starter brief so
-> Carlos (Claude Code) has something concrete to react to. The landing page
-> is live; the app itself is unstarted.
+> **Status:** the landing page is live, and the desktop app has started in
+> [`apps/desktop`](apps/desktop) (Electron with Chrome extensions and
+> built-in blocking). The platform plan for desktop, Android and iOS, plus
+> end-to-end encrypted sync, is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Concept (starter — Daniel decides)
 
