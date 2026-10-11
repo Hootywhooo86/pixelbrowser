@@ -1,101 +1,65 @@
-# Pixelbrowser roadmap: phone + computer, extensions, private sync
+# Pixelbrowser roadmap
 
-The goal: one pixel-branded browser on desktop and phone, with extensions,
-where everything syncs between your devices but stays private.
-**Brave is the model:** a real engine with our own shell, blocking built in,
-and end-to-end encrypted sync.
+**Goal:** a Comet-style AI browser that's private like Brave, pixel-branded,
+on desktop and phone, with everything synced between your devices.
 
-## The big decisions
+## What's built
 
-### 1. Don't write an engine. Wrap one.
+| Area | Desktop (Win/Mac/Linux) | Phone (iOS/Android) |
+|---|---|---|
+| Engine | Chromium via Electron | WKWebView / Android WebView via Expo |
+| Pixel shell, tabs, private tabs | ✅ | ✅ |
+| Chrome extensions | ✅ Chrome Web Store | ❌ (see below) |
+| Ad and tracker blocking | ✅ Ghostery filter lists | ❌ not yet |
+| AI sidebar/panel: ask about the page | ✅ | ✅ |
+| Ask across several tabs | ✅ | ✅ |
+| AI answers from the address bar | ✅ | ✅ |
+| Agent mode (clicks, types, navigates) | ✅ real mouse and keyboard events | ✅ in-page events |
+| Any AI: Claude, ChatGPT, Gemini, Grok, Mistral, DeepSeek, Groq, OpenRouter, Perplexity, Ollama, LM Studio, custom | ✅ | ✅ |
+| AI web apps in the sidebar (ChatGPT, Claude, Gemini, Perplexity, Copilot, Grok…) + Share Page | ✅ | ✅ |
+| Memory | ✅ | ✅ |
+| Encrypted sync (memory, history, open tabs, AI settings, optional keys) | ✅ shows QR code | ✅ scans QR code |
 
-Nobody builds a rendering engine from scratch (Brave, Edge, Arc, Vivaldi and
-Opera all use Chromium). We build the **shell**: the pixel UI, tabs,
-privacy, sync and gamification. The engine does the HTML, CSS and JS.
-
-| Platform | Engine | Extensions | Why |
-|---|---|---|---|
-| **Windows / macOS / Linux** | Chromium via **Electron** | Chrome Web Store (most MV3 extensions) via `electron-chrome-extensions` | Ships in weeks, not years. Same JS codebase on all 3 OSes. |
-| **Android** | **GeckoView** (Firefox's engine as a library) | Real WebExtensions (uBlock Origin, Dark Reader, Bitwarden…) | The only embeddable mobile engine with full extension support. Chromium WebView has none. |
-| **iOS** | **WKWebView** (Apple requires WebKit) | Our own "pixel packs": content scripts + CSS we inject | Apple doesn't let third-party browsers run Chrome or Firefox extensions. |
-
-**Later, if we outgrow Electron:** fork Chromium itself, the way Brave does.
-That gives full extension support and total control, but it needs a
-dedicated team, 100+ GB builds and weekly security rebases. Don't start
-there.
-
-### 2. Private sync means end-to-end encrypted
-
-"Saves all data" and "private" only fit together if **our server can't read
-the data**:
+## How it fits together
 
 ```
-device A ──encrypt──▶ [ ciphertext blobs ] ◀──decrypt── device B
-   ▲                    sync server (dumb)                  ▲
-   └──────── same key, shared by QR code / sync phrase ─────┘
+apps/desktop      Electron app (main.js, ai-host.js, sync-host.js, ui/)
+apps/mobile       Expo app (App.js, src/)
+packages/ai-core  Shared assistant: providers, agent loop, page scripts, safety
+packages/sync-core  Shared sync: 24-word codes, encryption, merge, syncOnce()
+packages/sync-server  Zero-knowledge server for the encrypted blobs
 ```
 
-- On the first device, generate a random key and show it as a **sync
-  code** (24 words + QR code). No email or password needed, like Brave
-  Sync.
-- To add a phone, scan the QR code. The key never touches the server.
-- Encrypt every record on the device (libsodium `secretbox` / XChaCha20-Poly1305)
-  before upload. The server stores `{deviceId, collection, id, version, ciphertext}`
-  and nothing else.
-- Collections: `bookmarks`, `history`, `tabs` (open tabs on other devices),
-  `readlater`, `settings`, `extensions` (list only), `passwords` (later,
-  with an extra key).
-- Merging: last-writer-wins per record with version clocks. Start simple.
-- Backend: anything that stores blobs (a small Supabase table + row-level
-  security works). Sync is **opt-in**; the browser works fully offline.
+**Any AI.** Claude goes through the official Anthropic SDK. Every other
+provider uses the OpenAI-compatible chat API, which almost all of them
+offer. Users bring their own key, or run a local model with Ollama or
+LM Studio so nothing leaves their computer. No key at all? The AI apps
+panel opens ChatGPT, Claude, Gemini and others with the user's own account.
 
-### 3. One brand, shared code
+**Privacy rules for the AI**
+- The AI reads a page only when you ask. It's off in private windows and tabs.
+- Banking, health, password and login pages need your OK before the AI reads them.
+- Agent mode asks before buying, paying, sending, posting, deleting, logging in or typing secrets.
+- Web content goes to the model marked as untrusted data, and the model is told never to follow instructions found in pages. This is the defense against prompt injection, the main way AI browsers get attacked.
 
-```
-apps/
-  desktop/        Electron app            ← started
-  android/        Kotlin + GeckoView
-  ios/            Swift + WKWebView
-packages/
-  sync-core/      Encryption + record format + merge (TypeScript; reused
-                  on mobile via a small Kotlin/Swift port or a Rust core later)
-  design/         Pixel tokens: colors, font, icons, tab/button specs
-  blocklists/     Filter-list config shared by all platforms
-```
+**Sync.** The first device makes a 24-word sync code. Other devices join by
+scanning its QR code or typing the words. Everything is encrypted on the
+device (XChaCha20-Poly1305) before upload, and the server only stores
+blobs it can't read.
 
-The pixel look comes from `packages/design`: the same palette as the
-landing page, the Press Start 2P font, chunky 3px borders, and hard drop
-shadows.
+## Next steps
 
-## Build order
+1. **Host a sync server.** Run `packages/sync-server` behind HTTPS (Fly.io, Render, or a small VPS) and make it the default address.
+2. **Phone privacy.** Content blockers: iOS WKContentRuleList and Android request filtering through a small native module.
+3. **Phone extensions.** Switch Android to GeckoView for real WebExtensions (uBlock Origin, Dark Reader…). iOS can't run them, so offer built-in "pixel packs" instead.
+4. **Desktop essentials.** Bookmarks, a history page, downloads, session restore, site permission prompts.
+5. **Streaming answers** (show text as it's written) and voice input.
+6. **Release.** Auto-update (`electron-updater`), code signing, EAS builds, and App Store and Play Store listings.
+7. **128bit tie-in.** XP and streak events (see the README).
 
-1. **Desktop MVP** ✅ (started): tabs, address bar, back/forward/reload,
-   Chrome Web Store extensions + toolbar icons, built-in ad/tracker
-   blocking with a counter, DNT + GPC headers, private windows (in-memory,
-   no extensions).
-2. **Desktop essentials:** bookmarks, history page, downloads, session
-   restore, permission prompts, a settings page, find-in-page, a pixel
-   new-tab page.
-3. **sync-core:** key generation, sync code + QR, encrypt/decrypt, and a
-   test suite. Then a tiny sync server.
-4. **Desktop sync:** bookmarks → history → open tabs → read-later.
-5. **Android app** (GeckoView): same pixel shell in Kotlin, extensions,
-   sync via QR pairing.
-6. **iOS app** (WKWebView): pixel shell, content blockers, pixel packs,
-   sync.
-7. **Polish + 128bit tie-in:** reader mode, XP/streak events (see
-   README), themes, auto-update, code signing, store listings.
+## Things to know
 
-## Things to know up front
-
-- **License:** `electron-chrome-extensions` is GPL-3.0 unless you buy its
-  commercial (Patron) license. Either open-source Pixelbrowser under
-  GPL-3.0 (Brave itself is MPL, so open source is normal for browsers) or
-  buy the license before shipping closed-source.
-- **Security updates:** a browser must ship Chromium updates fast. Plan for
-  auto-update (`electron-updater`) from day one and bump Electron on every
-  stable release.
-- **Store rules:** Apple requires WebKit (alternative engines are allowed
-  only in the EU). Google Play is fine with GeckoView.
-- **Signing:** you'll need an Apple Developer account ($99/yr) and ideally
-  a Windows code-signing certificate before public release.
+- **License:** `electron-chrome-extensions` is GPL-3.0 unless you buy its commercial license. Open-source Pixelbrowser under GPL-3.0, or buy the license before shipping closed-source.
+- **Security updates:** a browser has to ship Chromium updates quickly, so bump Electron on every stable release.
+- **App stores:** Apple requires WebKit (alternative engines only in the EU). The phone app's AI uses the user's own keys, so there's no AI bill for you, but say clearly in the listing which data goes to the AI the user picks.
+- **Costs:** an Apple Developer account ($99/yr), Google Play ($25 once), a Windows signing certificate, and a small server for sync.

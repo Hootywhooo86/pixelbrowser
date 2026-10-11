@@ -2,7 +2,7 @@
 // AI settings travel between your devices; the server only sees ciphertext.
 
 const QRCode = require('qrcode')
-const { SyncClient, createSyncCode, isValidSyncCode, mergeRecords, syncQrPayload, COLLECTIONS } = require('@pixelbrowser/sync-core')
+const { SyncClient, createSyncCode, isValidSyncCode, syncOnce, syncQrPayload } = require('@pixelbrowser/sync-core')
 const store = require('./store')
 
 const AUTO_SYNC_MS = 2 * 60 * 1000
@@ -96,39 +96,22 @@ function syncNow() {
   if (!code() || !cfg().server) return Promise.resolve(status())
   if (running) return running
   running = (async () => {
-    const c = client()
-    const me = store.settings.data.deviceId
-    const startedAt = Date.now()
     try {
-      // 1. Upload what this device changed since the last upload.
-      const outgoing = []
-      for (const collection of COLLECTIONS) {
-        for (const r of Object.values(store.records.data[collection] || {})) {
-          if (r.deviceId === me && r.updatedAt > cfg().lastPushedAt) {
-            if (collection === 'settings' && r.id === 'ai-keys' && !cfg().syncKeys) continue
-            outgoing.push({ collection, ...r })
-          }
-        }
-      }
-      for (let i = 0; i < outgoing.length; i += 500) await c.push(outgoing.slice(i, i + 500))
-      cfg().lastPushedAt = startedAt
-
-      // 2. Download and merge what other devices changed.
-      const { seq, records } = await c.pull(cfg().cursor)
-      const changed = new Set()
-      for (const collection of COLLECTIONS) {
-        const incoming = records.filter((r) => r.collection === collection && r.deviceId !== me).map(({ collection: _c, ...r }) => r)
-        if (!incoming.length) continue
-        const { merged, changed: ids } = mergeRecords(store.records.data[collection], incoming)
-        store.records.data[collection] = merged
-        if (ids.length) changed.add(collection)
-      }
-      cfg().cursor = seq
+      const result = await syncOnce({
+        client: client(),
+        data: store.records.data,
+        deviceId: store.settings.data.deviceId,
+        cursor: cfg().cursor,
+        lastPushedAt: cfg().lastPushedAt,
+        skip: (collection, r) => collection === 'settings' && r.id === 'ai-keys' && !cfg().syncKeys,
+      })
+      cfg().cursor = result.cursor
+      cfg().lastPushedAt = result.lastPushedAt
       cfg().lastSyncAt = Date.now()
       lastError = ''
       store.records.save()
       store.settings.save()
-      notify([...changed])
+      notify(result.changed)
     } catch (err) {
       lastError = err.message
       notify()

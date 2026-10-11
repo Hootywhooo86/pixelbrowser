@@ -61,3 +61,20 @@ test('wipe deletes the chain', () =>
     const { records } = await c.pull(0)
     assert.equal(records.length, 0)
   }))
+
+test('syncOnce merges both directions and skips excluded records', () =>
+  withServer(async (server) => {
+    const { syncOnce } = await import('@pixelbrowser/sync-core')
+    const code = createSyncCode()
+    const a = { data: { memory: { m1: { id: 'm1', updatedAt: 10, deviceId: 'A', data: 'likes tea' } }, history: {}, tabs: {}, settings: { 'ai-keys': { id: 'ai-keys', updatedAt: 10, deviceId: 'A', data: { openai: 'sk' } } } }, cursor: 0, lastPushedAt: 0 }
+    const b = { data: { memory: {}, history: { h1: { id: 'h1', updatedAt: 20, deviceId: 'B', data: { url: 'https://x.test' } } }, tabs: {}, settings: {} }, cursor: 0, lastPushedAt: 0 }
+    const skip = (c, r) => c === 'settings' && r.id === 'ai-keys'
+    const run = async (dev, id) => Object.assign(dev, await syncOnce({ client: new SyncClient({ server, code, deviceId: id }), data: dev.data, deviceId: id, cursor: dev.cursor, lastPushedAt: dev.lastPushedAt, skip }))
+    await run(a, 'A')
+    const rb = await run(b, 'B')
+    assert.deepEqual(rb.changed, ['memory'])
+    assert.equal(b.data.memory.m1.data, 'likes tea')
+    assert.equal(b.data.settings['ai-keys'], undefined, 'skipped records never leave the device')
+    await run(a, 'A')
+    assert.equal(a.data.history.h1.data.url, 'https://x.test')
+  }))

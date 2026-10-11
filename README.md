@@ -4,10 +4,19 @@ The 128bit family's window to the internet. A fast, private, pixel-styled
 browser that turns browsing into quests, streaks, and XP. The web, but
 chunkier. Part of the 128bit family.
 
-> **Status:** the landing page is live, and the desktop app has started in
-> [`apps/desktop`](apps/desktop) (Electron with Chrome extensions and
-> built-in blocking). The platform plan for desktop, Android and iOS, plus
-> end-to-end encrypted sync, is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status:** a Comet-style AI browser for desktop ([`apps/desktop`](apps/desktop))
+> and phone ([`apps/mobile`](apps/mobile)). It works with any AI the user picks,
+> has an agent that can click and type on pages, and syncs between devices
+> with end-to-end encryption. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for
+> what's done and what's next.
+>
+> ```bash
+> npm install
+> npm test              # shared AI + sync tests
+> npm run desktop       # desktop browser
+> npm run sync-server   # local sync server on :8787
+> npm run mobile        # phone app (Expo)
+> ```
 
 ## Concept (starter — Daniel decides)
 

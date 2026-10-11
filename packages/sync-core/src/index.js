@@ -183,3 +183,41 @@ export function parseSyncQr(text) {
   if (!m) return null
   return { server: decodeURIComponent(m[1]), code: m[2].replace(/-/g, ' ') }
 }
+
+// ---------- one full sync round (shared by desktop and mobile) ----------
+
+/**
+ * Upload this device's changes, then download and merge everyone else's.
+ *
+ * @param {object} opts
+ * @param {SyncClient} opts.client
+ * @param {object} opts.data         { [collection]: { [id]: record } } — merged in place
+ * @param {string} opts.deviceId
+ * @param {number} opts.cursor       server seq we have seen
+ * @param {number} opts.lastPushedAt local time of the last upload
+ * @param {(collection: string, record: object) => boolean} [opts.skip] records never to upload
+ * @returns {Promise<{ cursor: number, lastPushedAt: number, changed: string[] }>}
+ */
+export async function syncOnce({ client, data, deviceId, cursor = 0, lastPushedAt = 0, skip = () => false }) {
+  const startedAt = Date.now()
+  const outgoing = []
+  for (const collection of COLLECTIONS) {
+    for (const r of Object.values(data[collection] || {})) {
+      if (r.deviceId === deviceId && r.updatedAt > lastPushedAt && !skip(collection, r)) outgoing.push({ collection, ...r })
+    }
+  }
+  for (let i = 0; i < outgoing.length; i += 500) await client.push(outgoing.slice(i, i + 500))
+
+  const { seq, records } = await client.pull(cursor)
+  const changed = []
+  for (const collection of COLLECTIONS) {
+    const incoming = records
+      .filter((r) => r.collection === collection && r.deviceId !== deviceId)
+      .map(({ collection: _c, ...r }) => r)
+    if (!incoming.length) continue
+    const { merged, changed: ids } = mergeRecords(data[collection], incoming)
+    data[collection] = merged
+    if (ids.length) changed.push(collection)
+  }
+  return { cursor: seq, lastPushedAt: startedAt, changed }
+}
