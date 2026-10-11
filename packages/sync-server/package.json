@@ -1,0 +1,15 @@
+{
+  "name": "@pixelbrowser/sync-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zero-knowledge sync server: stores encrypted blobs it cannot read. No dependencies.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/cli.js",
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "@pixelbrowser/sync-core": "*"
+  }
+}

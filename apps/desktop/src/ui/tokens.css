@@ -1,0 +1,24 @@
+/* Shared pixel design tokens (same palette as the landing page). */
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('fonts/press-start-2p.woff2') format('woff2');
+}
+
+:root {
+  --bg: #0b0b16;
+  --panel: #141428;
+  --edge: #26264a;
+  --teal: #2dd4bf;
+  --teal-dark: #0e7c6f;
+  --orange: #ff9f1c;
+  --pink: #ff5d8f;
+  --ink: #f4f1ff;
+  --muted: #9a97b8;
+}
+body.private {
+  --panel: #1f1033;
+  --edge: #3d1f63;
+  --teal: #c084fc;
+  --teal-dark: #6b21a8;
+}
+

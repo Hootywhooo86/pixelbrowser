@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'">
+<title>Pixel AI</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="sidebar.css">
+</head>
+<body>
+  <header id="head">
+    <button id="btn-back" class="px" hidden title="Back to Pixel AI">&lt; PIXEL</button>
+    <div id="brand" class="brand"><span class="mark">P</span> PIXEL AI</div>
+    <div id="appname" class="brand" hidden></div>
+    <span class="spacer"></span>
+    <button id="btn-share" class="px hot" hidden title="Paste this page into the AI app">SHARE PAGE</button>
+    <button id="btn-apps" class="px" title="Open ChatGPT, Claude, Gemini and other AI apps here">APPS</button>
+    <button id="btn-new" class="px" title="New chat">NEW</button>
+    <button id="btn-settings" class="px" title="AI settings, memory and sync">SET</button>
+    <button id="btn-close" class="px" title="Close (Ctrl+J)">X</button>
+  </header>
+
+  <!-- chat -->
+  <section id="chat-view" class="view">
+    <div id="messages">
+      <div id="empty">
+        <p class="hello">Hi! I'm <b>Pixel</b>. I can read this page, compare your tabs, search the web, and in <b>Agent</b> mode I can click and type for you.</p>
+        <div class="suggestions" id="suggest-ask">
+          <button data-q="Summarize this page in 5 bullet points.">Summarize this page</button>
+          <button data-q="What are the key facts and numbers on this page?">Key facts on this page</button>
+          <button data-q="Compare all my open tabs. What's the difference and which is best?" data-alltabs="1">Compare my open tabs</button>
+          <button data-q="Explain this page like I'm 12.">Explain it simply</button>
+        </div>
+        <div class="suggestions" id="suggest-agent" hidden>
+          <button data-q="Find the search box on this site and search for pixel art lamps, then open the top result.">Search this site for me</button>
+          <button data-q="Fill in this form with sensible placeholder values but don't submit it.">Fill in this form</button>
+          <button data-q="Go through the results on this page and tell me the 3 cheapest options with links.">Find the 3 cheapest</button>
+        </div>
+      </div>
+    </div>
+    <div id="status" hidden></div>
+    <footer id="composer">
+      <div id="context-row"></div>
+      <div id="tabpicker" hidden></div>
+      <div class="row">
+        <div class="modes" role="radiogroup" aria-label="Mode">
+          <button data-mode="ask" class="on" title="Answer questions about pages and the web">ASK</button>
+          <button data-mode="agent" title="Let Pixel click, type and navigate for you">AGENT</button>
+        </div>
+        <span id="provider-label" class="muted"></span>
+      </div>
+      <div class="row grow">
+        <textarea id="input" rows="3" placeholder="Ask about this page…"></textarea>
+        <button id="send" class="px hot">SEND</button>
+      </div>
+    </footer>
+  </section>
+
+  <!-- AI web apps -->
+  <section id="apps-view" class="view" hidden>
+    <h2>AI APPS</h2>
+    <p class="muted">Use any AI with your own account, right next to the page. Press SHARE PAGE to paste the page into it.</p>
+    <div id="app-grid"></div>
+    <form id="custom-app" class="row">
+      <input id="custom-app-url" placeholder="Any other AI site: https://…">
+      <button class="px">OPEN</button>
+    </form>
+  </section>
+
+  <!-- settings -->
+  <section id="settings-view" class="view" hidden>
+    <h2>AI MODEL</h2>
+    <p class="muted">Pick any AI. Bring your own key, or run one on this computer so nothing leaves it.</p>
+    <label>Provider <select id="provider"></select></label>
+    <label>Model <input id="model" list="model-list" spellcheck="false"><datalist id="model-list"></datalist></label>
+    <label id="baseurl-wrap">API address <input id="baseurl" spellcheck="false" placeholder="https://…/v1"></label>
+    <label id="key-wrap">API key <input id="apikey" type="password" spellcheck="false" autocomplete="off"></label>
+    <div class="row">
+      <button id="save-ai" class="px hot">SAVE</button>
+      <a id="key-link" href="#" hidden>Get a key</a>
+      <span id="ai-saved" class="muted" hidden>Saved.</span>
+    </div>
+
+    <h2>MEMORY</h2>
+    <label class="check"><input type="checkbox" id="memory-on"> Let Pixel remember things you tell it</label>
+    <ul id="memory-list"></ul>
+    <form id="memory-add" class="row">
+      <input id="memory-input" placeholder="e.g. I'm vegetarian">
+      <button class="px">ADD</button>
+    </form>
+
+    <h2>SYNC</h2>
+    <p class="muted">Memory, history, open tabs and AI settings sync between your devices. They're encrypted on this device first, so the sync server can't read them.</p>
+    <div id="sync-off">
+      <label>Sync server <input id="sync-server" spellcheck="false" placeholder="https://sync.example.com"></label>
+      <div class="row">
+        <button id="sync-create" class="px hot">START SYNC</button>
+        <button id="sync-join-show" class="px">I HAVE A CODE</button>
+      </div>
+      <div id="sync-join" hidden>
+        <textarea id="sync-code" rows="3" placeholder="Type the 24-word sync code from your other device"></textarea>
+        <button id="sync-join-go" class="px hot">JOIN</button>
+      </div>
+    </div>
+    <div id="sync-on" hidden>
+      <p id="sync-status"></p>
+      <label>This device's name <input id="device-name"></label>
+      <label class="check"><input type="checkbox" id="sync-keys"> Also sync my AI keys (encrypted)</label>
+      <div class="row">
+        <button id="sync-now" class="px hot">SYNC NOW</button>
+        <button id="sync-show" class="px">ADD A DEVICE</button>
+        <button id="sync-leave" class="px">STOP</button>
+      </div>
+      <div id="sync-code-box" hidden>
+        <p class="muted">On your phone, open Pixelbrowser → Settings → Sync and scan this, or type the words. Keep them secret: anyone with them can read your synced data.</p>
+        <img id="sync-qr" alt="Sync QR code">
+        <p id="sync-words" class="words"></p>
+      </div>
+      <h3>TABS ON YOUR OTHER DEVICES</h3>
+      <div id="remote-tabs" class="muted">Nothing yet.</div>
+    </div>
+    <p id="sync-error" class="error" hidden></p>
+  </section>
+
+  <script src="sidebar.js"></script>
+</body>
+</html>

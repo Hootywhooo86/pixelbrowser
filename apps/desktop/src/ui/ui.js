@@ -8,6 +8,8 @@ if (new URLSearchParams(location.search).get('private') === '1') {
   document.body.classList.add('private')
   $('private').hidden = true
   $('store').hidden = true
+  $('ask').hidden = true
+  $('ai').hidden = true
 }
 
 function render() {
@@ -42,6 +44,9 @@ function render() {
   $('shield').textContent = state.blockedCount > 999 ? '999+' : String(state.blockedCount || 0)
   if (active && document.activeElement !== address) address.value = active.url
   $('actions').setAttribute('tab', String(state.activeId ?? ''))
+  $('ai').classList.toggle('on', !!state.sidebarOpen)
+  $('agentbadge').hidden = !state.agentActive
+  document.body.classList.toggle('agent', !!state.agentActive)
 }
 
 window.pixel.onState((next) => {
@@ -54,6 +59,19 @@ $('addressform').addEventListener('submit', (e) => {
   window.pixel.go(address.value)
   address.blur()
 })
+// Shift+Enter always sends the address bar to the AI.
+address.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.shiftKey) {
+    e.preventDefault()
+    window.pixel.ask(address.value)
+    address.blur()
+  }
+})
+$('ask').onclick = () => {
+  if (address.value.trim() && address.value !== state.tabs.find((t) => t.id === state.activeId)?.url) window.pixel.ask(address.value)
+  else window.pixel.toggleSidebar()
+}
+$('ai').onclick = () => window.pixel.toggleSidebar()
 address.addEventListener('focus', () => address.select())
 $('newtab').onclick = () => window.pixel.newTab()
 $('back').onclick = () => window.pixel.back()

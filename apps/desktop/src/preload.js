@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('pixel', {
   selectTab: (id) => ipcRenderer.send('tab:select', id),
   closeTab: (id) => ipcRenderer.send('tab:close', id),
   go: (input) => ipcRenderer.send('nav:go', input),
+  ask: (input) => ipcRenderer.send('nav:ask', input),
+  toggleSidebar: () => ipcRenderer.send('sidebar:toggle'),
   back: () => ipcRenderer.send('nav:back'),
   forward: () => ipcRenderer.send('nav:forward'),
   reload: () => ipcRenderer.send('nav:reload'),

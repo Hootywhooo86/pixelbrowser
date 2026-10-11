@@ -7,15 +7,18 @@
   "license": "GPL-3.0",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/ui/ui.js"
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/sidebar-preload.js && node --check src/store.js && node --check src/ai-host.js && node --check src/sync-host.js && node --check src/ui/ui.js && node --check src/ui/sidebar.js"
   },
   "dependencies": {
-    "@fontsource/press-start-2p": "^5.3.0",
     "@ghostery/adblocker-electron": "^2.20.1",
     "electron-chrome-extensions": "^4.9.0",
-    "electron-chrome-web-store": "^0.13.0"
+    "electron-chrome-web-store": "^0.13.0",
+    "@pixelbrowser/ai-core": "*",
+    "@pixelbrowser/sync-core": "*",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "electron": "^44.7.0"
-  }
+  },
+  "productName": "Pixelbrowser"
 }

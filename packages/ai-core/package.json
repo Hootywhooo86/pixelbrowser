@@ -1,0 +1,13 @@
+{
+  "name": "@pixelbrowser/ai-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provider-agnostic AI assistant + browser agent shared by Pixelbrowser desktop and mobile.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": { ".": "./src/index.js" },
+  "scripts": { "test": "node --test test/*.test.js" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0"
+  }
+}
