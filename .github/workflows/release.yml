@@ -3,8 +3,9 @@
 #   Push a tag like v0.2.0  -> builds Windows, macOS, Linux and Android,
 #                              uploads them to a draft release, then publishes
 #                              it (desktop apps auto-update from it).
-#   Run it by hand          -> builds everything as downloadable artifacts
-#                              only (nothing is published).
+#   Run it by hand          -> builds everything as downloadable artifacts.
+#                              Tick "publish" to also make the release for
+#                              the current app version (creates tag vX.Y.Z).
 #
 # Signing is optional: each certificate is used only if its secret is set.
 # See docs/RELEASING.md for the list of secrets.
@@ -14,6 +15,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a GitHub Release for the current app version
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -98,9 +104,11 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # On a tag, upload to the draft release; otherwise just build.
+          PUBLISH: ${{ inputs.publish }}
+        # On a tag (or a manual run with publish ticked), upload to the draft
+        # release; otherwise just build.
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          if [[ "$GITHUB_REF" == refs/tags/v* || "$PUBLISH" == "true" ]]; then
             npx electron-builder --publish always -c.publish.releaseType=draft
           else
             npx electron-builder --publish never
@@ -171,10 +179,11 @@ jobs:
           path: out/*
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
     needs: [desktop, android]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: android
@@ -183,7 +192,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
         run: |
+          TAG="v$(node -p "require('./apps/desktop/package.json').version")"
           gh release upload "$TAG" android/* --clobber
-          gh release edit "$TAG" --draft=false --latest --title "Pixelbrowser $TAG"
+          NOTES=docs/release-notes/$TAG.md
+          if [ -f "$NOTES" ]; then
+            gh release edit "$TAG" --draft=false --latest --title "Pixelbrowser $TAG" --target "$GITHUB_SHA" --notes-file "$NOTES"
+          else
+            gh release edit "$TAG" --draft=false --latest --title "Pixelbrowser $TAG" --target "$GITHUB_SHA"
+          fi
