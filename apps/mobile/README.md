@@ -16,7 +16,7 @@ development build rather than Expo Go. To build in the cloud without Xcode:
 - The **AI slider** in the top bar turns all AI off for private browsing.
 - **AI** opens the Pixel AI panel. You can still watch the page above it while the agent works.
 - Type a question in the address bar for a Comet-style answer.
-- **SET**: choose any AI and add its key, memory, and sync (scan the QR code shown by the desktop app).
+- **SET**: choose your search engine, any AI and add its key, memory, and sync (scan the QR code shown by the desktop app).
 - **Tabs** (the number button): your tabs, private tabs, and tabs open on your other devices.
 
 `npm run bundle` builds the iOS and Android JavaScript bundles, which is a quick way to check for errors.

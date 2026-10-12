@@ -17,6 +17,7 @@ on desktop and phone, with everything synced between your devices.
 | Agent mode (clicks, types, navigates) | ✅ real mouse and keyboard events | ✅ in-page events |
 | Any AI: Claude, ChatGPT, Gemini, Grok, Mistral, DeepSeek, Groq, OpenRouter, Perplexity, Ollama, LM Studio, custom | ✅ | ✅ |
 | AI web apps in the sidebar (ChatGPT, Claude, Gemini, Perplexity, Copilot, Grok…) + Share Page | ✅ | ✅ |
+| Search engine choice (DuckDuckGo, Brave, Startpage, Mojeek, Qwant, Kagi, Ecosia, Google, Bing, custom) | ✅ Settings window | ✅ Settings |
 | Memory | ✅ | ✅ |
 | Encrypted sync (memory, history, open tabs, AI settings, optional keys) | ✅ shows QR code | ✅ scans QR code |
 
@@ -48,15 +49,50 @@ scanning its QR code or typing the words. Everything is encrypted on the
 device (XChaCha20-Poly1305) before upload, and the server only stores
 blobs it can't read.
 
-## Next steps
+## What's left to add
 
-1. **Host a sync server.** Run `packages/sync-server` behind HTTPS (Fly.io, Render, or a small VPS) and make it the default address.
-2. **Phone privacy.** Content blockers: iOS WKContentRuleList and Android request filtering through a small native module.
-3. **Phone extensions.** Switch Android to GeckoView for real WebExtensions (uBlock Origin, Dark Reader…). iOS can't run them, so offer built-in "pixel packs" instead.
-4. **Desktop essentials.** Bookmarks, a history page, downloads, session restore, site permission prompts.
-5. **Streaming answers** (show text as it's written) and voice input.
-6. **Release.** Auto-update (`electron-updater`), code signing, EAS builds, and App Store and Play Store listings.
-7. **128bit tie-in.** XP and streak events (see the README).
+### Must-do before anyone else uses it
+- [ ] **Installers.** Package the desktop app with `electron-builder` (.exe, .dmg, .AppImage). Right now it only runs from source.
+- [ ] **Auto-update + code signing.** Use `electron-updater`, Apple notarization and a Windows certificate. A browser that can't update itself quickly becomes unsafe.
+- [ ] **Host the sync server** behind HTTPS and make it the default address.
+- [ ] **Real-world testing.** Run the phone app on real iPhones and Android phones, and try each AI provider with real keys.
+- [ ] **Brand assets.** Pixel app icon, splash screen and store screenshots. The phone app still uses Expo's placeholder icons.
+- [ ] **License decision.** GPL-3.0 open source, or buy the `electron-chrome-extensions` commercial license.
+- [ ] **Privacy policy and store listings.** Say what goes to the AI the user picks, and that sync is end-to-end encrypted.
+
+### Everyday browser basics (people expect these)
+- [ ] Bookmarks and a bookmarks bar (synced)
+- [ ] History page with search
+- [ ] Downloads manager
+- [ ] Reopen tabs after restart (session restore) and reopen closed tab (Ctrl+Shift+T)
+- [ ] Find in page, zoom, print
+- [ ] Site permission prompts (camera, mic, location, notifications are currently always denied)
+- [ ] Passwords: a built-in manager, or a nudge to install Bitwarden or 1Password
+- [ ] Pixel new-tab page (shortcuts, synced tabs, search box)
+- [ ] Pinned tabs, tab groups and tab search
+- [ ] Reader mode
+
+### Privacy and security
+- [ ] HTTPS-only mode, fingerprinting protection, and blocking third-party cookies by default on desktop
+- [ ] Ad and tracker blocking on the phone (iOS content rules, Android request filtering)
+- [ ] A per-site "never let AI read this site" list
+- [ ] An outside security review of the agent and the sync code before launch
+- [ ] Opt-in crash reports
+
+### Phone
+- [ ] Android extensions through GeckoView (uBlock Origin, Dark Reader…)
+- [ ] Downloads and file sharing
+- [ ] Share sheet: "Ask Pixel about this link" from other apps
+
+### AI polish
+- [ ] Streaming answers (text appears as it's written)
+- [ ] Voice input
+- [ ] Show which model answered and roughly what it cost
+- [ ] Saved agent tasks ("every morning, check these 3 sites")
+
+### 128bit family
+- [ ] XP, streaks and quests events (see the README)
+- [ ] Pixel themes and tab-bar skins (cosmetic in-app purchases)
 
 ## Things to know
 

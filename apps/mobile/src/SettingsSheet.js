@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react'
 import { Modal, ScrollView, View, Text, Pressable, Switch, StyleSheet, Alert } from 'react-native'
 import { CameraView, useCameraPermissions } from 'expo-camera'
-import { PROVIDERS, } from '@pixelbrowser/ai-core'
+import { PROVIDERS, SEARCH_ENGINES } from '@pixelbrowser/ai-core'
 import { parseSyncQr } from '@pixelbrowser/sync-core'
-import { useStore, update, memory, getState } from './store'
+import { useStore, update, memory, getState, setSearchEngine } from './store'
 import { saveAISettings, setAIEnabled } from './ai'
 import { createChain, joinChain, leaveChain, showCode, syncNow, remoteTabs } from './sync'
 import { PButton, PText, Field, PSwitch } from './ui'
@@ -24,6 +24,8 @@ export default function SettingsSheet({ visible, onClose, openUrl }) {
   const [shownCode, setShownCode] = useState('')
   const [scanning, setScanning] = useState(false)
   const [error, setError] = useState('')
+  const [customUrl, setCustomUrl] = useState(state.customSearchUrl)
+  const [pickCustom, setPickCustom] = useState(false)
 
   const p = PROVIDERS[provider]
   useEffect(() => {
@@ -58,7 +60,47 @@ export default function SettingsSheet({ visible, onClose, openUrl }) {
           <PButton small label="DONE" hot onPress={onClose} />
         </View>
         <ScrollView contentContainerStyle={st.body} keyboardShouldPersistTaps="handled">
-          <PText style={[st.h, { marginTop: 4 }]}>AI</PText>
+          <PText style={[st.h, { marginTop: 4 }]}>SEARCH ENGINE</PText>
+          <Text style={st.muted}>Used when you type words in the address bar.</Text>
+          <View style={st.providers}>
+            {Object.entries(SEARCH_ENGINES).map(([id, e]) => {
+              const on = id === 'custom' ? pickCustom || state.searchEngine === 'custom' : state.searchEngine === id && !pickCustom
+              return (
+                <Pressable
+                  key={id}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: on }}
+                  onPress={() => (id === 'custom' ? setPickCustom(true) : (setPickCustom(false), setSearchEngine(id)))}
+                  style={[st.provider, { flexDirection: 'column' }, on && { borderColor: C.teal }]}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ color: on ? C.ink : C.muted, fontSize: 14, fontWeight: '600' }}>{e.label}</Text>
+                    {!e.custom && <Text style={{ color: e.private ? C.teal : C.orange, fontSize: 11 }}>{e.private ? 'PRIVATE' : 'TRACKS YOU'}</Text>}
+                  </View>
+                  <Text style={{ color: C.muted, fontSize: 12 }}>{e.note}</Text>
+                </Pressable>
+              )
+            })}
+          </View>
+          {(pickCustom || state.searchEngine === 'custom') && (
+            <>
+              <Text style={st.label}>Search address (put %s where the words go)</Text>
+              <Field value={customUrl} onChangeText={setCustomUrl} placeholder="https://search.example.com/?q=%s" keyboardType="url" />
+              <PButton
+                label="SAVE"
+                hot
+                style={{ alignSelf: 'flex-start', marginTop: 8 }}
+                onPress={() => {
+                  if (!/^https?:\/\/\S+$/.test(customUrl.trim()) || !customUrl.includes('%s')) return setError('Use a full https:// address with %s in it.')
+                  setError('')
+                  setPickCustom(false)
+                  setSearchEngine('custom', customUrl)
+                }}
+              />
+            </>
+          )}
+
+          <PText style={st.h}>AI</PText>
           <View style={st.row}>
             <PSwitch value={state.aiEnabled} onChange={setAIEnabled} />
             <Text style={{ color: C.ink, flex: 1 }}>

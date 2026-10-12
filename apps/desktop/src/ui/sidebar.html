@@ -98,37 +98,9 @@
       <button class="px">ADD</button>
     </form>
 
-    <h2>SYNC</h2>
-    <p class="muted">Memory, history, open tabs and AI settings sync between your devices. They're encrypted on this device first, so the sync server can't read them.</p>
-    <div id="sync-off">
-      <label>Sync server <input id="sync-server" spellcheck="false" placeholder="https://sync.example.com"></label>
-      <div class="row">
-        <button id="sync-create" class="px hot">START SYNC</button>
-        <button id="sync-join-show" class="px">I HAVE A CODE</button>
-      </div>
-      <div id="sync-join" hidden>
-        <textarea id="sync-code" rows="3" placeholder="Type the 24-word sync code from your other device"></textarea>
-        <button id="sync-join-go" class="px hot">JOIN</button>
-      </div>
-    </div>
-    <div id="sync-on" hidden>
-      <p id="sync-status"></p>
-      <label>This device's name <input id="device-name"></label>
-      <label class="check"><input type="checkbox" id="sync-keys"> Also sync my AI keys (encrypted)</label>
-      <div class="row">
-        <button id="sync-now" class="px hot">SYNC NOW</button>
-        <button id="sync-show" class="px">ADD A DEVICE</button>
-        <button id="sync-leave" class="px">STOP</button>
-      </div>
-      <div id="sync-code-box" hidden>
-        <p class="muted">On your phone, open Pixelbrowser → Settings → Sync and scan this, or type the words. Keep them secret: anyone with them can read your synced data.</p>
-        <img id="sync-qr" alt="Sync QR code">
-        <p id="sync-words" class="words"></p>
-      </div>
-      <h3>TABS ON YOUR OTHER DEVICES</h3>
-      <div id="remote-tabs" class="muted">Nothing yet.</div>
-    </div>
-    <p id="sync-error" class="error" hidden></p>
+    <h2>BROWSER</h2>
+    <p class="muted">Search engine, sync between your devices, and clearing data are in Settings.</p>
+    <div class="row"><button id="open-settings" class="px">OPEN SETTINGS</button></div>
   </section>
 
   <script src="sidebar.js"></script>

@@ -7,7 +7,7 @@
   "license": "GPL-3.0",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/sidebar-preload.js && node --check src/store.js && node --check src/ai-host.js && node --check src/sync-host.js && node --check src/ui/ui.js && node --check src/ui/sidebar.js"
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/sidebar-preload.js && node --check src/store.js && node --check src/ai-host.js && node --check src/sync-host.js && node --check src/ui/ui.js && node --check src/ui/sidebar.js && node --check src/ui/settings.js && node --check src/settings-preload.js"
   },
   "dependencies": {
     "@ghostery/adblocker-electron": "^2.20.1",

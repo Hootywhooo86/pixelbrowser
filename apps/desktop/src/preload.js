@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('pixel', {
   ask: (input) => ipcRenderer.send('nav:ask', input),
   toggleSidebar: () => ipcRenderer.send('sidebar:toggle'),
   setAIEnabled: (on) => ipcRenderer.send('ai:set-enabled', on),
+  openSettings: () => ipcRenderer.send('settings:open'),
   back: () => ipcRenderer.send('nav:back'),
   forward: () => ipcRenderer.send('nav:forward'),
   reload: () => ipcRenderer.send('nav:reload'),

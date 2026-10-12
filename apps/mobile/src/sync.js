@@ -87,6 +87,14 @@ async function applyRemoteSettings() {
       st.updatedAt.ai = rec.updatedAt
     })
   }
+  const search = s.records.settings.search
+  if (search && !search.deleted && search.deviceId !== s.deviceId && search.updatedAt > (s.updatedAt.search || 0)) {
+    update((st) => {
+      st.searchEngine = search.data.engine
+      st.customSearchUrl = search.data.customUrl || ''
+      st.updatedAt.search = search.updatedAt
+    })
+  }
   const keys = s.records.settings['ai-keys']
   if (keys && !keys.deleted && keys.deviceId !== s.deviceId && s.sync.syncKeys) {
     for (const [id, k] of Object.entries(keys.data || {})) if (PROVIDERS[id] && k) await setSecret(`apiKey:${id}`, k)

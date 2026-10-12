@@ -12,13 +12,12 @@ const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu } = require(
 const { ElectronChromeExtensions } = require('electron-chrome-extensions')
 const { installChromeWebStore, updateExtensions } = require('electron-chrome-web-store')
 const { ElectronBlocker } = require('@ghostery/adblocker-electron')
-const { looksLikeQuestion, isAllowedUrl } = require('@pixelbrowser/ai-core')
+const { looksLikeQuestion, isAllowedUrl, SEARCH_ENGINES, searchUrlFor, searchHome } = require('@pixelbrowser/ai-core')
 const store = require('./store')
 const syncHost = require('./sync-host')
 const { AISession, publicState, saveSettings, applyRemoteSettings, syncedSettingsChanged } = require('./ai-host')
 
 const SHELL_HEIGHT = 96 // px: tab strip + toolbar
-const HOME_URL = 'https://duckduckgo.com'
 const PROFILE_PARTITION = 'persist:pixel'
 const SIDEBAR_WIDTH = 400
 const SIDEBAR_HEADER = 44 // px of the sidebar UI kept above an AI web app
@@ -30,14 +29,21 @@ app.commandLine.appendSwitch('enable-features', 'ReduceUserAgent')
 const windows = new Map() // BrowserWindow.id -> PixelWindow
 let blocker = null
 
+function homeUrl() {
+  return searchHome(store.settings.data.searchEngine, store.settings.data.customSearchUrl)
+}
+
+/** Search with the engine chosen in Settings (its no-AI version when the AI slider is off). */
+function searchFor(query, aiEnabled = store.settings.data.aiEnabled) {
+  return searchUrlFor(store.settings.data.searchEngine, query, { aiEnabled, customUrl: store.settings.data.customSearchUrl })
+}
+
 function normalizeInput(input) {
   const text = String(input || '').trim()
-  if (!text) return HOME_URL
+  if (!text) return homeUrl()
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text) || text.startsWith('about:')) return text
   if (/^[^\s]+\.[^\s]{2,}$/.test(text) || text.startsWith('localhost')) return `https://${text}`
-  // With the AI slider off, search with DuckDuckGo's no-AI results too.
-  const host = store.settings.data.aiEnabled ? 'duckduckgo.com' : 'noai.duckduckgo.com'
-  return `https://${host}/?q=${encodeURIComponent(text)}`
+  return searchFor(text)
 }
 
 class PixelWindow {
@@ -111,7 +117,7 @@ class PixelWindow {
     })
   }
 
-  createTab(url = HOME_URL) {
+  createTab(url = '') {
     const view = new WebContentsView({
       webPreferences: { session: this.ses, sandbox: true, contextIsolation: true },
     })
@@ -310,7 +316,7 @@ function askFromAddressBar(pw, text) {
   const question = text.replace(/^\?\s*/, '').trim()
   if (!question) return
   // Comet-style: regular results in the tab, an AI answer in the sidebar.
-  const results = `https://duckduckgo.com/?q=${encodeURIComponent(question)}`
+  const results = searchFor(question, true)
   const tab = pw.activeTab()
   if (tab) tab.view.webContents.loadURL(results)
   else pw.createTab(results)
@@ -452,7 +458,99 @@ function setAIEnabled(on) {
     pw.pushState()
     pw.sendSidebar('sidebar:state', { ...publicState(), app: pw.sidebar.app })
   }
+  broadcastSettings()
 }
+
+// ---------- Settings window (search engine, AI slider, sync, clear data) ----------
+
+let settingsWin = null
+
+function openSettings() {
+  if (settingsWin && !settingsWin.isDestroyed()) return settingsWin.focus()
+  settingsWin = new BrowserWindow({
+    width: 580,
+    height: 780,
+    title: 'Pixelbrowser Settings',
+    backgroundColor: '#0b0b16',
+    autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'settings-preload.js'), sandbox: true, contextIsolation: true },
+  })
+  settingsWin.setMenuBarVisibility(false)
+  settingsWin.webContents.setWindowOpenHandler(({ url }) => {
+    openUrlInBrowser(url)
+    return { action: 'deny' }
+  })
+  settingsWin.loadFile(path.join(__dirname, 'ui', 'settings.html'))
+}
+
+function openUrlInBrowser(url) {
+  if (!isAllowedUrl(url)) return
+  const pw = [...windows.values()].find((w) => !w.isPrivate)
+  if (pw) {
+    pw.selectTab(pw.createTab(url).id)
+    pw.win.focus()
+  } else openWindow({ url })
+}
+
+function settingsState() {
+  const s = store.settings.data
+  return {
+    searchEngine: s.searchEngine,
+    customSearchUrl: s.customSearchUrl,
+    engines: SEARCH_ENGINES,
+    aiEnabled: s.aiEnabled,
+    sync: syncHost.status(),
+    remoteTabs: syncHost.remoteTabs(),
+  }
+}
+
+function broadcastSettings() {
+  if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('settings:state', settingsState())
+}
+
+function setSearchEngine(engine, customUrl = '') {
+  if (!SEARCH_ENGINES[engine]) return
+  store.settings.data.searchEngine = engine
+  store.settings.data.customSearchUrl = String(customUrl || '').trim().slice(0, 500)
+  store.settings.data.updatedAt.search = Date.now()
+  store.settings.save()
+}
+
+/** Apply a search engine chosen on another device. */
+function applyRemoteSearch() {
+  const rec = store.records.data.settings.search
+  const s = store.settings.data
+  if (rec && !rec.deleted && rec.deviceId !== s.deviceId && rec.updatedAt > (s.updatedAt.search || 0)) {
+    setSearchEngine(rec.data.engine, rec.data.customUrl)
+    s.updatedAt.search = rec.updatedAt
+  }
+}
+
+ipcMain.on('settings:open', () => openSettings())
+ipcMain.on('settings:open-url', (_e, url) => openUrlInBrowser(url))
+ipcMain.handle('settings:get', () => settingsState())
+ipcMain.handle('settings:set-search', (_e, { engine, customUrl }) => {
+  setSearchEngine(engine, customUrl)
+  store.putRecord('settings', 'search', { engine: store.settings.data.searchEngine, customUrl: store.settings.data.customSearchUrl })
+  return settingsState()
+})
+ipcMain.handle('settings:set-ai', (_e, on) => {
+  setAIEnabled(on)
+  return settingsState()
+})
+ipcMain.handle('settings:clear-data', async (_e, { history, siteData }) => {
+  if (history) {
+    store.records.data.history = {}
+    store.records.save()
+  }
+  if (siteData) {
+    const ses = session.fromPartition(PROFILE_PARTITION)
+    // chrome.storage for extensions lives elsewhere, so extension settings survive.
+    await ses.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage', 'websql', 'filesystem'] })
+    await ses.clearCache()
+  }
+  return true
+})
 ipcMain.on('nav:back', (e) => fromSender(e)?.activeTab()?.view.webContents.navigationHistory.goBack())
 ipcMain.on('nav:forward', (e) => fromSender(e)?.activeTab()?.view.webContents.navigationHistory.goForward())
 ipcMain.on('nav:reload', (e) => fromSender(e)?.activeTab()?.view.webContents.reload())
@@ -517,7 +615,7 @@ ipcMain.handle('sync:join', (_e, { server, code }) => syncHost.join(server, code
 ipcMain.handle('sync:show-code', () => syncHost.showCode())
 ipcMain.handle('sync:now', () => syncHost.syncNow())
 ipcMain.handle('sync:leave', (_e, opts) => syncHost.leave(opts))
-ipcMain.handle('sync:set-options', (_e, { syncKeys, deviceName }) => {
+ipcMain.handle('sync:set-options', (_e, { syncKeys, deviceName } = {}) => {
   if (syncKeys !== undefined) store.settings.data.sync.syncKeys = !!syncKeys
   if (deviceName) store.settings.data.deviceName = String(deviceName).slice(0, 40)
   store.settings.save()
@@ -527,7 +625,11 @@ ipcMain.handle('sync:set-options', (_e, { syncKeys, deviceName }) => {
 })
 
 syncHost.onChange(({ status, changed }) => {
-  if (changed.includes('settings')) applyRemoteSettings()
+  if (changed.includes('settings')) {
+    applyRemoteSettings()
+    applyRemoteSearch()
+  }
+  broadcastSettings()
   for (const pw of windows.values()) {
     pw.sendSidebar('sidebar:state', { ...publicState(), sync: status, remoteTabs: syncHost.remoteTabs() })
   }
@@ -550,6 +652,7 @@ app.whenReady().then(async () => {
           { label: 'New Private Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => openWindow({ isPrivate: true }) },
           { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: (_i, w) => { const pw = w && windows.get(w.id); pw?.closeTab(pw.activeId) } },
           { label: 'Pixel AI Sidebar', accelerator: 'CmdOrCtrl+J', click: (_i, w) => w && windows.get(w.id)?.toggleSidebar() },
+          { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
           { type: 'separator' },
           { role: 'quit' },
         ],

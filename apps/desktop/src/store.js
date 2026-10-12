@@ -42,6 +42,8 @@ const settings = new JsonFile('pixel-settings.json', {
   ai: { provider: 'anthropic', providers: {} }, // providers[id] = { model, baseUrl }
   memoryEnabled: true,
   aiEnabled: true, // the AI slider; off = nothing is sent to any AI (per device, never synced)
+  searchEngine: 'duckduckgo',
+  customSearchUrl: '',
   sync: { server: '', cursor: 0, lastPushedAt: 0, lastSyncAt: 0, syncKeys: false },
   updatedAt: { ai: 0 },
 })

@@ -8,7 +8,7 @@ import { StatusBar } from 'expo-status-bar'
 import { useFonts } from 'expo-font'
 import { WebView } from 'react-native-webview'
 import * as Crypto from 'expo-crypto'
-import { looksLikeQuestion, isAllowedUrl } from '@pixelbrowser/ai-core'
+import { looksLikeQuestion, isAllowedUrl, searchUrlFor, searchHome } from '@pixelbrowser/ai-core'
 import { loadStore, getState, putRecord, addHistory, useStore } from './src/store'
 import { setAIEnabled } from './src/ai'
 import { startSync } from './src/sync'
@@ -18,19 +18,22 @@ import TabsSheet from './src/TabsSheet'
 import { PButton, PSwitch } from './src/ui'
 import { C, PIXEL_FONT } from './src/theme'
 
-const HOME_URL = 'https://duckduckgo.com'
 let nextTabId = 1
+
+const homeUrl = () => searchHome(getState().searchEngine, getState().customSearchUrl)
+
+/** Search with the engine chosen in Settings (its no-AI version when the AI slider is off). */
+const searchFor = (query, aiEnabled) => searchUrlFor(getState().searchEngine, query, { aiEnabled, customUrl: getState().customSearchUrl })
 
 function normalizeInput(input, aiEnabled = true) {
   const text = String(input || '').trim()
-  if (!text) return HOME_URL
+  if (!text) return homeUrl()
   if (/^https?:\/\//i.test(text)) return text
   if (/^[^\s]+\.[^\s]{2,}$/.test(text)) return `https://${text}`
-  // With the AI slider off, search with DuckDuckGo's no-AI results too.
-  return `https://${aiEnabled ? 'duckduckgo.com' : 'noai.duckduckgo.com'}/?q=${encodeURIComponent(text)}`
+  return searchFor(text, aiEnabled)
 }
 
-const newTab = (url = HOME_URL, opts = {}) => ({ id: nextTabId++, url, source: url, title: 'New tab', loading: true, canGoBack: false, canGoForward: false, private: !!opts.private })
+const newTab = (url = homeUrl(), opts = {}) => ({ id: nextTabId++, url, source: url, title: 'New tab', loading: true, canGoBack: false, canGoForward: false, private: !!opts.private })
 
 export default function App() {
   const [ready, setReady] = useState(false)
@@ -151,7 +154,7 @@ function Browser() {
     if (!active.private && aiEnabled && (q.startsWith('?') || looksLikeQuestion(q))) {
       // Comet-style: results in the tab, AI answer in the panel.
       const question = q.replace(/^\?\s*/, '')
-      navigate(active.id, `https://duckduckgo.com/?q=${encodeURIComponent(question)}`)
+      navigate(active.id, searchFor(question, true))
       setAiOpen(true)
       setAiRequest({ input: question, search: true, includePage: false, nonce: Date.now() })
       return
@@ -264,7 +267,7 @@ function Browser() {
         }}
         onCloseTab={closeTab}
         onNewTab={(opts) => {
-          openTab(HOME_URL, opts)
+          openTab(homeUrl(), opts)
           setTabsOpen(false)
         }}
         onOpenUrl={(url) => {

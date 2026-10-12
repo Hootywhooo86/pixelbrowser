@@ -16,8 +16,9 @@ npm run desktop
   search results in the tab, an AI answer in the sidebar. Or right-click selected text → Ask Pixel AI.
 - **APPS** opens ChatGPT, Claude, Gemini, Perplexity and other AI sites in the sidebar,
   signed in with your account. **SHARE PAGE** pastes the current page into them.
-- **SET**: pick any AI (Claude, ChatGPT, Gemini, Grok, Mistral, DeepSeek, Groq, OpenRouter,
-  Perplexity, Ollama, LM Studio or a custom URL), memory, and encrypted sync.
+- **SET** in the toolbar (Ctrl/Cmd+,) opens Settings: search engine, the AI slider, sync, and clearing browsing data.
+- **SET** in the AI sidebar: pick any AI (Claude, ChatGPT, Gemini, Grok, Mistral, DeepSeek, Groq, OpenRouter,
+  Perplexity, Ollama, LM Studio or a custom URL) and memory.
 
 - **EXT** opens the Chrome Web Store. Click "Add to Chrome" to install an
   extension. Its icon then appears in the toolbar.

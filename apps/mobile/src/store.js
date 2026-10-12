@@ -24,8 +24,10 @@ function defaults() {
     keysPresent: {},
     memoryEnabled: true,
     aiEnabled: true, // the AI slider; off = nothing is sent to any AI (per device, never synced)
+    searchEngine: 'duckduckgo',
+    customSearchUrl: '',
     sync: { server: '', enabled: false, cursor: 0, lastPushedAt: 0, lastSyncAt: 0, syncKeys: false, error: '' },
-    updatedAt: { ai: 0 },
+    updatedAt: { ai: 0, search: 0 },
     records: { memory: {}, history: {}, tabs: {}, settings: {} },
   }
 }
@@ -35,7 +37,7 @@ export async function loadStore() {
     const raw = await AsyncStorage.getItem(KEY)
     const saved = raw ? JSON.parse(raw) : {}
     const base = defaults()
-    state = { ...base, ...saved, sync: { ...base.sync, ...saved.sync }, records: { ...base.records, ...saved.records } }
+    state = { ...base, ...saved, sync: { ...base.sync, ...saved.sync }, updatedAt: { ...base.updatedAt, ...saved.updatedAt }, records: { ...base.records, ...saved.records } }
   } catch {
     state = defaults()
   }
@@ -115,6 +117,16 @@ export const memory = {
     putRecord('memory', hit.id, null, { deleted: true })
     return true
   },
+}
+
+/** Pick the address-bar search engine (synced to your other devices). */
+export function setSearchEngine(engine, customUrl = '') {
+  update((s) => {
+    s.searchEngine = engine
+    s.customSearchUrl = String(customUrl || '').trim().slice(0, 500)
+    s.updatedAt.search = Date.now()
+  })
+  putRecord('settings', 'search', { engine, customUrl: state.customSearchUrl })
 }
 
 export async function addHistory(url, title) {

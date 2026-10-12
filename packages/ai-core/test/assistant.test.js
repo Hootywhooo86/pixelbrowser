@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { runAssistant, resolveProvider, parseDuckDuckGo, looksLikeQuestion, riskyActionReason, isSensitivePage } from '../src/index.js'
+import { runAssistant, resolveProvider, parseDuckDuckGo, looksLikeQuestion, riskyActionReason, isSensitivePage, searchUrlFor, searchHome } from '../src/index.js'
 
 // ---------- fakes ----------
 
@@ -156,4 +156,16 @@ test('helpers', () => {
   assert.ok(riskyActionReason({ kind: 'type', text: 'hi', submit: true }, { tag: 'textarea', label: 'Message' }))
   assert.ok(isSensitivePage({ url: 'https://online.citi.com/x' }))
   assert.equal(isSensitivePage({ url: 'https://example.com' }), null)
+})
+
+test('search engine choice', () => {
+  assert.equal(searchUrlFor('brave', 'pixel art'), 'https://search.brave.com/search?q=pixel%20art')
+  assert.equal(searchUrlFor('duckduckgo', 'x', { aiEnabled: false }), 'https://noai.duckduckgo.com/?q=x')
+  assert.equal(searchUrlFor('google', 'x', { aiEnabled: false }), 'https://www.google.com/search?udm=14&q=x')
+  assert.equal(searchUrlFor('mojeek', 'x', { aiEnabled: false }), 'https://www.mojeek.com/search?q=x')
+  assert.equal(searchUrlFor('custom', 'a b', { customUrl: 'https://search.example/find?term=%s' }), 'https://search.example/find?term=a%20b')
+  assert.equal(searchUrlFor('custom', 'x', { customUrl: 'javascript:alert(%s)' }), 'https://duckduckgo.com/?q=x', 'unsafe templates fall back')
+  assert.equal(searchUrlFor('nope', 'x'), 'https://duckduckgo.com/?q=x')
+  assert.equal(searchHome('custom', 'https://search.example/find?term=%s'), 'https://search.example')
+  assert.equal(searchHome('startpage'), 'https://www.startpage.com')
 })

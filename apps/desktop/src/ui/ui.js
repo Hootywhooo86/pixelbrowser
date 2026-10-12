@@ -82,6 +82,7 @@ $('ask').onclick = () => {
   else window.pixel.toggleSidebar()
 }
 $('ai').onclick = () => window.pixel.toggleSidebar()
+$('settings').onclick = () => window.pixel.openSettings()
 $('aitoggle').onclick = () => window.pixel.setAIEnabled(state.aiEnabled === false)
 address.addEventListener('focus', () => address.select())
 $('newtab').onclick = () => window.pixel.newTab()

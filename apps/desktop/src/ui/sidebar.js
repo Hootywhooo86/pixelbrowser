@@ -367,7 +367,6 @@ function renderSettings() {
     })
   )
   if (!state.memory.length) $('memory-list').innerHTML = '<li class="muted">Nothing remembered yet.</li>'
-  renderSync()
 }
 
 function fillProvider(id) {
@@ -405,83 +404,7 @@ $('memory-add').onsubmit = async (e) => {
   applyState(await ai.memory.add(text))
 }
 
-// ---------- sync ----------
-
-function renderSync() {
-  const s = state.sync
-  $('sync-off').hidden = s.enabled
-  $('sync-on').hidden = !s.enabled
-  if (!$('sync-server').value) $('sync-server').value = s.server || ''
-  $('sync-status').textContent = s.lastSyncAt ? `Synced ${new Date(s.lastSyncAt).toLocaleString()} with ${s.server}` : `Syncing with ${s.server}…`
-  $('device-name').value = s.deviceName || ''
-  $('sync-keys').checked = s.syncKeys
-  $('sync-error').hidden = !s.error
-  $('sync-error').textContent = s.error ? `Sync problem: ${s.error}` : ''
-
-  const box = $('remote-tabs')
-  if (!state.remoteTabs?.length) {
-    box.textContent = 'Nothing yet.'
-    return
-  }
-  box.replaceChildren(
-    ...state.remoteTabs.flatMap((d) => {
-      const head = document.createElement('div')
-      head.className = 'device'
-      head.textContent = d.deviceName
-      const links = d.tabs.map((t) => {
-        const a = document.createElement('a')
-        a.href = '#'
-        a.dataset.url = t.url
-        a.textContent = t.title || t.url
-        return a
-      })
-      return [head, ...links]
-    })
-  )
-}
-
-async function syncAction(fn) {
-  $('sync-error').hidden = true
-  try {
-    await fn()
-  } catch (err) {
-    $('sync-error').hidden = false
-    $('sync-error').textContent = String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
-  }
-  applyState(await ai.getState())
-}
-
-function showCode(result) {
-  if (!result) return
-  $('sync-code-box').hidden = false
-  $('sync-qr').src = result.qr
-  $('sync-words').textContent = result.code
-}
-
-$('sync-create').onclick = () =>
-  syncAction(async () => {
-    const server = $('sync-server').value.trim()
-    if (!server) throw new Error('Enter a sync server address first.')
-    showCode(await ai.sync.create(server))
-  })
-$('sync-join-show').onclick = () => ($('sync-join').hidden = !$('sync-join').hidden)
-$('sync-join-go').onclick = () =>
-  syncAction(async () => {
-    const server = $('sync-server').value.trim()
-    if (!server) throw new Error('Enter the same sync server address as your other device.')
-    await ai.sync.join(server, $('sync-code').value)
-    $('sync-code').value = ''
-  })
-$('sync-now').onclick = () => syncAction(() => ai.sync.now())
-$('sync-show').onclick = () => syncAction(async () => showCode(await ai.sync.showCode()))
-$('sync-leave').onclick = () =>
-  syncAction(async () => {
-    const wipe = confirm('Stop syncing this device?\n\nOK = also delete the encrypted copy from the server (all devices stop syncing).\nCancel = just this device.')
-    await ai.sync.leave({ wipe })
-    $('sync-code-box').hidden = true
-  })
-$('sync-keys').onchange = () => syncAction(() => ai.sync.setOptions({ syncKeys: $('sync-keys').checked }))
-$('device-name').onchange = () => syncAction(() => ai.sync.setOptions({ deviceName: $('device-name').value }))
+$('open-settings').onclick = () => ai.openSettings()
 
 // ---------- AI on/off slider ----------
 

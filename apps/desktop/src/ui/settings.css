@@ -1,0 +1,17 @@
+body { display: block; border-left: none; overflow-y: auto; }
+#head { position: sticky; top: 0; z-index: 1; }
+main.view { overflow: visible; padding: 16px 20px 40px; max-width: 640px; }
+#engines { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.engine {
+  text-align: left; cursor: pointer; padding: 10px; color: var(--ink); font: inherit;
+  background: var(--panel); border: 3px solid var(--edge); box-shadow: 2px 2px 0 #05050f;
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+}
+.engine:hover { border-color: var(--teal); }
+.engine.on { border-color: var(--teal); background: #10302c; }
+.engine .name { font: 9px 'Press Start 2P', monospace; }
+.engine .note { flex-basis: 100%; color: var(--muted); font-size: 12px; }
+.tag { font: 6px 'Press Start 2P', monospace; padding: 3px 4px; }
+.tag.ok { background: var(--teal); color: var(--bg); }
+.tag.warn { background: var(--orange); color: var(--bg); }
+@media (max-width: 480px) { #engines { grid-template-columns: 1fr; } }

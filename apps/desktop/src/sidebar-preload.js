@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('pixelAI', {
   newChat: () => ipcRenderer.send('ai:new-chat'),
   confirm: (id, ok) => ipcRenderer.send('ai:confirm', { id, ok }),
   close: () => ipcRenderer.send('sidebar:close'),
+  openSettings: () => ipcRenderer.send('settings:open'),
   openUrl: (url) => ipcRenderer.send('sidebar:open-url', url),
   openApp: (id, url) => ipcRenderer.send('sidebar:open-app', { id, url }),
   closeApp: () => ipcRenderer.send('sidebar:close-app'),
