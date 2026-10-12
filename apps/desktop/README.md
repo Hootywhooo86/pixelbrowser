@@ -34,4 +34,7 @@ Code map:
 - `src/store.js`: local data (API keys and the sync code are encrypted by the OS keychain)
 - `src/ui/`: the pixel tab strip, toolbar and AI sidebar
 
+Build an installer for the OS you're on with `npm run dist` (output goes to `dist/`).
+Releases for every platform are built on GitHub. See [`docs/RELEASING.md`](../../docs/RELEASING.md).
+
 The next steps are in [`docs/ROADMAP.md`](../../docs/ROADMAP.md).

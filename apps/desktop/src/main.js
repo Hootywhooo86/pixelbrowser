@@ -15,6 +15,7 @@ const { ElectronBlocker } = require('@ghostery/adblocker-electron')
 const { looksLikeQuestion, isAllowedUrl, SEARCH_ENGINES, searchUrlFor, searchHome } = require('@pixelbrowser/ai-core')
 const store = require('./store')
 const syncHost = require('./sync-host')
+const updater = require('./updater')
 const { AISession, publicState, saveSettings, applyRemoteSettings, syncedSettingsChanged } = require('./ai-host')
 
 const SHELL_HEIGHT = 96 // px: tab strip + toolbar
@@ -113,6 +114,7 @@ class PixelWindow {
       isPrivate: this.isPrivate,
       sidebarOpen: this.sidebar.open,
       aiEnabled: store.settings.data.aiEnabled,
+      update: updater.status(),
       agentActive: this.agentActive,
     })
   }
@@ -499,6 +501,7 @@ function settingsState() {
     customSearchUrl: s.customSearchUrl,
     engines: SEARCH_ENGINES,
     aiEnabled: s.aiEnabled,
+    update: updater.status(),
     sync: syncHost.status(),
     remoteTabs: syncHost.remoteTabs(),
   }
@@ -525,6 +528,20 @@ function applyRemoteSearch() {
     s.updatedAt.search = rec.updatedAt
   }
 }
+
+ipcMain.on('update:install', () => updater.installNow())
+ipcMain.handle('update:check', () => {
+  updater.check()
+  return settingsState()
+})
+ipcMain.handle('update:set-auto', (_e, on) => {
+  updater.setAuto(on)
+  return settingsState()
+})
+updater.onChange(() => {
+  for (const pw of windows.values()) pw.pushState()
+  broadcastSettings()
+})
 
 ipcMain.on('settings:open', () => openSettings())
 ipcMain.on('settings:open-url', (_e, url) => openUrlInBrowser(url))
@@ -640,7 +657,39 @@ store.onLocalChange(() => syncHost.schedule())
 
 // ---------- app lifecycle ----------
 
+// One Pixelbrowser at a time: links opened from other apps (when it's the
+// default browser) land as new tabs in the running window.
+function urlsFromArgv(argv) {
+  return argv.filter((a) => /^https?:\/\//i.test(a))
+}
+
+const gotInstanceLock = app.requestSingleInstanceLock()
+if (!gotInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_e, argv) => {
+    const urls = urlsFromArgv(argv)
+    if (urls.length) urls.forEach(openUrlInBrowser)
+    else {
+      const pw = [...windows.values()].find((w) => !w.isPrivate)
+      if (pw) {
+        if (pw.win.isMinimized()) pw.win.restore()
+        pw.win.focus()
+      } else openWindow()
+    }
+  })
+}
+
+// macOS delivers links through open-url (also before the app is ready).
+const pendingUrls = []
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  if (app.isReady() && windows.size) openUrlInBrowser(url)
+  else pendingUrls.push(url)
+})
+
 app.whenReady().then(async () => {
+  if (!gotInstanceLock) return
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
@@ -670,8 +719,11 @@ app.whenReady().then(async () => {
   )
 
   await loadBlocker()
-  await openWindow({ url: process.env.PIXEL_START_URL })
+  const startUrls = [...urlsFromArgv(process.argv.slice(1)), ...pendingUrls]
+  await openWindow({ url: startUrls[0] || process.env.PIXEL_START_URL })
+  startUrls.slice(1).forEach(openUrlInBrowser)
   syncHost.start()
+  updater.start()
   updateExtensions().catch(() => {})
 })
 

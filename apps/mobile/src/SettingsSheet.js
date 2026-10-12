@@ -1,7 +1,7 @@
 // Settings: pick any AI, memory, and end-to-end encrypted sync.
 
 import { useEffect, useState } from 'react'
-import { Modal, ScrollView, View, Text, Pressable, Switch, StyleSheet, Alert } from 'react-native'
+import { Modal, ScrollView, View, Text, Pressable, Switch, StyleSheet, Alert, Platform } from 'react-native'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { PROVIDERS, SEARCH_ENGINES } from '@pixelbrowser/ai-core'
 import { parseSyncQr } from '@pixelbrowser/sync-core'
@@ -212,6 +212,16 @@ export default function SettingsSheet({ visible, onClose, openUrl }) {
               <Text style={st.muted}>Your sync code. Keep it secret: anyone with it can read your synced data.</Text>
               <Text selectable style={{ color: C.ink, fontFamily: 'Courier', marginTop: 6 }}>{shownCode}</Text>
             </View>
+          )}
+          {Platform.OS === 'android' && (
+            <>
+              <PText style={st.h}>UPDATES</PText>
+              <View style={st.row}>
+                <Switch value={state.checkUpdates} onValueChange={(v) => update((s) => (s.checkUpdates = v))} />
+                <Text style={{ color: C.ink, flex: 1 }}>Tell me when a new version is out</Text>
+              </View>
+              <Text style={st.muted}>For the app installed from GitHub. Google Play updates it for you. The check only asks GitHub for the newest version number.</Text>
+            </>
           )}
           {!!(error || state.sync.error) && <Text style={{ color: C.pink, marginTop: 8 }}>{error || `Sync problem: ${state.sync.error}`}</Text>}
         </ScrollView>

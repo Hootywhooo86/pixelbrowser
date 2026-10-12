@@ -3,7 +3,7 @@
 // the same Comet-style AI and encrypted sync as the desktop app.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { View, TextInput, Text, Pressable, StyleSheet, SafeAreaView, Platform, StatusBar as RNStatusBar } from 'react-native'
+import { View, TextInput, Text, Pressable, StyleSheet, SafeAreaView, Platform, Linking, StatusBar as RNStatusBar } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import { useFonts } from 'expo-font'
 import { WebView } from 'react-native-webview'
@@ -11,6 +11,7 @@ import * as Crypto from 'expo-crypto'
 import { looksLikeQuestion, isAllowedUrl, searchUrlFor, searchHome } from '@pixelbrowser/ai-core'
 import { loadStore, getState, putRecord, addHistory, useStore } from './src/store'
 import { setAIEnabled } from './src/ai'
+import { checkForAppUpdate } from './src/updates'
 import { startSync } from './src/sync'
 import AIPanel from './src/AIPanel'
 import SettingsSheet from './src/SettingsSheet'
@@ -62,6 +63,11 @@ function Browser() {
   const [agentActive, setAgentActive] = useState(false)
   const [tabsOpen, setTabsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [appUpdate, setAppUpdate] = useState(null)
+
+  useEffect(() => {
+    if (getState().checkUpdates) checkForAppUpdate().then(setAppUpdate)
+  }, [])
 
   const tabsRef = useRef(tabs)
   tabsRef.current = tabs
@@ -211,6 +217,13 @@ function Browser() {
         />
       </View>
       {active.loading && <View style={[st.progress, { backgroundColor: C.orange }]} />}
+      {appUpdate && (
+        <View style={st.update}>
+          <Text style={st.updateText}>PIXELBROWSER {appUpdate.version} IS OUT</Text>
+          <PButton small hot color={C.orange} label="GET IT" onPress={() => Linking.openURL(appUpdate.url)} />
+          <PButton small label="X" onPress={() => setAppUpdate(null)} />
+        </View>
+      )}
 
       {/* pages */}
       <View style={{ flex: 1 }}>
@@ -289,6 +302,8 @@ const st = StyleSheet.create({
   agent: { fontFamily: PIXEL_FONT, fontSize: 7, color: C.bg, backgroundColor: C.pink, paddingHorizontal: 5, paddingVertical: 4 },
   address: { flex: 1, height: 38, backgroundColor: C.bg, borderWidth: 3, borderColor: C.edge, color: C.ink, paddingHorizontal: 8, fontSize: 14 },
   progress: { height: 3 },
+  update: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#2a1a05', borderBottomWidth: 3, borderBottomColor: C.orange },
+  updateText: { flex: 1, fontFamily: PIXEL_FONT, fontSize: 7, color: C.orange },
   page: { flex: 1, backgroundColor: '#fff' },
   bottom: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 10, backgroundColor: C.panel, borderTopWidth: 3 },
 })

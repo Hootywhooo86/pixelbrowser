@@ -52,11 +52,13 @@ blobs it can't read.
 ## What's left to add
 
 ### Must-do before anyone else uses it
-- [ ] **Installers.** Package the desktop app with `electron-builder` (.exe, .dmg, .AppImage). Right now it only runs from source.
-- [ ] **Auto-update + code signing.** Use `electron-updater`, Apple notarization and a Windows certificate. A browser that can't update itself quickly becomes unsafe.
+- [x] **Installers.** `electron-builder` makes .exe, .dmg, .AppImage and .deb files, and the Android build makes an .apk and .aab. A `v*` tag builds all of them (see [RELEASING.md](RELEASING.md)).
+- [x] **Auto-update.** Desktop updates itself from GitHub Releases. Android APK users get an update notice.
+- [ ] **Code signing.** The hooks are ready. Add an Apple Developer ID, a Windows certificate and an Android upload key as GitHub secrets.
 - [ ] **Host the sync server** behind HTTPS and make it the default address.
 - [ ] **Real-world testing.** Run the phone app on real iPhones and Android phones, and try each AI provider with real keys.
-- [ ] **Brand assets.** Pixel app icon, splash screen and store screenshots. The phone app still uses Expo's placeholder icons.
+- [x] **App icon and splash screen** (`scripts/make-icons.py`).
+- [ ] **Store screenshots and feature graphics.**
 - [ ] **License decision.** GPL-3.0 open source, or buy the `electron-chrome-extensions` commercial license.
 - [ ] **Privacy policy and store listings.** Say what goes to the AI the user picks, and that sync is end-to-end encrypted.
 

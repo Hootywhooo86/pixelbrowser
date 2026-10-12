@@ -25,6 +25,7 @@ function defaults() {
     memoryEnabled: true,
     aiEnabled: true, // the AI slider; off = nothing is sent to any AI (per device, never synced)
     searchEngine: 'duckduckgo',
+    checkUpdates: true,
     customSearchUrl: '',
     sync: { server: '', enabled: false, cursor: 0, lastPushedAt: 0, lastSyncAt: 0, syncKeys: false, error: '' },
     updatedAt: { ai: 0, search: 0 },

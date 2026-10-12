@@ -17,6 +17,8 @@ chunkier. Part of the 128bit family.
 > npm run sync-server   # local sync server on :8787
 > npm run mobile        # phone app (Expo)
 > ```
+>
+> Installers and releases: [`docs/RELEASING.md`](docs/RELEASING.md).
 
 ## Concept (starter — Daniel decides)
 

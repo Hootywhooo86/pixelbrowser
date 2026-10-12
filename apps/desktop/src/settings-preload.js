@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld('pixelSettings', {
   setAI: (on) => ipcRenderer.invoke('settings:set-ai', on),
   clearData: (opts) => ipcRenderer.invoke('settings:clear-data', opts),
   openUrl: (url) => ipcRenderer.send('settings:open-url', url),
+  update: {
+    check: () => ipcRenderer.invoke('update:check'),
+    setAuto: (on) => ipcRenderer.invoke('update:set-auto', on),
+    install: () => ipcRenderer.send('update:install'),
+  },
   sync: {
     create: (server) => ipcRenderer.invoke('sync:create', server),
     join: (server, code) => ipcRenderer.invoke('sync:join', { server, code }),

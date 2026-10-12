@@ -1,0 +1,60 @@
+# Desktop installers. Build locally with `npm run dist` (current OS) or let
+# .github/workflows/release.yml build all three OSes when you push a v* tag.
+# Signing certificates come from CI secrets only (see docs/RELEASING.md).
+appId: com.pixelbrowser.app
+productName: Pixelbrowser
+copyright: Copyright © 2026 Pixelbrowser
+directories:
+  output: dist
+  buildResources: build
+files:
+  - src/**/*
+  - package.json
+  - "!**/*.map"
+
+# Lets Pixelbrowser be picked as the default browser.
+protocols:
+  - name: Web page
+    schemes: [http, https]
+
+publish:
+  provider: github
+  owner: Hootywhooo86
+  repo: pixelbrowser
+  releaseType: release
+
+win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Pixelbrowser
+
+mac:
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  target:
+    - target: dmg
+      arch: [universal]
+    - target: zip # the auto-updater on macOS downloads the zip
+      arch: [universal]
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  extendInfo:
+    NSCameraUsageDescription: Websites you allow can use the camera.
+    NSMicrophoneUsageDescription: Websites you allow can use the microphone.
+
+linux:
+  target: [AppImage, deb]
+  executableName: pixelbrowser
+  syncDesktopName: true
+  category: Network
+  synopsis: Private pixel web browser with an AI sidebar
+  maintainer: Pixelbrowser <Hootywhooo86@users.noreply.github.com>
+  mimeTypes: [x-scheme-handler/http, x-scheme-handler/https, text/html]
+  artifactName: ${productName}-${version}-${arch}.${ext}

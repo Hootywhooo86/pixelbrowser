@@ -20,3 +20,6 @@ development build rather than Expo Go. To build in the cloud without Xcode:
 - **Tabs** (the number button): your tabs, private tabs, and tabs open on your other devices.
 
 `npm run bundle` builds the iOS and Android JavaScript bundles, which is a quick way to check for errors.
+
+Release builds (signed APK + Play Store bundle) are made on GitHub when you push a version tag.
+See [`docs/RELEASING.md`](../../docs/RELEASING.md).

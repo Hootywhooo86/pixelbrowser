@@ -2,13 +2,14 @@
   "expo": {
     "name": "Pixelbrowser",
     "slug": "pixelbrowser",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.pixelbrowser.app"
+      "bundleIdentifier": "com.pixelbrowser.app",
+      "buildNumber": "100"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +18,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.pixelbrowser.app"
+      "package": "com.pixelbrowser.app",
+      "versionCode": 100
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -31,6 +33,16 @@
           "cameraPermission": "Pixelbrowser uses the camera only to scan the sync QR code from your computer.",
           "microphonePermission": false,
           "recordAudioAndroid": false
+        }
+      ],
+      "./plugins/with-release-signing",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#0b0b16"
         }
       ]
     ],

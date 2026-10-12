@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('pixel', {
   toggleSidebar: () => ipcRenderer.send('sidebar:toggle'),
   setAIEnabled: (on) => ipcRenderer.send('ai:set-enabled', on),
   openSettings: () => ipcRenderer.send('settings:open'),
+  installUpdate: () => ipcRenderer.send('update:install'),
   back: () => ipcRenderer.send('nav:back'),
   forward: () => ipcRenderer.send('nav:forward'),
   reload: () => ipcRenderer.send('nav:reload'),

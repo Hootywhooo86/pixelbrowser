@@ -1,0 +1,189 @@
+# Builds every installer and publishes a GitHub Release.
+#
+#   Push a tag like v0.2.0  -> builds Windows, macOS, Linux and Android,
+#                              uploads them to a draft release, then publishes
+#                              it (desktop apps auto-update from it).
+#   Run it by hand          -> builds everything as downloadable artifacts
+#                              only (nothing is published).
+#
+# Signing is optional: each certificate is used only if its secret is set.
+# See docs/RELEASING.md for the list of secrets.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Tag must match the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          WANT="${GITHUB_REF_NAME#v}"
+          HAVE=$(node -p "require('./apps/desktop/package.json').version")
+          if [ "$WANT" != "$HAVE" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match version $HAVE. Run: node scripts/set-version.mjs $WANT"
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm test
+      - run: npm run check
+
+  desktop:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Use signing certificates if they are set up
+        shell: bash
+        env:
+          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WIN_CERT_PFX_BASE64: ${{ secrets.WIN_CERT_PFX_BASE64 }}
+          WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            if [ -n "$MAC_CERT_P12_BASE64" ]; then
+              echo "CSC_LINK=$MAC_CERT_P12_BASE64" >> "$GITHUB_ENV"
+              echo "CSC_KEY_PASSWORD=$MAC_CERT_PASSWORD" >> "$GITHUB_ENV"
+            else
+              echo "::warning::No macOS certificate: the Mac app will be unsigned and won't auto-update."
+              echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            fi
+            if [ -n "$APPLE_ID" ]; then
+              echo "APPLE_ID=$APPLE_ID" >> "$GITHUB_ENV"
+              echo "APPLE_APP_SPECIFIC_PASSWORD=$APPLE_APP_SPECIFIC_PASSWORD" >> "$GITHUB_ENV"
+              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> "$GITHUB_ENV"
+            fi
+          fi
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            if [ -n "$WIN_CERT_PFX_BASE64" ]; then
+              echo "WIN_CSC_LINK=$WIN_CERT_PFX_BASE64" >> "$GITHUB_ENV"
+              echo "WIN_CSC_KEY_PASSWORD=$WIN_CERT_PASSWORD" >> "$GITHUB_ENV"
+            else
+              echo "::warning::No Windows certificate: SmartScreen will warn people when they install."
+            fi
+          fi
+
+      - name: Build installers
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # On a tag, upload to the draft release; otherwise just build.
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            npx electron-builder --publish always -c.publish.releaseType=draft
+          else
+            npx electron-builder --publish never
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ runner.os }}
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.AppImage
+            apps/desktop/dist/*.deb
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/*.blockmap
+          if-no-files-found: ignore
+
+  android:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+
+      - name: Generate the Android project
+        working-directory: apps/mobile
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Use the upload key if it is set up
+        env:
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_UPLOAD_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.keystore"
+            echo "PIXEL_UPLOAD_STORE_FILE=$RUNNER_TEMP/upload.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No Android upload key: the APK is signed with the debug key (fine for testing, not for Google Play)."
+          fi
+
+      - name: Build APK and Play Store bundle
+        working-directory: apps/mobile/android
+        env:
+          NODE_ENV: production
+          PIXEL_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          PIXEL_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          PIXEL_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease bundleRelease --no-daemon
+
+      - name: Name the files
+        run: |
+          VERSION=$(node -p "require('./apps/mobile/app.json').expo.version")
+          mkdir -p out
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "out/Pixelbrowser-$VERSION-android.apk"
+          cp apps/mobile/android/app/build/outputs/bundle/release/app-release.aab "out/Pixelbrowser-$VERSION-android.aab"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: out/*
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: android
+      - name: Add the Android files and publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release upload "$TAG" android/* --clobber
+          gh release edit "$TAG" --draft=false --latest --title "Pixelbrowser $TAG"

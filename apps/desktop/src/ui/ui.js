@@ -55,6 +55,9 @@ function render() {
     $('ai').hidden = !aiOn
     address.placeholder = aiOn ? 'Search, type a URL, or ask AI a question' : 'Search or type a URL'
   }
+  const ready = state.update?.state === 'ready'
+  $('update').hidden = !ready
+  if (ready) $('update').title = `Pixelbrowser ${state.update.version} is ready. Click to restart and update.`
   $('agentbadge').hidden = !state.agentActive
   document.body.classList.toggle('agent', !!state.agentActive)
 }
@@ -83,6 +86,7 @@ $('ask').onclick = () => {
 }
 $('ai').onclick = () => window.pixel.toggleSidebar()
 $('settings').onclick = () => window.pixel.openSettings()
+$('update').onclick = () => window.pixel.installUpdate()
 $('aitoggle').onclick = () => window.pixel.setAIEnabled(state.aiEnabled === false)
 address.addEventListener('focus', () => address.select())
 $('newtab').onclick = () => window.pixel.newTab()

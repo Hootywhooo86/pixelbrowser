@@ -88,3 +88,5 @@ body {
   animation: blink 1s steps(2) infinite;
 }
 body.agent #toolbar { border-top-color: var(--pink); }
+
+#update { background: var(--orange); color: var(--bg); border-color: #a05e00; animation: blink 1.2s steps(2) 3; }

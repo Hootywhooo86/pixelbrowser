@@ -144,6 +144,26 @@ $('sync-keys').onchange = () => syncAction(() => api.sync.setOptions({ syncKeys:
 $('device-name').onchange = () => syncAction(() => api.sync.setOptions({ deviceName: $('device-name').value }))
 
 
+// ---------- updates ----------
+
+function renderUpdate() {
+  const u = state.update || {}
+  const text = {
+    unsupported: 'Updates work in the installed app (not when running from source).',
+    checking: 'Checking for updates…',
+    'up-to-date': 'You have the newest version.',
+    downloading: `Downloading version ${u.version}… ${u.percent || 0}%`,
+    ready: `Version ${u.version} is ready to install.`,
+    error: `Couldn't check for updates: ${u.error}`,
+  }[u.state] || ''
+  $('update-status').textContent = `Pixelbrowser ${u.current || ''}. ${text}`.trim()
+  $('update-auto').checked = !!u.auto
+  $('update-install').hidden = u.state !== 'ready'
+}
+$('update-check').onclick = async () => applyState(await api.update.check())
+$('update-auto').onchange = async () => applyState(await api.update.setAuto($('update-auto').checked))
+$('update-install').onclick = () => api.update.install()
+
 // ---------- clear data ----------
 
 $('clear-go').onclick = async () => {
@@ -162,6 +182,7 @@ function applyState(next) {
   renderEngines()
   renderAI()
   renderSync()
+  renderUpdate()
 }
 
 api.onState((next) => applyState(next))

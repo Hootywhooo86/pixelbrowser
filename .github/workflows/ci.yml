@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches-ignore: [gh-pages]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run check
+      - name: Bundle the phone app (catches JS errors)
+        run: npx expo export --platform android --platform ios --output-dir /tmp/mobile-dist
+        working-directory: apps/mobile
