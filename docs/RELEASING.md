@@ -25,6 +25,10 @@ has:
 | `Pixelbrowser-0.2.0-android.aab` | Upload to Google Play |
 | `latest.yml`, `latest-mac.yml`, `latest-linux.yml` | Used by auto-update. Don't delete them. |
 
+Or skip the tag: set the version, push to `main`, then go to **Actions → Release →
+Run workflow** and tick **publish**. That creates the release and its tag for
+you. Optional release notes go in `docs/release-notes/vX.Y.Z.md`.
+
 To try a build without publishing anything, run the **Release** workflow by
 hand (Actions → Release → Run workflow) and download the artifacts.
 
