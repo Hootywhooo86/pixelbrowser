@@ -1,5 +1,6 @@
 # Bit Browser brand
 
-- `bit-browser-logo-source.jpg`: the official logo artwork from the owner (a pixel browser window with a binary globe). It's the source for every app icon. `scripts/make-icons.py` crops the window square from it and makes all sizes.
-- Colors sampled from the logo: navy background `#010d27`, teal `#06b1b8`, cream `#fcf1d9`.
+- **Logo:** the chunky pixel letter mark drawn by `scripts/make-icons.py`, the same style and colors as the original "P", redrawn as a **"B"**. That's the owner's decision.
+- `bit-browser-logo-source.jpg`: an alternative artwork the owner sent (a pixel browser window with a binary globe). It is **not used** for now. Keep it for later.
+- Colors stay the current palette: navy `#0b0b16`, teal `#2dd4bf`, orange `#ff9f1c`.
 - The AI assistant is called **Bitter**.
