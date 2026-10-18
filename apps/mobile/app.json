@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Pixelbrowser",
+    "name": "Bit Browser",
     "slug": "pixelbrowser",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -30,7 +30,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Pixelbrowser uses the camera only to scan the sync QR code from your computer.",
+          "cameraPermission": "Bit Browser uses the camera only to scan the sync QR code from your computer.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }

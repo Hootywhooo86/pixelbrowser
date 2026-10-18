@@ -25,7 +25,7 @@ Run lint and typecheck before declaring any task done.
 
 ## App structure
 
-- Pixelbrowser is a single-screen browser, so it doesn't use Expo Router. `App.js` holds the browser (tabs, address bar, WebViews); panels and sheets live in `src/`.
+- Bit Browser is a single-screen browser, so it doesn't use Expo Router. `App.js` holds the browser (tabs, address bar, WebViews); panels and sheets live in `src/`.
 - AI and sync logic is shared with desktop through `@pixelbrowser/ai-core` and `@pixelbrowser/sync-core` (npm workspaces at the repo root). Change behavior there, not here.
 - `npm run bundle` builds the iOS and Android JS bundles to catch errors without a device.
 

@@ -1,4 +1,4 @@
-// Pixelbrowser desktop — main process.
+// Bit Browser desktop — main process.
 //
 // One BrowserWindow per browser window. The window's own webContents is the
 // pixel shell (src/ui); every tab is a WebContentsView laid out underneath it.
@@ -22,6 +22,10 @@ const SHELL_HEIGHT = 96 // px: tab strip + toolbar
 const PROFILE_PARTITION = 'persist:pixel'
 const SIDEBAR_WIDTH = 400
 const SIDEBAR_HEADER = 44 // px of the sidebar UI kept above an AI web app
+
+// The app was called Pixelbrowser before it became Bit Browser. Keep the
+// old profile folder so settings, keys, extensions and sync survive the rename.
+app.setPath('userData', path.join(app.getPath('appData'), 'Pixelbrowser'))
 
 // Privacy defaults, applied before any window opens.
 app.commandLine.appendSwitch('disable-features', 'InterestFeedContentSuggestions,PrivacySandboxAdsAPIs')
@@ -64,7 +68,7 @@ class PixelWindow {
       height: 820,
       minWidth: 480,
       minHeight: 360,
-      title: isPrivate ? 'Pixelbrowser — Private' : 'Pixelbrowser',
+      title: isPrivate ? 'Bit Browser — Private' : 'Bit Browser',
       backgroundColor: '#0b0b16',
       webPreferences: {
         session: ses,
@@ -152,7 +156,7 @@ class PixelWindow {
       if (params.selectionText && !this.isPrivate && store.settings.data.aiEnabled) {
         const quote = params.selectionText.trim().slice(0, 80)
         items.unshift(
-          { label: `Ask Pixel AI about "${quote}${params.selectionText.length > 80 ? '…' : ''}"`, click: () => this.askAI({ input: `Explain this: "${params.selectionText.trim()}"` }) },
+          { label: `Ask Bitter about "${quote}${params.selectionText.length > 80 ? '…' : ''}"`, click: () => this.askAI({ input: `Explain this: "${params.selectionText.trim()}"` }) },
           { type: 'separator' }
         )
       }
@@ -472,7 +476,7 @@ function openSettings() {
   settingsWin = new BrowserWindow({
     width: 580,
     height: 780,
-    title: 'Pixelbrowser Settings',
+    title: 'Bit Browser Settings',
     backgroundColor: '#0b0b16',
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'settings-preload.js'), sandbox: true, contextIsolation: true },
@@ -657,7 +661,7 @@ store.onLocalChange(() => syncHost.schedule())
 
 // ---------- app lifecycle ----------
 
-// One Pixelbrowser at a time: links opened from other apps (when it's the
+// One Bit Browser at a time: links opened from other apps (when it's the
 // default browser) land as new tabs in the running window.
 function urlsFromArgv(argv) {
   return argv.filter((a) => /^https?:\/\//i.test(a))
@@ -700,7 +704,7 @@ app.whenReady().then(async () => {
           { label: 'New Window', accelerator: 'CmdOrCtrl+N', click: () => openWindow() },
           { label: 'New Private Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => openWindow({ isPrivate: true }) },
           { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: (_i, w) => { const pw = w && windows.get(w.id); pw?.closeTab(pw.activeId) } },
-          { label: 'Pixel AI Sidebar', accelerator: 'CmdOrCtrl+J', click: (_i, w) => w && windows.get(w.id)?.toggleSidebar() },
+          { label: 'Bitter Sidebar', accelerator: 'CmdOrCtrl+J', click: (_i, w) => w && windows.get(w.id)?.toggleSidebar() },
           { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
           { type: 'separator' },
           { role: 'quit' },

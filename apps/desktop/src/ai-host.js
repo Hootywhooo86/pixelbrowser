@@ -153,7 +153,7 @@ function createDriver(pw) {
         })
       }),
     fetchText: async (url) => {
-      const res = await pw.ses.fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Pixelbrowser)' } })
+      const res = await pw.ses.fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Bit Browser)' } })
       return res.text()
     },
   }
@@ -203,7 +203,7 @@ class AISession {
 
   async ask({ input, mode = 'ask', tabIds, search = false, includePage = true }) {
     if (!store.settings.data.aiEnabled) {
-      this.emit({ type: 'error', message: 'AI is off. Turn on the AI slider to use Pixel.' })
+      this.emit({ type: 'error', message: 'AI is off. Turn on the AI slider to use Bitter.' })
       return
     }
     if (this.pw.isPrivate) {

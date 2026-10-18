@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the Pixelbrowser app icon (a chunky pixel "P") and write every size
+"""Draw the Bit Browser app icon (a chunky pixel "B") and write every size
 the desktop installers and the phone apps need. Run: python3 scripts/make-icons.py"""
 import os
 from PIL import Image, ImageDraw
@@ -7,20 +7,20 @@ from PIL import Image, ImageDraw
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BG, TEAL, TEAL_DARK, ORANGE = (11, 11, 22), (45, 212, 191), (14, 124, 111), (255, 159, 28)
 
-# 12x12 pixel art: the "P" and an orange cursor block.
+# 12x12 pixel art: the "B" and an orange cursor block.
 GLYPH = [
     "............",
     "..XXXXXXX...",
     "..XXXXXXXX..",
     "..XX....XX..",
     "..XX....XX..",
-    "..XXXXXXXX..",
     "..XXXXXXX...",
-    "..XX........",
-    "..XX....OO..",
-    "..XX....OO..",
-    "..XX........",
-    "............",
+    "..XXXXXXXX..",
+    "..XX....XX..",
+    "..XX....XX..",
+    "..XXXXXXXX..",
+    "..XXXXXXX.OO",
+    "..........OO",
 ]
 
 

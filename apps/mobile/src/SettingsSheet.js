@@ -142,7 +142,7 @@ export default function SettingsSheet({ visible, onClose, openUrl }) {
           <PText style={st.h}>MEMORY</PText>
           <View style={st.row}>
             <Switch value={state.memoryEnabled} onValueChange={(v) => update((s) => (s.memoryEnabled = v))} />
-            <Text style={{ color: C.ink, flex: 1 }}>Let Pixel remember things you tell it</Text>
+            <Text style={{ color: C.ink, flex: 1 }}>Let Bitter remember things you tell it</Text>
           </View>
           {memory.items().map((m) => (
             <View key={m} style={st.memRow}>
@@ -232,7 +232,7 @@ export default function SettingsSheet({ visible, onClose, openUrl }) {
           onCode={(text) => {
             setScanning(false)
             const parsed = parseSyncQr(text)
-            if (!parsed) return setError("That QR code isn't a Pixelbrowser sync code.")
+            if (!parsed) return setError("That QR code isn't a Bit Browser sync code.")
             setServer(parsed.server)
             run(() => joinChain(parsed.server || getState().sync.server, parsed.code))
           }}
@@ -250,7 +250,7 @@ function Scanner({ onCode, onClose }) {
       <View style={[StyleSheet.absoluteFill, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center', gap: 12 }]}>
         {!permission?.granted && (
           <>
-            <Text style={{ color: C.ink, textAlign: 'center', paddingHorizontal: 24 }}>Pixelbrowser needs the camera to scan the sync QR code on your computer.</Text>
+            <Text style={{ color: C.ink, textAlign: 'center', paddingHorizontal: 24 }}>Bit Browser needs the camera to scan the sync QR code on your computer.</Text>
             <PButton hot label="ALLOW CAMERA" onPress={requestPermission} />
           </>
         )}

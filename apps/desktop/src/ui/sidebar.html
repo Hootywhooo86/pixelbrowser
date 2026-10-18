@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'">
-<title>Pixel AI</title>
+<title>Bitter</title>
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="sidebar.css">
 </head>
 <body>
   <header id="head">
-    <button id="btn-back" class="px" hidden title="Back to Pixel AI">&lt; PIXEL</button>
-    <div id="brand" class="brand"><span class="mark">P</span> PIXEL AI</div>
+    <button id="btn-back" class="px" hidden title="Back to Bitter">&lt; BITTER</button>
+    <div id="brand" class="brand"><span class="mark">B</span> BITTER</div>
     <div id="appname" class="brand" hidden></div>
     <span class="spacer"></span>
     <button id="ai-switch" class="pxswitch on" role="switch" aria-checked="true" title="AI on/off. Off = private: nothing is sent to any AI."><span class="knob"></span><span class="lbl">AI</span></button>
@@ -24,7 +24,7 @@
   <!-- AI switched off -->
   <section id="off-view" class="view" hidden>
     <h2>AI IS OFF</h2>
-    <p>Pixelbrowser is in private mode. Nothing you browse, type or read is sent to any AI, and AI apps are closed.</p>
+    <p>Bit Browser is in private mode. Nothing you browse, type or read is sent to any AI, and AI apps are closed.</p>
     <p class="muted">Address-bar questions go to a normal private search (DuckDuckGo with its AI answers turned off) instead. Your AI settings, keys and memory stay saved on this device for when you turn it back on.</p>
     <div class="row"><button id="off-on" class="px hot">TURN AI ON</button></div>
   </section>
@@ -33,7 +33,7 @@
   <section id="chat-view" class="view">
     <div id="messages">
       <div id="empty">
-        <p class="hello">Hi! I'm <b>Pixel</b>. I can read this page, compare your tabs, search the web, and in <b>Agent</b> mode I can click and type for you.</p>
+        <p class="hello">Hi! I'm <b>Bitter</b>. I can read this page, compare your tabs, search the web, and in <b>Agent</b> mode I can click and type for you.</p>
         <div class="suggestions" id="suggest-ask">
           <button data-q="Summarize this page in 5 bullet points.">Summarize this page</button>
           <button data-q="What are the key facts and numbers on this page?">Key facts on this page</button>
@@ -54,7 +54,7 @@
       <div class="row">
         <div class="modes" role="radiogroup" aria-label="Mode">
           <button data-mode="ask" class="on" title="Answer questions about pages and the web">ASK</button>
-          <button data-mode="agent" title="Let Pixel click, type and navigate for you">AGENT</button>
+          <button data-mode="agent" title="Let Bitter click, type and navigate for you">AGENT</button>
         </div>
         <span id="provider-label" class="muted"></span>
       </div>
@@ -91,7 +91,7 @@
     </div>
 
     <h2>MEMORY</h2>
-    <label class="check"><input type="checkbox" id="memory-on"> Let Pixel remember things you tell it</label>
+    <label class="check"><input type="checkbox" id="memory-on"> Let Bitter remember things you tell it</label>
     <ul id="memory-list"></ul>
     <form id="memory-add" class="row">
       <input id="memory-input" placeholder="e.g. I'm vegetarian">

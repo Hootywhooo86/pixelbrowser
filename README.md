@@ -1,4 +1,4 @@
-# Pixelbrowser
+# Bit Browser
 
 The 128bit family's window to the internet. A fast, private, pixel-styled
 browser that turns browsing into quests, streaks, and XP. The web, but
@@ -30,7 +30,7 @@ A browser with two jobs:
    reading mode. Private by default — no creepy ad profiles.
 2. **Browsing, gamified.** XP for deep reads, streaks for daily check-ins,
    tab quests ("close 5 stale tabs", "finish 3 read-later articles").
-   Pixelbrowser emits browsing events into the shared 128bit feed —
+   Bit Browser emits browsing events into the shared 128bit feed —
    128bitlife issues the quests, the browser keeps the record.
 
 ## Architecture — real engine, pixel shell
@@ -67,7 +67,7 @@ Rules:
 ## Start-here brief for Claude
 
 ```
-We're building Pixelbrowser — the 128bit family's pixel-styled browser:
+We're building Bit Browser — the 128bit family's pixel-styled browser:
 fast, private, gamified browsing. Read this README first.
 
 Build order:
@@ -89,7 +89,7 @@ not lingering. Small commits. Never commit credentials.
 
 ## 128bit tie-in
 
-Pixelbrowser is the family's window: `article.finished`,
+Bit Browser is the family's window: `article.finished`,
 `readlater.cleared`, and `streak.milestone` events flow into the shared
 feed so 128bitlife can issue browsing quests and XP. It also reads the
 feed — quest packs from 128bitlife ("finish 3 articles today") land as
@@ -97,7 +97,7 @@ tab quests. Don't silo the data.
 
 ## Monetization (family default)
 
-128bit Pro bundle covers Pixelbrowser. Core browsing — tabs, privacy,
+128bit Pro bundle covers Bit Browser. Core browsing — tabs, privacy,
 reader — is free forever. Cosmetic IAPs (pixel themes, tab-bar skins)
 like the rest of the family; advanced stats (reading streaks, yearly
 "web in pixels") can sit behind Pro later.

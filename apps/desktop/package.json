@@ -2,7 +2,7 @@
   "name": "@pixelbrowser/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Pixelbrowser desktop: Chromium engine (via Electron), pixel shell, Chrome extensions, built-in ad/tracker blocking.",
+  "description": "Bit Browser desktop: Chromium engine (via Electron), pixel shell, Chrome extensions, built-in ad/tracker blocking.",
   "main": "src/main.js",
   "license": "GPL-3.0",
   "scripts": {
@@ -24,10 +24,10 @@
     "electron": "44.7.0",
     "electron-builder": "^26.15.3"
   },
-  "productName": "Pixelbrowser",
+  "productName": "Bit Browser",
   "homepage": "https://github.com/Hootywhooo86/pixelbrowser",
   "author": {
-    "name": "Pixelbrowser",
+    "name": "Bit Browser",
     "email": "Hootywhooo86@users.noreply.github.com"
   },
   "desktopName": "pixelbrowser.desktop"

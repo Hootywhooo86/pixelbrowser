@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'">
-<title>Pixelbrowser Settings</title>
+<title>Bit Browser Settings</title>
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="sidebar.css">
 <link rel="stylesheet" href="settings.css">
@@ -14,7 +14,7 @@
   </header>
   <main class="view">
     <h2>SEARCH ENGINE</h2>
-    <p class="muted">Used when you type words in the address bar. Pixel AI's own web lookups always use DuckDuckGo's private search.</p>
+    <p class="muted">Used when you type words in the address bar. Bitter's own web lookups always use DuckDuckGo's private search.</p>
     <div id="engines" role="radiogroup" aria-label="Search engine"></div>
     <form id="custom-search" hidden>
       <label>Search address (put %s where the words go) <input id="custom-url" spellcheck="false" placeholder="https://search.example.com/?q=%s"></label>
@@ -26,7 +26,7 @@
       <button id="ai-switch" class="pxswitch on" role="switch" aria-checked="true"><span class="knob"></span><span class="lbl">AI</span></button>
       <span id="ai-state"></span>
     </div>
-    <p class="muted">Off = private mode. Nothing is sent to any AI, and searches use the engine's no-AI results where it has them (DuckDuckGo, Google). Pick the AI model in the Pixel AI sidebar.</p>
+    <p class="muted">Off = private mode. Nothing is sent to any AI, and searches use the engine's no-AI results where it has them (DuckDuckGo, Google). Pick the AI model in the Bitter sidebar.</p>
 
     <h2>SYNC</h2>
     <p class="muted">Memory, history, open tabs and AI settings sync between your devices. They're encrypted on this device first, so the sync server can't read them.</p>
@@ -51,7 +51,7 @@
         <button id="sync-leave" class="px">STOP</button>
       </div>
       <div id="sync-code-box" hidden>
-        <p class="muted">On your phone, open Pixelbrowser → Settings → Sync and scan this, or type the words. Keep them secret: anyone with them can read your synced data.</p>
+        <p class="muted">On your phone, open Bit Browser → Settings → Sync and scan this, or type the words. Keep them secret: anyone with them can read your synced data.</p>
         <img id="sync-qr" alt="Sync QR code">
         <p id="sync-words" class="words"></p>
       </div>
@@ -67,7 +67,7 @@
       <button id="update-check" class="px">CHECK NOW</button>
       <button id="update-install" class="px hot" hidden>RESTART TO UPDATE</button>
     </div>
-    <p class="muted">Updates come from Pixelbrowser's GitHub releases. The check only asks GitHub for the newest version number and sends nothing about you.</p>
+    <p class="muted">Updates come from Bit Browser's GitHub releases. The check only asks GitHub for the newest version number and sends nothing about you.</p>
 
     <h2>CLEAR BROWSING DATA</h2>
     <p class="muted">Clears this device only. Your other devices keep their copies.</p>

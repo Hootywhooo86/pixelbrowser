@@ -130,7 +130,7 @@ async function chatOpenAICompatible(provider, { system, messages, tools, signal 
     headers: {
       'Content-Type': 'application/json',
       ...(provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {}),
-      ...(provider.id === 'openrouter' ? { 'X-Title': 'Pixelbrowser' } : {}),
+      ...(provider.id === 'openrouter' ? { 'X-Title': 'Bit Browser' } : {}),
     },
     body: JSON.stringify(body),
   })

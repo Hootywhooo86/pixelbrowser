@@ -1,4 +1,4 @@
-// Pixelbrowser for iPhone and Android.
+// Bit Browser for iPhone and Android.
 // Real web engine (WKWebView / Android WebView) inside the pixel shell, with
 // the same Comet-style AI and encrypted sync as the desktop app.
 
@@ -183,7 +183,7 @@ function Browser() {
       {/* address bar */}
       <View style={[st.top, { borderBottomColor: accent }]}>
         <View style={[st.logo, { backgroundColor: accent }]}>
-          <Text style={st.logoText}>P</Text>
+          <Text style={st.logoText}>B</Text>
         </View>
         {agentActive && <Text style={st.agent}>AGENT</Text>}
         <TextInput
@@ -219,7 +219,7 @@ function Browser() {
       {active.loading && <View style={[st.progress, { backgroundColor: C.orange }]} />}
       {appUpdate && (
         <View style={st.update}>
-          <Text style={st.updateText}>PIXELBROWSER {appUpdate.version} IS OUT</Text>
+          <Text style={st.updateText}>BIT BROWSER {appUpdate.version} IS OUT</Text>
           <PButton small hot color={C.orange} label="GET IT" onPress={() => Linking.openURL(appUpdate.url)} />
           <PButton small label="X" onPress={() => setAppUpdate(null)} />
         </View>

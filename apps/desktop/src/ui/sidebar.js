@@ -1,4 +1,4 @@
-// Pixel AI sidebar: chat, Ask/Agent modes, tab context, AI web apps,
+// Bitter sidebar: chat, Ask/Agent modes, tab context, AI web apps,
 // settings, memory and sync. Talks to main.js through window.pixelAI.
 const $ = (id) => document.getElementById(id)
 const ai = window.pixelAI
@@ -243,7 +243,7 @@ document.querySelectorAll('.modes button').forEach((b) => {
   b.onclick = () => {
     mode = b.dataset.mode
     document.querySelectorAll('.modes button').forEach((x) => x.classList.toggle('on', x === b))
-    $('input').placeholder = mode === 'agent' ? 'Tell Pixel what to do on this page…' : 'Ask about this page…'
+    $('input').placeholder = mode === 'agent' ? 'Tell Bitter what to do on this page…' : 'Ask about this page…'
     $('suggest-ask').hidden = mode === 'agent'
     $('suggest-agent').hidden = mode !== 'agent'
   }
@@ -280,7 +280,7 @@ async function renderContext() {
   const add = document.createElement('button')
   add.className = 'chip'
   add.textContent = '+ TABS'
-  add.title = 'Choose which tabs Pixel can read'
+  add.title = 'Choose which tabs Bitter can read'
   add.onclick = () => {
     $('tabpicker').hidden = !$('tabpicker').hidden
     renderPicker(tabs)
@@ -446,7 +446,7 @@ async function init() {
   if (isPrivate || state.isPrivate) {
     document.body.classList.add('private')
     $('composer').hidden = true
-    $('empty').innerHTML = '<p class="hello">Pixel AI is off in private windows, so nothing you do here leaves this device.</p>'
+    $('empty').innerHTML = '<p class="hello">Bitter is off in private windows, so nothing you do here leaves this device.</p>'
   }
   renderProviderLabel()
   renderApps()

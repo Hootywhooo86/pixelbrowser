@@ -1,4 +1,4 @@
-// Pixel AI panel: slides up over the bottom of the page (so you can watch
+// Bitter panel: slides up over the bottom of the page (so you can watch
 // the agent work above it). Chat with Ask/Agent modes, tab context, and AI
 // web apps (ChatGPT, Claude, Gemini…) signed in with your own account.
 
@@ -130,13 +130,13 @@ export default function AIPanel({ browser, visible, request, onClose, onOpenSett
         <Pressable onPress={() => setTall(!tall)} style={st.grip} accessibilityLabel="Resize panel" />
         {app ? (
           <>
-            <PButton small label="< PIXEL" onPress={() => setApp(null)} />
+            <PButton small label="< BITTER" onPress={() => setApp(null)} />
             <PText style={{ flex: 1 }} numberOfLines={1}>{WEB_APPS[app]?.label.toUpperCase()}</PText>
             <PButton small hot label="SHARE PAGE" onPress={sharePage} />
           </>
         ) : (
           <>
-            <PText style={{ flex: 1 }}>PIXEL AI</PText>
+            <PText style={{ flex: 1 }}>BITTER</PText>
             <PButton small label={view === 'apps' ? 'CHAT' : 'APPS'} onPress={() => setView(view === 'apps' ? 'chat' : 'apps')} />
             <PButton small label="NEW" onPress={() => { session.newChat(); setItems([]) }} />
           </>
@@ -157,14 +157,14 @@ export default function AIPanel({ browser, visible, request, onClose, onOpenSett
         </ScrollView>
       ) : privateTab ? (
         <View style={st.apps}>
-          <Text style={st.muted}>Pixel AI is off in private tabs, so nothing you do there leaves this phone.</Text>
+          <Text style={st.muted}>Bitter is off in private tabs, so nothing you do there leaves this phone.</Text>
         </View>
       ) : (
         <>
           <ScrollView ref={scroller} style={{ flex: 1 }} contentContainerStyle={st.list}>
             {items.length === 0 && (
               <View style={{ gap: 8 }}>
-                <Text style={st.muted}>Hi! I'm Pixel. I can read this page, compare tabs and search the web. In AGENT mode I can tap and type for you.</Text>
+                <Text style={st.muted}>Hi! I'm Bitter. I can read this page, compare tabs and search the web. In AGENT mode I can tap and type for you.</Text>
                 {SUGGEST[mode].map((q) => (
                   <Pressable key={q} style={st.suggest} onPress={() => send(q, q.includes('open tabs') ? { tabIds: tabs.map((t) => t.id) } : {})}>
                     <Text style={st.suggestText}>{q}</Text>
@@ -213,7 +213,7 @@ export default function AIPanel({ browser, visible, request, onClose, onOpenSett
                 style={st.input}
                 value={input}
                 onChangeText={setInput}
-                placeholder={mode === 'agent' ? 'Tell Pixel what to do on this page…' : 'Ask about this page…'}
+                placeholder={mode === 'agent' ? 'Tell Bitter what to do on this page…' : 'Ask about this page…'}
                 placeholderTextColor={C.muted}
                 multiline
               />

@@ -49,7 +49,7 @@ function render() {
   const aiOn = state.aiEnabled !== false
   $('aitoggle').classList.toggle('on', aiOn)
   $('aitoggle').setAttribute('aria-checked', String(aiOn))
-  $('aitoggle').title = aiOn ? 'AI is on. Slide off to keep everything private.' : 'AI is off: nothing is sent to any AI. Slide on to use Pixel AI.'
+  $('aitoggle').title = aiOn ? 'AI is on. Slide off to keep everything private.' : 'AI is off: nothing is sent to any AI. Slide on to use Bitter.'
   if (!state.isPrivate) {
     $('ask').hidden = !aiOn
     $('ai').hidden = !aiOn
@@ -57,7 +57,7 @@ function render() {
   }
   const ready = state.update?.state === 'ready'
   $('update').hidden = !ready
-  if (ready) $('update').title = `Pixelbrowser ${state.update.version} is ready. Click to restart and update.`
+  if (ready) $('update').title = `Bit Browser ${state.update.version} is ready. Click to restart and update.`
   $('agentbadge').hidden = !state.agentActive
   document.body.classList.toggle('agent', !!state.agentActive)
 }

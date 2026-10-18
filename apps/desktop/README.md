@@ -1,4 +1,4 @@
-# Pixelbrowser Desktop
+# Bit Browser Desktop
 
 Chromium (via Electron) running inside the pixel shell, with a Comet-style
 AI sidebar. It supports Chrome Web Store extensions and blocks ads and
@@ -10,10 +10,10 @@ npm run desktop
 ```
 
 - The **AI slider** next to the AI button turns all AI off for private browsing. Nothing is sent to any AI until you slide it back on.
-- **AI** (Ctrl/Cmd+J) opens the Pixel AI sidebar. **ASK** asks about the current page,
-  **AGENT** lets Pixel click, type and navigate for you. **+ TABS** chooses which tabs it can read.
+- **AI** (Ctrl/Cmd+J) opens the Bitter sidebar. **ASK** asks about the current page,
+  **AGENT** lets Bitter click, type and navigate for you. **+ TABS** chooses which tabs it can read.
 - Type a question in the address bar (or press Shift+Enter) for a Comet-style answer:
-  search results in the tab, an AI answer in the sidebar. Or right-click selected text → Ask Pixel AI.
+  search results in the tab, an AI answer in the sidebar. Or right-click selected text → Ask Bitter.
 - **APPS** opens ChatGPT, Claude, Gemini, Perplexity and other AI sites in the sidebar,
   signed in with your account. **SHARE PAGE** pastes the current page into them.
 - **SET** in the toolbar (Ctrl/Cmd+,) opens Settings: search engine, the AI slider, sync, and clearing browsing data.

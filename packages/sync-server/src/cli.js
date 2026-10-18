@@ -6,5 +6,5 @@ import { createSyncServer } from './server.js'
 const port = Number(process.env.PORT) || 8787
 const dataDir = process.env.DATA_DIR || new URL('../data', import.meta.url).pathname
 createSyncServer({ dataDir }).listen(port, () => {
-  console.log(`Pixelbrowser sync server on http://localhost:${port} (data in ${dataDir})`)
+  console.log(`Bit Browser sync server on http://localhost:${port} (data in ${dataDir})`)
 })

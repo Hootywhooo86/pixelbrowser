@@ -1,4 +1,4 @@
-# Releasing Pixelbrowser
+# Releasing Bit Browser
 
 One tag builds everything: the Windows, Mac and Linux installers plus the
 Android APK and Play Store bundle. They're published together as a
@@ -18,11 +18,11 @@ has:
 
 | File | For |
 |---|---|
-| `Pixelbrowser-Setup-0.2.0-x64.exe` (and `-arm64`) | Windows installer |
-| `Pixelbrowser-0.2.0-universal.dmg` | Mac (Intel + Apple Silicon) |
-| `Pixelbrowser-0.2.0-x86_64.AppImage`, `.deb` | Linux |
-| `Pixelbrowser-0.2.0-android.apk` | Android, install directly |
-| `Pixelbrowser-0.2.0-android.aab` | Upload to Google Play |
+| `BitBrowser-Setup-0.2.0-x64.exe` (and `-arm64`) | Windows installer |
+| `BitBrowser-0.2.0-universal.dmg` | Mac (Intel + Apple Silicon) |
+| `BitBrowser-0.2.0-x86_64.AppImage`, `.deb` | Linux |
+| `BitBrowser-0.2.0-android.apk` | Android, install directly |
+| `BitBrowser-0.2.0-android.aab` | Upload to Google Play |
 | `latest.yml`, `latest-mac.yml`, `latest-linux.yml` | Used by auto-update. Don't delete them. |
 
 Or skip the tag: set the version, push to `main`, then go to **Actions → Release →
@@ -38,11 +38,11 @@ Build locally:
 
 ## How updates work
 
-- **Desktop:** Pixelbrowser checks GitHub Releases when it starts and every
+- **Desktop:** Bit Browser checks GitHub Releases when it starts and every
   4 hours. It downloads updates quietly, shows an orange **UPDATE** button
   when one is ready, and installs it on the next restart. Users can turn this
   off in Settings → Updates.
-- **Android from GitHub (APK):** the app shows "Pixelbrowser X is out → GET IT",
+- **Android from GitHub (APK):** the app shows "Bit Browser X is out → GET IT",
   which opens the new APK. Android then asks the user to install it.
 - **Android from Google Play:** Play updates the app. Upload the `.aab`.
 

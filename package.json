@@ -1,7 +1,7 @@
 {
   "name": "pixelbrowser",
   "private": true,
-  "description": "Pixelbrowser monorepo: desktop + mobile apps and shared AI and sync packages.",
+  "description": "Bit Browser monorepo: desktop + mobile apps and shared AI and sync packages.",
   "workspaces": [
     "apps/*",
     "packages/*"

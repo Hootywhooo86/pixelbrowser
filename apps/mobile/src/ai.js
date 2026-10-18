@@ -49,7 +49,7 @@ export function createDriver(browser) {
       while (browser.isLoading(id) && Date.now() < end) await sleep(200)
       await sleep(400)
     },
-    fetchText: async (url) => (await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Pixelbrowser)' } })).text(),
+    fetchText: async (url) => (await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Bit Browser)' } })).text(),
   }
 }
 
@@ -78,7 +78,7 @@ export function setAIEnabled(on) {
 }
 
 export async function ask({ browser, input, mode, tabIds, search = false, includePage = true, onEvent }) {
-  if (!getState().aiEnabled) return onEvent({ type: 'error', message: 'AI is off. Turn on the AI slider to use Pixel.' })
+  if (!getState().aiEnabled) return onEvent({ type: 'error', message: 'AI is off. Turn on the AI slider to use Bitter.' })
   if (session.abort) session.stop()
   const provider = await currentProvider()
   onEvent({ type: 'user', text: input, mode })

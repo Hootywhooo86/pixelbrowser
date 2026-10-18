@@ -1,4 +1,4 @@
-# Pixelbrowser sync server
+# Bit Browser sync server
 
 Stores encrypted sync blobs. It never sees sync codes, keys or plaintext. It has no dependencies.
 

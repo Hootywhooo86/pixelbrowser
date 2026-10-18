@@ -156,7 +156,7 @@ function renderUpdate() {
     ready: `Version ${u.version} is ready to install.`,
     error: `Couldn't check for updates: ${u.error}`,
   }[u.state] || ''
-  $('update-status').textContent = `Pixelbrowser ${u.current || ''}. ${text}`.trim()
+  $('update-status').textContent = `Bit Browser ${u.current || ''}. ${text}`.trim()
   $('update-auto').checked = !!u.auto
   $('update-install').hidden = u.state !== 'ready'
 }

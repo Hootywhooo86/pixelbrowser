@@ -1,4 +1,4 @@
-# Pixelbrowser roadmap
+# Bit Browser roadmap
 
 **Goal:** a Comet-style AI browser that's private like Brave, pixel-branded,
 on desktop and phone, with everything synced between your devices.
@@ -84,7 +84,7 @@ blobs it can't read.
 ### Phone
 - [ ] Android extensions through GeckoView (uBlock Origin, Dark Reader…)
 - [ ] Downloads and file sharing
-- [ ] Share sheet: "Ask Pixel about this link" from other apps
+- [ ] Share sheet: "Ask Bitter about this link" from other apps
 
 ### AI polish
 - [ ] Streaming answers (text appears as it's written)
@@ -98,7 +98,7 @@ blobs it can't read.
 
 ## Things to know
 
-- **License:** `electron-chrome-extensions` is GPL-3.0 unless you buy its commercial license. Open-source Pixelbrowser under GPL-3.0, or buy the license before shipping closed-source.
+- **License:** `electron-chrome-extensions` is GPL-3.0 unless you buy its commercial license. Open-source Bit Browser under GPL-3.0, or buy the license before shipping closed-source.
 - **Security updates:** a browser has to ship Chromium updates quickly, so bump Electron on every stable release.
 - **App stores:** Apple requires WebKit (alternative engines only in the EU). The phone app's AI uses the user's own keys, so there's no AI bill for you, but say clearly in the listing which data goes to the AI the user picks.
 - **Costs:** an Apple Developer account ($99/yr), Google Play ($25 once), a Windows signing certificate, and a small server for sync.

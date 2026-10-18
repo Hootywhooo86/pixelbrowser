@@ -1,4 +1,4 @@
-# Pixelbrowser Mobile (iPhone + Android)
+# Bit Browser Mobile (iPhone + Android)
 
 The pixel browser for phones, built with Expo. It runs the same AI
 assistant, agent and encrypted sync code as the desktop app.
@@ -14,7 +14,7 @@ development build rather than Expo Go. To build in the cloud without Xcode:
 `npx eas-cli@latest build --profile development`.
 
 - The **AI slider** in the top bar turns all AI off for private browsing.
-- **AI** opens the Pixel AI panel. You can still watch the page above it while the agent works.
+- **AI** opens the Bitter panel. You can still watch the page above it while the agent works.
 - Type a question in the address bar for a Comet-style answer.
 - **SET**: choose your search engine, any AI and add its key, memory, and sync (scan the QR code shown by the desktop app).
 - **Tabs** (the number button): your tabs, private tabs, and tabs open on your other devices.
