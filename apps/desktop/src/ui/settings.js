@@ -187,3 +187,16 @@ function applyState(next) {
 
 api.onState((next) => applyState(next))
 api.get().then(applyState)
+
+// ---------- default browser ----------
+
+function renderDefault(d) {
+  $('default-status').textContent = d.isDefault
+    ? 'Bit Browser is your default browser. Links from other apps open here.'
+    : d.platform === 'win32'
+      ? 'Not the default yet. After you click, Windows opens Default apps: pick Bit Browser as your web browser there.'
+      : 'Not the default yet. Links from other apps open in another browser.'
+  $('make-default').hidden = d.isDefault
+}
+api.defaultBrowser().then(renderDefault)
+$('make-default').onclick = async () => renderDefault(await api.makeDefault())

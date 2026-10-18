@@ -14,7 +14,10 @@ on desktop and phone, with everything synced between your devices.
 | AI sidebar/panel: ask about the page | ✅ | ✅ |
 | Ask across several tabs | ✅ | ✅ |
 | AI answers from the address bar | ✅ | ✅ |
-| Agent mode (clicks, types, navigates) | ✅ real mouse and keyboard events | ✅ in-page events |
+| Agent mode (clicks, types, navigates) | ✅ real mouse and keyboard events | ✅ in-page events, "Let Bitter take over" with a STOP button |
+| Full-screen video | ✅ | ✅ turns sideways |
+| Default browser | ✅ | ✅ Android |
+| Password manager | ❌ not yet | ✅ |
 | Any AI: Claude, ChatGPT, Gemini, Grok, Mistral, DeepSeek, Groq, OpenRouter, Perplexity, Ollama, LM Studio, custom | ✅ | ✅ |
 | AI web apps in the sidebar (ChatGPT, Claude, Gemini, Perplexity, Copilot, Grok…) + Share Page | ✅ | ✅ |
 | Search engine choice (DuckDuckGo, Brave, Startpage, Mojeek, Qwant, Kagi, Ecosia, Google, Bing, custom) | ✅ Settings window | ✅ Settings |
@@ -65,13 +68,13 @@ blobs it can't read.
 ### Everyday browser basics (people expect these)
 - [ ] Bookmarks and a bookmarks bar (synced)
 - [ ] History page with search
-- [ ] Downloads manager
+- [x] Downloads manager (phone: Menu → Downloads)
 - [ ] Reopen tabs after restart (session restore) and reopen closed tab (Ctrl+Shift+T)
 - [ ] Find in page, zoom, print
 - [ ] Site permission prompts (camera, mic, location, notifications are currently always denied)
-- [ ] Passwords: a built-in manager, or a nudge to install Bitwarden or 1Password
+- [x] Passwords: Bit Password Manager on the phone (encrypted, biometric unlock, optional E2E sync). Desktop still to do.
 - [ ] Pixel new-tab page (shortcuts, synced tabs, search box)
-- [ ] Pinned tabs, tab groups and tab search
+- [ ] Pinned tabs and tab groups (tab search and a Brave-style tab grid are done on the phone)
 - [ ] Reader mode
 
 ### Privacy and security
@@ -83,7 +86,7 @@ blobs it can't read.
 
 ### Phone
 - [ ] Android extensions through GeckoView (uBlock Origin, Dark Reader…)
-- [ ] Downloads and file sharing
+- [x] Downloads and file sharing
 - [ ] Share sheet: "Ask Bitter about this link" from other apps
 
 ### AI polish

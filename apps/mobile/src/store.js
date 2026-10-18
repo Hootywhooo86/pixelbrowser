@@ -29,7 +29,24 @@ function defaults() {
     customSearchUrl: '',
     sync: { server: '', enabled: false, cursor: 0, lastPushedAt: 0, lastSyncAt: 0, syncKeys: false, error: '' },
     updatedAt: { ai: 0, search: 0 },
-    records: { memory: {}, history: {}, tabs: {}, settings: {} },
+    records: { memory: {}, history: {}, tabs: {}, settings: {}, passwords: {}, addresses: {}, cards: {} },
+    // Settings screen (v0.2)
+    homepage: '', // '' = the search engine's home page
+    tabLayout: 'grid',
+    closeTabsOnExit: false,
+    fullscreenVideo: true,
+    rotateFullscreen: true,
+    ntpShowSynced: true,
+    textZoom: 100,
+    // Bit Password Manager: secrets live in SecureStore; these indexes hold no secrets.
+    offerToSavePasswords: true,
+    syncPasswords: false,
+    syncCards: false,
+    passwordIndex: [], // [{ id, origin, username, updatedAt }]
+    addressIndex: [], // [{ id, label, updatedAt }]
+    cardIndex: [], // [{ id, holder, last4, exp, updatedAt }]
+    // 128bit family: everything off until the user connects and opts in.
+    family: { connected: false, account: null, xp: 0, streak: 0, share: {}, queue: [] },
   }
 }
 
@@ -38,7 +55,7 @@ export async function loadStore() {
     const raw = await AsyncStorage.getItem(KEY)
     const saved = raw ? JSON.parse(raw) : {}
     const base = defaults()
-    state = { ...base, ...saved, sync: { ...base.sync, ...saved.sync }, updatedAt: { ...base.updatedAt, ...saved.updatedAt }, records: { ...base.records, ...saved.records } }
+    state = { ...base, ...saved, family: { ...base.family, ...saved.family }, sync: { ...base.sync, ...saved.sync }, updatedAt: { ...base.updatedAt, ...saved.updatedAt }, records: { ...base.records, ...saved.records } }
   } catch {
     state = defaults()
   }
@@ -67,6 +84,9 @@ const subscribe = (l) => {
   listeners.add(l)
   return () => listeners.delete(l)
 }
+
+/** Call fn after every store change; returns an unsubscribe function. */
+export const onStoreChange = subscribe
 
 /** React hook: re-render when the store changes. */
 export function useStore(selector = (s) => s) {

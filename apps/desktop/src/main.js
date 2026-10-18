@@ -8,7 +8,13 @@
 // sync (sync-host.js) plug in here too.
 
 const path = require('node:path')
-const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu } = require('electron')
+const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, shell } = require('electron')
+
+// The app was called Pixelbrowser before it became Bit Browser. Keep the
+// old profile folder so settings, keys, extensions and sync survive the rename.
+// Must run before ./store (and anything else) reads the userData path.
+app.setPath('userData', path.join(app.getPath('appData'), 'Pixelbrowser'))
+
 const { ElectronChromeExtensions } = require('electron-chrome-extensions')
 const { installChromeWebStore, updateExtensions } = require('electron-chrome-web-store')
 const { ElectronBlocker } = require('@ghostery/adblocker-electron')
@@ -22,10 +28,6 @@ const SHELL_HEIGHT = 96 // px: tab strip + toolbar
 const PROFILE_PARTITION = 'persist:pixel'
 const SIDEBAR_WIDTH = 400
 const SIDEBAR_HEADER = 44 // px of the sidebar UI kept above an AI web app
-
-// The app was called Pixelbrowser before it became Bit Browser. Keep the
-// old profile folder so settings, keys, extensions and sync survive the rename.
-app.setPath('userData', path.join(app.getPath('appData'), 'Pixelbrowser'))
 
 // Privacy defaults, applied before any window opens.
 app.commandLine.appendSwitch('disable-features', 'InterestFeedContentSuggestions,PrivacySandboxAdsAPIs')
@@ -144,6 +146,19 @@ class PixelWindow {
     wc.on('did-navigate', update)
     wc.on('did-navigate-in-page', update)
     wc.on('page-title-updated', update)
+    // Full-screen video: the page fills the whole window (no tabs, toolbar or
+    // sidebar) and the window goes full screen; everything comes back on exit.
+    wc.on('enter-html-full-screen', () => {
+      this.htmlFullscreen = true
+      this.wasFullScreen = this.win.isFullScreen()
+      if (!this.wasFullScreen) this.win.setFullScreen(true)
+      this.layout()
+    })
+    wc.on('leave-html-full-screen', () => {
+      this.htmlFullscreen = false
+      if (!this.wasFullScreen && !this.win.isDestroyed()) this.win.setFullScreen(false)
+      this.layout()
+    })
     wc.setWindowOpenHandler(({ url: target }) => {
       this.selectTab(this.createTab(target).id)
       return { action: 'deny' }
@@ -210,6 +225,11 @@ class PixelWindow {
 
   layout() {
     const { width, height } = this.win.getContentBounds()
+    if (this.htmlFullscreen) {
+      this.activeTab()?.view.setBounds({ x: 0, y: 0, width, height })
+      for (const v of [this.sidebar.view, this.sidebar.appView]) if (v) v.setBounds({ x: width, y: 0, width: 0, height: 0 })
+      return
+    }
     const bodyH = Math.max(0, height - SHELL_HEIGHT)
     const sideW = this.sidebar.open ? Math.min(SIDEBAR_WIDTH, Math.floor(width * 0.6)) : 0
     this.activeTab()?.view.setBounds({ x: 0, y: SHELL_HEIGHT, width: width - sideW, height: bodyH })
@@ -545,6 +565,19 @@ ipcMain.handle('update:set-auto', (_e, on) => {
 updater.onChange(() => {
   for (const pw of windows.values()) pw.pushState()
   broadcastSettings()
+})
+
+// Default browser: registers Bit Browser for http/https links. Windows 10/11
+// still asks the user to confirm in Settings > Default apps.
+function defaultBrowserState() {
+  return { isDefault: app.isDefaultProtocolClient('http') && app.isDefaultProtocolClient('https'), platform: process.platform }
+}
+ipcMain.handle('settings:default-browser', () => defaultBrowserState())
+ipcMain.handle('settings:make-default', async () => {
+  app.setAsDefaultProtocolClient('http')
+  app.setAsDefaultProtocolClient('https')
+  if (process.platform === 'win32') await shell.openExternal('ms-settings:defaultapps').catch(() => {})
+  return defaultBrowserState()
 })
 
 ipcMain.on('settings:open', () => openSettings())

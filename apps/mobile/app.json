@@ -2,14 +2,14 @@
   "expo": {
     "name": "Bit Browser",
     "slug": "pixelbrowser",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.pixelbrowser.app",
-      "buildNumber": "100"
+      "buildNumber": "200"
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +19,44 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.pixelbrowser.app",
-      "versionCode": 100
+      "versionCode": 200,
+      "permissions": [
+        "android.permission.REQUEST_INSTALL_PACKAGES"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "scheme": "http"
+            },
+            {
+              "scheme": "https"
+            }
+          ]
+        },
+        {
+          "action": "VIEW",
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "scheme": "http",
+              "mimeType": "text/html"
+            },
+            {
+              "scheme": "https",
+              "mimeType": "text/html"
+            }
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -43,6 +80,14 @@
           "imageWidth": 160,
           "resizeMode": "contain",
           "backgroundColor": "#0b0b16"
+        }
+      ],
+      "expo-sharing",
+      "expo-screen-orientation",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Bit Browser uses Face ID to unlock your saved passwords."
         }
       ]
     ],

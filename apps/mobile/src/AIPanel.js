@@ -36,7 +36,7 @@ const SUGGEST = {
   agent: ['Search this site for pixel art lamps and open the top result.', 'Go through the results and tell me the 3 cheapest.'],
 }
 
-export default function AIPanel({ browser, visible, request, onClose, onOpenSettings, onAgent, openUrl }) {
+export default function AIPanel({ browser, visible, request, onClose, onOpenSettings, onAgent, onStep, openUrl }) {
   const provider = useStore((s) => s.ai.provider)
   const model = useStore((s) => s.ai.providers[s.ai.provider]?.model)
   const [items, setItems] = useState([])
@@ -59,8 +59,11 @@ export default function AIPanel({ browser, visible, request, onClose, onOpenSett
         return setItems((x) => [...x, { kind: 'user', text: e.text, mode: e.mode }])
       case 'text':
         return setItems((x) => [...x, { kind: 'ai', text: e.text }])
-      case 'tool':
-        return setItems((x) => [...x, { kind: 'tool', text: (TOOL_TEXT[e.name] || (() => e.name))(e.input || {}) }])
+      case 'tool': {
+        const text = (TOOL_TEXT[e.name] || (() => e.name))(e.input || {})
+        onStep?.(text)
+        return setItems((x) => [...x, { kind: 'tool', text }])
+      }
       case 'tool_done':
         return setItems((x) => {
           const copy = [...x]
@@ -97,7 +100,10 @@ export default function AIPanel({ browser, visible, request, onClose, onOpenSett
 
   // Questions typed in the address bar arrive here.
   useEffect(() => {
-    if (request) send(request.input, { search: request.search, includePage: request.includePage, mode: 'ask' })
+    if (!request) return
+    // "Let Bitter take over" switches to Agent mode and waits for the task.
+    if (request.mode === 'agent' && !request.input) return setMode('agent')
+    send(request.input, { search: request.search, includePage: request.includePage, mode: request.mode || 'ask' })
   }, [request?.nonce])
 
   useEffect(() => {

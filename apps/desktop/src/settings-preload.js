@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('pixelSettings', {
   setAI: (on) => ipcRenderer.invoke('settings:set-ai', on),
   clearData: (opts) => ipcRenderer.invoke('settings:clear-data', opts),
   openUrl: (url) => ipcRenderer.send('settings:open-url', url),
+  defaultBrowser: () => ipcRenderer.invoke('settings:default-browser'),
+  makeDefault: () => ipcRenderer.invoke('settings:make-default'),
   update: {
     check: () => ipcRenderer.invoke('update:check'),
     setAuto: (on) => ipcRenderer.invoke('update:set-auto', on),
