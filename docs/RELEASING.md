@@ -48,6 +48,11 @@ Build locally:
 
 The update check only asks GitHub for the newest version number.
 
+**Internal names stay "pixelbrowser" on purpose.** The app ID and Android
+package (`com.pixelbrowser.app`), the GitHub repo and the desktop profile
+folder (`Pixelbrowser`) didn't change in the rename to Bit Browser. Existing
+installs keep updating and keep their settings. Don't change them.
+
 ## Secrets to add (GitHub → Settings → Secrets and variables → Actions)
 
 Everything builds without these, but the builds are unsigned. Add them when you have them:
