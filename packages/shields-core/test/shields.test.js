@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import vm from 'node:vm'
 import {
   compileListsSync, compileLists, preprocess, parseScriptletArgs, createMatcher, hostOf, siteOf, parseHostsList,
-  buildPageScript, buildHostCss, hostSelectors, prepareScriptlets, selectedLists, LISTS,
+  buildPageScript, buildSiteScript, hostSelectors, prepareScriptlets, selectedLists, LISTS,
 } from '../src/index.js'
 
 const LIST = `[Adblock Plus 2.0]
@@ -143,13 +143,26 @@ function runInPage(script, hostname) {
   return { ctx, posted }
 }
 
-test('page script runs scriptlets for the site and respects Shields down', () => {
-  const compiled = compileListsSync([{ text: 'example.com##+js(set, flags.noAds, true)\nother.com##+js(set, flags.other, true)\n##.ad' }])
-  const script = buildPageScript({ generic: compiled.cosmetic.generic, scriptlets: compiled.scriptlets, library: LIBRARY, siteOff: ['down.example.com'] })
+test('site script runs that site\'s scriptlets and respects Shields down', () => {
+  const compiled = compileListsSync([{ text: 'example.com##+js(set, flags.noAds, true)\nother.com##+js(set, flags.other, true)\nexample.com##.promo\nwww.example.com#@#+js(set, flags.noAds, true)' }])
+  const script = buildSiteScript({ compiled, library: LIBRARY, host: 'shop.example.com', siteOff: ['down.example.com'] })
   new Function(script) // valid JavaScript
-  assert.equal(runInPage(script, 'www.example.com').ctx.flags.noAds, true)
-  assert.equal(runInPage(script, 'www.example.com').ctx.flags.other, undefined)
-  assert.equal(runInPage(script, 'down.example.com').ctx.flags, undefined)
+  assert.ok(script.includes('.promo'))
+  assert.equal(runInPage(script, 'shop.example.com').ctx.flags.noAds, true)
+  assert.equal(runInPage(script, 'shop.example.com').ctx.flags.other, undefined)
+  assert.equal(runInPage(buildSiteScript({ compiled, library: LIBRARY, host: 'down.example.com', siteOff: ['down.example.com'] }), 'down.example.com').ctx.flags, undefined)
+  // exception on www.example.com
+  assert.ok(!buildSiteScript({ compiled, library: LIBRARY, host: 'www.example.com' }).includes('noAds'))
+  assert.equal(buildSiteScript({ compiled, library: LIBRARY, host: 'nothing.org' }), '')
+})
+
+test('page script carries early-site (YouTube) scriptlets, not others', () => {
+  const compiled = compileListsSync([{ text: 'm.youtube.com##+js(set, yt.flag, true)\nexample.com##+js(set, flags.noAds, true)' }])
+  const script = buildPageScript({ scriptlets: compiled.scriptlets, library: LIBRARY })
+  new Function(script)
+  assert.ok(!script.includes('noAds'))
+  assert.equal(runInPage(script, 'm.youtube.com').ctx.yt.flag, true)
+  assert.equal(runInPage(script, 'www.youtube.com').ctx.yt, undefined)
 })
 
 test('page script strips ads from YouTube player data', () => {
@@ -168,7 +181,3 @@ test('prepareScriptlets drops calls with no code and pulls dependencies', () => 
   assert.equal(code.length, 2)
 })
 
-test('buildHostCss returns a script only when there is something to hide', () => {
-  assert.equal(buildHostCss([]), '')
-  assert.ok(buildHostCss(['.promo']).includes('.promo'))
-})

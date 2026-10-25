@@ -570,6 +570,7 @@ function windowForTab(wcId) {
 // Blocked counts reach the toolbar at most every 250 ms.
 const countTimers = new Map()
 shields.onBlocked((wcId) => {
+  xp.add('blocked')
   if (countTimers.has(wcId)) return
   countTimers.set(
     wcId,
@@ -579,7 +580,6 @@ shields.onBlocked((wcId) => {
       if (pw && pw.activeId === wcId) pw.pushState()
     }, 250)
   )
-  xp.add('blocked')
   const pw = windowForTab(wcId)
   if (pw && Date.now() - (pw.lastBlockSound || 0) > 3000) {
     pw.lastBlockSound = Date.now()
@@ -940,7 +940,7 @@ function setAIEnabled(on) {
       pw.ai.stop()
       if (pw.sidebar.app) pw.closeApp()
     }
-    pw.pushState()
+    pw.pushStateNow()
     pw.sendSidebar('sidebar:state', { ...publicState(), app: pw.sidebar.app })
   }
   broadcastSettings()
@@ -1060,6 +1060,10 @@ ipcMain.handle('settings:update', async (_e, patch = {}) => {
   const s = store.settings.data
   if (patch.shields) shields.setOptions(patch.shields)
   if (patch.updateLists) await shields.update()
+  if (patch.siteUp) {
+    shields.setSiteDown(patch.siteUp, false)
+    for (const pw of windows.values()) pw.activeTab()?.view.webContents.reload()
+  }
   if (patch.autoplay && AUTOPLAY[patch.autoplay]) s.autoplay = patch.autoplay
   if (patch.theme) setTheme(patch.theme)
   if (typeof patch.sounds === 'boolean') s.sounds = patch.sounds
