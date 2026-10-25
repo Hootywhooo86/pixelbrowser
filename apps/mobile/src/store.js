@@ -47,6 +47,32 @@ function defaults() {
     cardIndex: [], // [{ id, holder, last4, exp, updatedAt }]
     // 128bit family: everything off until the user connects and opts in.
     family: { connected: false, account: null, xp: 0, streak: 0, share: {}, queue: [] },
+    // v0.3
+    shields: {
+      enabled: true,
+      lists: { easylist: true, easyprivacy: true, ublock: true, ublockQuick: true, peterlowe: true, annoyances: false, cookies: false },
+      regional: [], // extra regional list ids
+      siteOff: {}, // host -> true when Shields are down for that site (synced)
+      totals: { ads: 0, trackers: 0, pages: 0 },
+      lastUpdate: 0,
+    },
+    autoplay: 'muted', // 'off' | 'muted' | 'on'
+    theme: 'bit', // theme id from src/themes.js, or 'custom'
+    customTheme: null, // { accent, bg, panel, ink }
+    tabSkin: 'classic',
+    sounds: false, // retro sound effects, off by default
+    spending: { capDay: 0, capMonth: 0, spent: {} }, // dollars; 0 = no cap; spent: 'YYYY-MM-DD' -> dollars
+    agentLog: [], // [{ id, at, site, kind, text }] newest last, capped
+    spaces: [
+      { id: 'personal', name: 'Personal' },
+      { id: 'work', name: 'Work' },
+      { id: '128bit', name: '128bit' },
+    ],
+    activeSpace: 'personal',
+    privateLock: false, // fingerprint/face to open private tabs
+    phishing: { enabled: true, lastUpdate: 0 },
+    xp: { total: 0, streak: 0, lastDay: '', badges: {}, counters: {} },
+    familyLinks: { bitcaller: true, tracker: true },
   }
 }
 
