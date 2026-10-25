@@ -2,7 +2,7 @@
 // Real web engine (WKWebView / Android WebView) inside the pixel shell, with
 // the same Comet-style AI and encrypted sync as the desktop app.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { View, TextInput, Text, Pressable, StyleSheet, Platform, Linking, Alert, ToastAndroid, Modal, ScrollView, AppState, Dimensions, useWindowDimensions } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import { useFonts } from 'expo-font'
@@ -382,15 +382,14 @@ function Browser() {
     openTab(url)
   }
 
-  const openTabs = async () => {
-    // Snapshot the current page for its card in the tab grid.
-    try {
-      if (pageArea.current) {
-        const uri = await captureRef(pageArea.current, { format: 'jpg', quality: 0.5, width: 360 })
-        setThumbs((t) => ({ ...t, [activeRef.current]: uri }))
-      }
-    } catch {}
+  const openTabs = () => {
+    // Open right away; the page snapshot for its card arrives a moment later.
     setTabsOpen(true)
+    const id = activeRef.current
+    if (pageArea.current)
+      captureRef(pageArea.current, { format: 'jpg', quality: 0.5, width: 360 })
+        .then((uri) => setThumbs((t) => ({ ...t, [id]: uri })))
+        .catch(() => {})
   }
 
   const takeOver = () => {
@@ -429,6 +428,54 @@ function Browser() {
     session.stop()
     setAgentActive(false)
   }
+
+  // Page callbacks for TabView. The object never changes identity, so tabs
+  // only re-render when their own data changes; the functions always see the
+  // latest state.
+  const handlers = useRef({}).current
+  Object.assign(handlers, {
+    ref: (id, r) => {
+      if (r) views.current[id] = r
+    },
+    explain,
+    onMessage: (t, e) => onMessage(t)(e),
+    onScroll: (t, e) => {
+      if (t.id !== activeRef.current || !getState().hideBarsOnScroll) return
+      const y = e.nativeEvent.contentOffset?.y || 0
+      const dy = y - lastScrollY.current
+      lastScrollY.current = y
+      if (Date.now() < barsLockedUntil.current) return
+      if (y < 24) return showBars(true)
+      // Count the scroll in one direction; a change of direction starts over.
+      scrollRun.current = Math.sign(dy) === Math.sign(scrollRun.current) ? scrollRun.current + dy : dy
+      if (scrollRun.current > 140) showBars(false)
+      else if (scrollRun.current < -70) showBars(true)
+    },
+    shouldStart: (req) => {
+      if (/^tel:/i.test(req.url)) {
+        openTel(req.url)
+        return false
+      }
+      if (looksLikeDownload(req.url)) {
+        download(req.url)
+        return false
+      }
+      return true
+    },
+    download,
+    onNav: (t, nav) => {
+      patchTab(t.id, { url: nav.url, title: nav.title || nav.url, loading: nav.loading, canGoBack: nav.canGoBack, canGoForward: nav.canGoForward })
+      if (!nav.loading && !t.private) addHistory(nav.url, nav.title)
+    },
+    onLoadEnd: (t, e) => {
+      patchTab(t.id, { loading: false })
+      lastScrollY.current = 0
+      if (t.private) return
+      findLogins(e.nativeEvent.url)
+        .then((list) => list?.length && setFillOffer({ tabId: t.id, login: list[0] }))
+        .catch(() => {})
+    },
+  })
 
   const isPrivate = active.private
   const accent = isPrivate ? C.purple : agentActive ? C.pink : C.teal
@@ -526,67 +573,7 @@ function Browser() {
       <View style={[{ flex: 1 }, agentActive && !fullscreen && st.agentFrame]}>
         <View ref={pageArea} collapsable={false} style={{ flex: 1 }}>
           {tabs.map((t) => (
-            <WebView
-              key={t.id}
-              ref={(r) => {
-                if (r) views.current[t.id] = r
-              }}
-              source={{ uri: t.source }}
-              // Hidden tabs must not take up space: the WebView's outer
-              // container is flex: 1 by default, so hide that, not just the page.
-              containerStyle={t.id === active.id ? st.pageBox : st.hidden}
-              style={st.page}
-              incognito={t.private}
-              thirdPartyCookiesEnabled={false}
-              setSupportMultipleWindows={false}
-              allowsBackForwardNavigationGestures
-              allowsFullscreenVideo
-              allowsInlineMediaPlayback
-              mediaPlaybackRequiresUserAction={autoplay === 'off'}
-              textZoom={textZoom}
-              injectedJavaScript={injectedJS(autoplay)}
-              menuItems={t.private || !aiEnabled ? [] : [{ label: 'Explain with Bitter', key: 'explain' }]}
-              onCustomMenuSelection={(e) => e.nativeEvent.key === 'explain' && explain(e.nativeEvent.selectedText)}
-              onMessage={onMessage(t)}
-              onScroll={(e) => {
-                if (t.id !== activeRef.current) return
-                const y = e.nativeEvent.contentOffset?.y || 0
-                const dy = y - lastScrollY.current
-                lastScrollY.current = y
-                if (Date.now() < barsLockedUntil.current) return
-                if (y < 24) return showBars(true)
-                // Count the scroll in one direction; a change of direction starts over.
-                scrollRun.current = Math.sign(dy) === Math.sign(scrollRun.current) ? scrollRun.current + dy : dy
-                if (scrollRun.current > 140) showBars(false)
-                else if (scrollRun.current < -70) showBars(true)
-              }}
-              onShouldStartLoadWithRequest={(req) => {
-                if (/^tel:/i.test(req.url)) {
-                  openTel(req.url)
-                  return false
-                }
-                if (looksLikeDownload(req.url)) {
-                  download(req.url)
-                  return false
-                }
-                return true
-              }}
-              onFileDownload={(e) => download(e.nativeEvent.downloadUrl)}
-              onNavigationStateChange={(nav) => {
-                patchTab(t.id, { url: nav.url, title: nav.title || nav.url, loading: nav.loading, canGoBack: nav.canGoBack, canGoForward: nav.canGoForward })
-                if (!nav.loading && !t.private) {
-                  addHistory(nav.url, nav.title)
-                }
-              }}
-              onLoadEnd={(e) => {
-                patchTab(t.id, { loading: false })
-                lastScrollY.current = 0
-                if (t.private) return
-                findLogins(e.nativeEvent.url)
-                  .then((list) => list?.length && setFillOffer({ tabId: t.id, login: list[0] }))
-                  .catch(() => {})
-              }}
-            />
+            <TabView key={t.id} tab={t} active={t.id === active.id} autoplay={autoplay} textZoom={textZoom} aiEnabled={aiEnabled} h={handlers} />
           ))}
         </View>
         {locked && active.private && !fullscreen && (
@@ -716,6 +703,42 @@ function Browser() {
     </View>
   )
 }
+
+const EXPLAIN_MENU = [{ label: 'Explain with Bitter', key: 'explain' }]
+const NO_MENU = []
+
+// One tab's page. Memoized so typing in the address bar, agent steps or
+// other tabs loading don't re-render every open page.
+const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEnabled, h }) {
+  const js = useMemo(() => injectedJS(autoplay), [autoplay])
+  return (
+    <WebView
+      ref={(r) => h.ref(t.id, r)}
+      source={useMemo(() => ({ uri: t.source }), [t.source])}
+      // Hidden tabs must not take up space: the WebView's outer
+      // container is flex: 1 by default, so hide that, not just the page.
+      containerStyle={active ? st.pageBox : st.hidden}
+      style={st.page}
+      incognito={t.private}
+      thirdPartyCookiesEnabled={false}
+      setSupportMultipleWindows={false}
+      allowsBackForwardNavigationGestures
+      allowsFullscreenVideo
+      allowsInlineMediaPlayback
+      mediaPlaybackRequiresUserAction={autoplay === 'off'}
+      textZoom={textZoom}
+      injectedJavaScript={js}
+      menuItems={t.private || !aiEnabled ? NO_MENU : EXPLAIN_MENU}
+      onCustomMenuSelection={(e) => e.nativeEvent.key === 'explain' && h.explain(e.nativeEvent.selectedText)}
+      onMessage={(e) => h.onMessage(t, e)}
+      onScroll={(e) => h.onScroll(t, e)}
+      onShouldStartLoadWithRequest={h.shouldStart}
+      onFileDownload={(e) => h.download(e.nativeEvent.downloadUrl)}
+      onNavigationStateChange={(nav) => h.onNav(t, nav)}
+      onLoadEnd={(e) => h.onLoadEnd(t, e)}
+    />
+  )
+})
 
 function BarButton({ icon, label, onPress, onLongPress, disabled, hot, boxed }) {
   return (
