@@ -4,6 +4,7 @@
 import { SyncClient, createSyncCode, isValidSyncCode, normalizeSyncCode, syncOnce } from '@pixelbrowser/sync-core'
 import { PROVIDERS } from '@pixelbrowser/ai-core'
 import { getState, update, getSecret, setSecret, onLocalChange, liveRecords } from './store'
+import { applyRemoteShields } from './shields'
 
 let running = null
 let debounce = null
@@ -95,6 +96,7 @@ async function applyRemoteSettings() {
       st.updatedAt.search = search.updatedAt
     })
   }
+  await applyRemoteShields().catch(() => {})
   const keys = s.records.settings['ai-keys']
   if (keys && !keys.deleted && keys.deviceId !== s.deviceId && s.sync.syncKeys) {
     for (const [id, k] of Object.entries(keys.data || {})) if (PROVIDERS[id] && k) await setSecret(`apiKey:${id}`, k)

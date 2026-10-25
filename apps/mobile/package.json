@@ -4,6 +4,7 @@
   "main": "index.js",
   "dependencies": {
     "@pixelbrowser/ai-core": "*",
+    "@pixelbrowser/shields-core": "*",
     "@pixelbrowser/sync-core": "*",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.30",

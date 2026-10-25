@@ -109,3 +109,4 @@ module.exports = function withShields(config) {
     },
   ])
 }
+module.exports.patchWebView = patchWebView
