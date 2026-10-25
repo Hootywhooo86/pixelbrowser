@@ -260,7 +260,7 @@ function Toggle({ value, onChange, label, note, disabled }) {
         <Text style={st.rowTitle}>{label}</Text>
         {!!note && <Text style={st.muted}>{note}</Text>}
       </View>
-      <Switch value={!!value} onValueChange={onChange} disabled={disabled} accessibilityLabel={label} />
+      <Switch value={!!value} onValueChange={onChange} disabled={disabled} accessibilityLabel={label} trackColor={{ false: C.edge, true: C.tealDark }} thumbColor={value ? C.teal : C.muted} />
     </View>
   )
 }
@@ -408,7 +408,7 @@ function NavRow({ title, sub, onPress }) {
   )
 }
 
-function AIPage({ go }) {
+function AIPage({ go, open }) {
   const state = useStore()
   const [provider, setProvider] = useState(state.ai.provider)
   const [model, setModel] = useState('')
@@ -484,6 +484,12 @@ function AIPage({ go }) {
         <Field style={{ flex: 1 }} value={memInput} onChangeText={setMemInput} placeholder="e.g. I'm vegetarian" />
         <PButton label="ADD" onPress={() => { memory.add(memInput); setMemInput('') }} />
       </View>
+
+      <PText style={st.h}>SPENDING CAP</PText>
+      <SpendingCaps />
+
+      <PText style={st.h}>ACTIVITY</PText>
+      <NavRow title="Bitter activity log" sub="Everything Bitter clicked, typed or opened" onPress={() => open('agentlog')} />
       <ErrorText error={error} />
     </>
   )
@@ -575,33 +581,49 @@ function SyncPage({ go, onScan }) {
 
 function FamilyPage() {
   const f = useStore((s) => s.family)
+  const xp = useStore((s) => s.xp) || {}
+  const links = useStore((s) => s.familyLinks) || {}
+  const prog = progressOf(xp.total || 0)
+  const earned = BADGES.filter((b) => xp.badges?.[b.id]).length
   return (
     <>
-      <View style={st.card}>
-        <PText style={{ color: C.teal }}>128BIT ACCOUNT</PText>
-        <Text style={[st.body2, { marginTop: 8 }]}>
-          {f.connected ? `Signed in as ${f.account?.name || 'you'}.` : 'Connect a 128bit account to earn XP and streaks for finishing what you read, and get tab quests from 128bitlife.'}
-        </Text>
-        <View style={st.row}>
-          {f.connected ? (
-            <PButton label="DISCONNECT" onPress={disconnectFamily} />
-          ) : (
-            <PButton hot label="CONNECT" onPress={() => Alert.alert('Coming soon', '128bit accounts are coming soon. Everything here stays off until you connect.')} />
-          )}
-        </View>
-        <Text style={[st.muted, { marginTop: 8 }]}>COMING SOON</Text>
-      </View>
-      <View style={[st.row, { marginTop: 12 }]}>
-        <View style={[st.stat, { borderColor: C.orange }]}>
-          <PText style={{ color: C.orange }}>{f.xp || 0}</PText>
-          <Text style={st.muted}>XP</Text>
-        </View>
-        <View style={[st.stat, { borderColor: C.teal }]}>
-          <PText style={{ color: C.teal }}>{f.streak || 0}</PText>
-          <Text style={st.muted}>DAY STREAK</Text>
+      <View style={[st.card, { flexDirection: 'row', alignItems: 'center', gap: 14 }]}>
+        <Mascot size={64} />
+        <View style={{ flex: 1 }}>
+          <PText style={{ color: C.teal }}>LEVEL {prog.level}</PText>
+          <View style={st.xpBar} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: prog.needed, now: prog.into }}>
+            <View style={[st.xpFill, { width: `${Math.max(3, Math.round(prog.pct * 100))}%` }]} />
+          </View>
+          <Text style={st.muted}>
+            {fmt(xp.total)} XP · {fmt(prog.needed - prog.into)} to level {prog.level + 1}
+          </Text>
         </View>
       </View>
+      <View style={st.row}>
+        <Stat value={fmt(xp.streak)} label="DAY STREAK" color={C.orange} />
+        <Stat value={`${earned}/${BADGES.length}`} label="BADGES" color={C.teal} />
+      </View>
+      <Text style={[st.muted, { marginTop: 8 }]}>XP is kept on this phone and synced (encrypted) to your other devices. It joins your 128bit account when accounts arrive.</Text>
+
+      <PText style={st.h}>BADGES</PText>
+      <View style={st.badges}>
+        {BADGES.map((b) => {
+          const got = !!xp.badges?.[b.id]
+          return (
+            <View key={b.id} style={[st.badge, got ? { borderColor: C.orange } : { opacity: 0.45 }]} accessibilityLabel={`${b.label}: ${got ? 'earned' : 'not earned yet'}. ${b.note}`}>
+              <View style={[st.badgeIcon, { backgroundColor: got ? C.orange : C.edge }]}>
+                <Text style={st.badgeIconText}>{got ? '★' : '?'}</Text>
+              </View>
+              <Text style={st.badgeTitle} numberOfLines={2}>{b.label}</Text>
+              <Text style={[st.muted, { fontSize: 11, textAlign: 'center' }]} numberOfLines={2}>{b.note}</Text>
+            </View>
+          )
+        })}
+      </View>
+
       <PText style={st.h}>FAMILY APPS</PText>
+      <Toggle value={links.bitcaller !== false} onChange={(v) => update((s) => (s.familyLinks = { ...s.familyLinks, bitcaller: v }))} label="Open phone numbers in BitCaller" note="Tap a phone number on a page to call with BitCaller (or your phone app if BitCaller isn't installed)" />
+      <Toggle value={links.tracker !== false} onChange={(v) => update((s) => (s.familyLinks = { ...s.familyLinks, tracker: v }))} label='Show "Add to 128bittracker"' note="On TV show and movie pages (IMDb, TMDB and streaming sites)" />
       {FAMILY_APPS.map((a) => (
         <View key={a.id} style={st.itemRow}>
           <View style={{ flex: 1 }}>
@@ -610,6 +632,21 @@ function FamilyPage() {
           </View>
         </View>
       ))}
+
+      <View style={[st.card, { marginTop: 18 }]}>
+        <PText style={{ color: C.teal }}>128BIT ACCOUNT</PText>
+        <Text style={[st.body2, { marginTop: 8 }]}>
+          {f.connected ? `Signed in as ${f.account?.name || 'you'}.` : 'Connect a 128bit account to share XP and streaks with the family and get quests from 128bitlife.'}
+        </Text>
+        <View style={st.row}>
+          {f.connected ? (
+            <PButton label="DISCONNECT" onPress={disconnectFamily} />
+          ) : (
+            <PButton hot label="CONNECT" onPress={() => Alert.alert('Coming soon', '128bit accounts are coming soon. Everything here stays off until you connect.')} />
+          )}
+          {!f.connected && <Text style={st.muted}>COMING SOON</Text>}
+        </View>
+      </View>
       <PText style={st.h}>WHAT BIT BROWSER SHARES</PText>
       <Text style={st.muted}>All off by default. Nothing is shared until you connect and turn an item on. Never the pages you visit.</Text>
       {Object.entries(EVENT_TYPES).map(([type, e]) => (
@@ -751,10 +788,17 @@ function DefaultBrowserPage() {
 
 // ---------- display ----------
 
-function TabsPage() {
+function TabsPage({ open }) {
   const s = useStore()
   return (
     <>
+      <Toggle
+        value={!!s.hideBarsOnScroll}
+        onChange={(v) => update((x) => (x.hideBarsOnScroll = v))}
+        label="Hide bars when scrolling"
+        note="Off is smoothest. On: the address bar and buttons slide away when you scroll down."
+      />
+      <NavRow title="Spaces" sub={`${(s.spaces || []).length} spaces: keep work, personal and 128bit tabs apart`} onPress={() => open('spaces')} />
       <Text style={st.label}>Tab switcher layout</Text>
       <View style={st.row}>
         {['grid', 'list'].map((v) => (
@@ -762,17 +806,258 @@ function TabsPage() {
         ))}
       </View>
       <Toggle value={s.closeTabsOnExit} onChange={(v) => update((x) => (x.closeTabsOnExit = v))} label="Close tabs when I leave the app" />
-      <Text style={st.muted}>Tab groups: long-press a tab in the tab switcher.</Text>
+    </>
+  )
+}
+
+function SpacesPage() {
+  const spaces = useStore((s) => s.spaces || [])
+  const activeSpace = useStore((s) => s.activeSpace || 'personal')
+  const [name, setName] = useState('')
+  const [editing, setEditing] = useState(null) // { id, name }
+  const add = () => {
+    const n = name.trim().slice(0, 24)
+    if (!n) return
+    const id = `${n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'space'}-${Date.now().toString(36)}`
+    update((s) => (s.spaces = [...(s.spaces || []), { id, name: n }]))
+    setName('')
+  }
+  const remove = (sp) =>
+    Alert.alert(`Delete ${sp.name}?`, 'Its tabs move to your current space. Bitter forgets what it remembered for this space.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => update((s) => (s.spaces = s.spaces.filter((x) => x.id !== sp.id))) },
+    ])
+  return (
+    <>
+      <Text style={st.body2}>Each space has its own tabs and its own Bitter memory. Switch spaces from the top of the tabs screen.</Text>
+      {spaces.map((sp) => (
+        <View key={sp.id} style={st.itemRow}>
+          {editing?.id === sp.id ? (
+            <>
+              <Field style={{ flex: 1 }} value={editing.name} onChangeText={(v) => setEditing({ ...editing, name: v })} autoFocus />
+              <PButton
+                small
+                hot
+                label="SAVE"
+                onPress={() => {
+                  const n = editing.name.trim().slice(0, 24)
+                  if (n) update((s) => (s.spaces = s.spaces.map((x) => (x.id === sp.id ? { ...x, name: n } : x))))
+                  setEditing(null)
+                }}
+              />
+            </>
+          ) : (
+            <>
+              <Text style={[st.rowTitle, { flex: 1 }]} numberOfLines={1}>
+                {sp.name}
+                {sp.id === activeSpace ? '  (current)' : ''}
+              </Text>
+              <PButton small label="RENAME" onPress={() => setEditing({ id: sp.id, name: sp.name })} />
+              <PButton small label="X" accessibilityLabel={`Delete ${sp.name}`} disabled={sp.id === activeSpace || spaces.length <= 1} onPress={() => remove(sp)} />
+            </>
+          )}
+        </View>
+      ))}
+      <View style={st.row}>
+        <Field style={{ flex: 1 }} value={name} onChangeText={setName} placeholder="New space, e.g. School" onSubmitEditing={add} returnKeyType="done" />
+        <PButton hot label="ADD" onPress={add} />
+      </View>
+      <Text style={[st.muted, { marginTop: 8 }]}>You can't delete the space you're in or your last space.</Text>
     </>
   )
 }
 
 function MediaPage() {
   const s = useStore()
+  const autoplay = s.autoplay || 'muted'
+  const choices = [
+    ['off', 'OFF', "Videos never start on their own"],
+    ['muted', 'MUTED ONLY', 'Silent previews can play; sound waits for a tap (smoothest)'],
+    ['on', 'ON', 'Videos can start with sound'],
+  ]
   return (
     <>
+      <Text style={st.label}>Autoplay</Text>
+      <View style={st.list}>
+        {choices.map(([id, label, note]) => (
+          <Pressable
+            key={id}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: autoplay === id }}
+            onPress={() => update((x) => (x.autoplay = id))}
+            style={({ pressed }) => [st.choice, { flexDirection: 'column', gap: 4 }, autoplay === id && { borderColor: C.teal }, pressed && { opacity: 0.85 }]}
+          >
+            <PText style={{ color: autoplay === id ? C.teal : C.ink }}>{label}</PText>
+            <Text style={st.muted}>{note}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <PText style={st.h}>FULL SCREEN</PText>
       <Toggle value={s.fullscreenVideo} onChange={(v) => update((x) => (x.fullscreenVideo = v))} label="Full-screen videos" note="Let videos (YouTube and others) fill the screen" />
       <Toggle value={s.rotateFullscreen} onChange={(v) => update((x) => (x.rotateFullscreen = v))} label="Turn sideways in full screen" note="Rotate to landscape while a video is full screen" disabled={!s.fullscreenVideo} />
+    </>
+  )
+}
+
+function AppearancePage() {
+  const s = useStore()
+  const current = s.theme || 'bit'
+  const [custom, setCustom] = useState(() => s.customTheme || { accent: C.teal, bg: C.bg, panel: C.panel, ink: C.ink })
+  const [slot, setSlot] = useState('accent')
+  const [msg, setMsg] = useState('')
+  const apply = async (choice) => {
+    setMsg('Applying…')
+    const reloaded = await setTheme(choice)
+    if (!reloaded) setMsg('Saved. Close and reopen Bit Browser to see the new theme.')
+  }
+  const preview = themeColors({ id: 'custom', custom }).colors
+  return (
+    <>
+      <Text style={st.label}>Pixel themes</Text>
+      <View style={st.themeGrid}>
+        {Object.values(THEMES).map((t) => (
+          <ThemeCard key={t.id} name={t.label} colors={t.colors} on={current === t.id} onPress={() => apply({ id: t.id })} />
+        ))}
+      </View>
+
+      <PText style={st.h}>BUILD YOUR OWN</PText>
+      <View style={st.row}>
+        {[
+          ['accent', 'ACCENT'],
+          ['bg', 'BACKGROUND'],
+          ['panel', 'PANELS'],
+          ['ink', 'TEXT'],
+        ].map(([id, label]) => (
+          <Pressable key={id} onPress={() => setSlot(id)} accessibilityRole="radio" accessibilityState={{ checked: slot === id }} style={[st.slot, slot === id && { borderColor: C.teal }]}>
+            <View style={[st.slotDot, { backgroundColor: custom[id] }]} />
+            <Text style={[st.slotText, slot === id && { color: C.ink }]}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={st.swatches}>
+        {SWATCHES.map((hex) => (
+          <Pressable
+            key={hex}
+            onPress={() => setCustom({ ...custom, [slot]: hex })}
+            accessibilityLabel={`Color ${hex}`}
+            style={[st.swatch, { backgroundColor: hex }, custom[slot] === hex && { borderColor: C.orange, borderWidth: 3 }]}
+          />
+        ))}
+      </View>
+      <ThemeCard name="Your theme" colors={preview} on={current === 'custom'} wide />
+      <PButton hot label="USE MY THEME" style={{ alignSelf: 'flex-start', marginTop: 10 }} onPress={() => apply({ id: 'custom', custom })} />
+      {!!msg && <Text style={[st.muted, { marginTop: 6 }]}>{msg}</Text>}
+
+      <PText style={st.h}>TAB CARDS</PText>
+      <View style={st.row}>
+        {[
+          ['classic', 'CLASSIC'],
+          ['chunky', 'CHUNKY'],
+        ].map(([id, label]) => (
+          <PButton key={id} label={label} hot={(s.tabSkin || 'classic') === id} onPress={() => update((x) => (x.tabSkin = id))} />
+        ))}
+      </View>
+      <PText style={st.h}>SOUND</PText>
+      <Toggle value={!!s.sounds} onChange={(v) => update((x) => (x.sounds = v))} label="Retro sound effects" note="Bleeps for new tabs, blocked ads and level-ups" />
+    </>
+  )
+}
+
+function ThemeCard({ name, colors, on, onPress, wide }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole={onPress ? 'radio' : undefined}
+      accessibilityState={onPress ? { checked: on } : undefined}
+      accessibilityLabel={name}
+      style={({ pressed }) => [st.themeCard, wide && { width: '100%', marginTop: 10 }, { backgroundColor: colors.bg, borderColor: on ? colors.orange : colors.edge }, pressed && { opacity: 0.85 }]}
+    >
+      <View style={[st.themeBar, { backgroundColor: colors.panel, borderBottomColor: colors.teal }]}>
+        <View style={[st.themeLogo, { backgroundColor: colors.teal }]}>
+          <Text style={[st.themeLogoText, { color: colors.bg }]}>B</Text>
+        </View>
+        <View style={[st.themeUrl, { backgroundColor: colors.bg, borderColor: colors.edge }]} />
+      </View>
+      <View style={{ padding: 8, gap: 4 }}>
+        <Text style={{ color: colors.ink, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{name}</Text>
+        <View style={{ flexDirection: 'row', gap: 4 }}>
+          {[colors.teal, colors.orange, colors.pink, colors.muted].map((c, i) => (
+            <View key={i} style={{ width: 12, height: 12, backgroundColor: c }} />
+          ))}
+        </View>
+      </View>
+      {on && <Text style={[st.themeOn, { color: colors.orange }]}>ON</Text>}
+    </Pressable>
+  )
+}
+
+function SpendingCaps() {
+  const sp = useStore((s) => s.spending) || {}
+  const [day, setDay] = useState(sp.capDay ? String(sp.capDay) : '')
+  const [month, setMonth] = useState(sp.capMonth ? String(sp.capMonth) : '')
+  const [saved, setSaved] = useState(false)
+  const now = new Date()
+  const p = (n) => String(n).padStart(2, '0')
+  const today = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`
+  const monthKey = today.slice(0, 7)
+  const spent = sp.spent || {}
+  const spentToday = Number(spent[today] || 0)
+  const spentMonth = Object.entries(spent).reduce((sum, [k, v]) => (k.startsWith(monthKey) ? sum + Number(v || 0) : sum), 0)
+  const money = (v) => `$${Number(v || 0).toFixed(2)}`
+  const save = () => {
+    const toCap = (v) => Math.max(0, Math.round((parseFloat(String(v).replace(/[^0-9.]/g, '')) || 0) * 100) / 100)
+    update((s) => (s.spending = { ...s.spending, capDay: toCap(day), capMonth: toCap(month) }))
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1500)
+  }
+  return (
+    <>
+      <Text style={st.muted}>Bitter stops and asks you before going over these. Costs are estimates from your AI provider's prices. Leave empty for no cap.</Text>
+      <View style={st.row}>
+        <Stat value={money(spentToday)} label={sp.capDay ? `TODAY / ${money(sp.capDay)}` : 'TODAY'} color={sp.capDay && spentToday >= sp.capDay ? C.pink : C.teal} />
+        <Stat value={money(spentMonth)} label={sp.capMonth ? `MONTH / ${money(sp.capMonth)}` : 'THIS MONTH'} color={sp.capMonth && spentMonth >= sp.capMonth ? C.pink : C.teal} />
+      </View>
+      <View style={st.row}>
+        <View style={{ flex: 1 }}>
+          <Text style={st.label}>Per day ($)</Text>
+          <Field value={day} onChangeText={setDay} keyboardType="decimal-pad" placeholder="No cap" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={st.label}>Per month ($)</Text>
+          <Field value={month} onChangeText={setMonth} keyboardType="decimal-pad" placeholder="No cap" />
+        </View>
+      </View>
+      <PButton hot label={saved ? 'SAVED' : 'SAVE CAPS'} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={save} />
+    </>
+  )
+}
+
+const LOG_COLORS = { click: 'teal', type: 'orange', navigate: 'teal', confirm: 'pink', open: 'teal' }
+
+function AgentLogPage() {
+  const log = useStore((s) => s.agentLog) || []
+  const items = useMemo(() => [...log].reverse(), [log])
+  return (
+    <>
+      <Text style={st.body2}>Every click, typed text, page and confirmation from Bitter's agent mode, newest first. Kept on this phone only.</Text>
+      <PButton
+        label="CLEAR LOG"
+        disabled={!log.length}
+        style={{ alignSelf: 'flex-start', marginTop: 8 }}
+        onPress={() => Alert.alert('Clear the activity log?', '', [{ text: 'Cancel', style: 'cancel' }, { text: 'Clear', style: 'destructive', onPress: () => update((s) => (s.agentLog = [])) }])}
+      />
+      {!items.length && <Text style={[st.muted, { marginTop: 12 }]}>Nothing yet. Use "Let Bitter take over" and its steps show up here.</Text>}
+      {items.map((e, i) => (
+        <View key={e.id || i} style={[st.logRow, { borderLeftColor: C[LOG_COLORS[e.kind]] || C.edge }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+            <Text style={st.logKind}>{String(e.kind || 'step').toUpperCase()}</Text>
+            <Text style={st.muted} numberOfLines={1}>{e.at ? new Date(e.at).toLocaleString() : ''}</Text>
+          </View>
+          <Text style={st.body2}>{e.text}</Text>
+          {!!e.site && <Text style={st.muted} numberOfLines={1}>{e.site}</Text>}
+        </View>
+      ))}
     </>
   )
 }
@@ -1134,11 +1419,13 @@ function Scanner({ onCode, onClose, insets }) {
   )
 }
 
+const noPad = Platform.OS === 'android' ? { includeFontPadding: false, textAlignVertical: 'center' } : {}
+
 const st = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: C.bg },
   head: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: C.panel, borderBottomWidth: 3, borderBottomColor: C.edge },
   body: { padding: 16, gap: 6 },
-  h: { color: C.teal, marginTop: 22, marginBottom: 6 },
+  h: { color: C.teal, marginTop: 24, marginBottom: 8 },
   group: { borderWidth: 3, borderColor: C.edge, backgroundColor: C.panel },
   navRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, minHeight: 52 },
   navDivider: { borderTopWidth: 1, borderTopColor: C.edge },
@@ -1148,10 +1435,33 @@ const st = StyleSheet.create({
   label: { color: C.muted, fontSize: 13, marginTop: 10 },
   list: { gap: 6, marginTop: 8 },
   choice: { borderWidth: 3, borderColor: C.edge, backgroundColor: C.panel, padding: 10, flexDirection: 'row', justifyContent: 'space-between' },
-  row: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  toggle: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.edge },
-  itemRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.edge },
+  row: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  toggle: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, minHeight: 56, borderBottomWidth: 1, borderBottomColor: C.edge },
+  itemRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, minHeight: 48, borderBottomWidth: 1, borderBottomColor: C.edge },
   codeBox: { marginTop: 12, padding: 10, borderWidth: 3, borderColor: C.orange },
   card: { borderWidth: 3, borderColor: C.teal, backgroundColor: C.panel, padding: 12, marginTop: 8 },
-  stat: { flex: 1, borderWidth: 3, padding: 12, alignItems: 'center', gap: 6, backgroundColor: C.panel },
+  stat: { flex: 1, minWidth: 120, borderWidth: 3, padding: 12, alignItems: 'center', gap: 6, backgroundColor: C.panel },
+  pane: { width: 340, maxWidth: '42%', borderRightWidth: 3, borderRightColor: C.edge },
+  chev: { color: C.muted, fontSize: 20, lineHeight: 22, marginLeft: 8, ...noPad },
+  xpBar: { height: 12, borderWidth: 2, borderColor: C.edge, backgroundColor: C.bg, marginVertical: 8 },
+  xpFill: { height: '100%', backgroundColor: C.orange },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  badge: { width: '31%', minWidth: 96, flexGrow: 1, borderWidth: 3, borderColor: C.edge, backgroundColor: C.panel, padding: 8, alignItems: 'center', gap: 4 },
+  badgeIcon: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  badgeIconText: { color: C.bg, fontSize: 16, fontWeight: '900', ...noPad },
+  badgeTitle: { color: C.ink, fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  themeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 6 },
+  themeCard: { width: '47%', flexGrow: 1, minWidth: 140, borderWidth: 3 },
+  themeBar: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 6, borderBottomWidth: 3 },
+  themeLogo: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
+  themeLogoText: { fontFamily: PIXEL_FONT, fontSize: 8, lineHeight: 10, ...noPad },
+  themeUrl: { flex: 1, height: 14, borderWidth: 2 },
+  themeOn: { position: 'absolute', right: 8, bottom: 8, fontFamily: PIXEL_FONT, fontSize: 8 },
+  slot: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 3, borderColor: C.edge, backgroundColor: C.panel, paddingHorizontal: 8, height: 36 },
+  slotDot: { width: 16, height: 16, borderWidth: 2, borderColor: C.edge },
+  slotText: { fontFamily: PIXEL_FONT, fontSize: 7, lineHeight: 10, color: C.muted, ...noPad },
+  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  swatch: { width: 30, height: 30, borderWidth: 2, borderColor: C.edge },
+  logRow: { borderLeftWidth: 4, backgroundColor: C.panel, padding: 10, marginTop: 8, gap: 4 },
+  logKind: { fontFamily: PIXEL_FONT, fontSize: 7, lineHeight: 10, color: C.muted, ...noPad },
 })

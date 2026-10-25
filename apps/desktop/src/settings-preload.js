@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld('pixelSettings', {
   openUrl: (url) => ipcRenderer.send('settings:open-url', url),
   defaultBrowser: () => ipcRenderer.invoke('settings:default-browser'),
   makeDefault: () => ipcRenderer.invoke('settings:make-default'),
+  set: (patch) => ipcRenderer.invoke('settings:update', patch),
+  panic: (range) => ipcRenderer.invoke('settings:panic', range),
+  dataReport: () => ipcRenderer.invoke('settings:data'),
+  deleteData: (id) => ipcRenderer.invoke('settings:delete-data', id),
+  onGoto: (fn) => ipcRenderer.on('settings:goto', (_e, section) => fn(section)),
   update: {
     check: () => ipcRenderer.invoke('update:check'),
     setAuto: (on) => ipcRenderer.invoke('update:set-auto', on),

@@ -1,14 +1,23 @@
-// Tiny markdown renderer for AI answers: paragraphs, lists, **bold**, `code`, links.
+// Tiny markdown renderer for AI answers: paragraphs, lists, **bold**, `code`,
+// links, and [tab N] citations (tap to switch to that tab).
 import { Text, View } from 'react-native'
 import { C } from './theme'
 
-const TOKEN = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s)]+)/g
+const TOKEN = /(\*\*[^*]+\*\*|`[^`]+`|\[tab\s*#?\d+\]|\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s)]+)/gi
 
-function inline(text, onLink, keyBase) {
+function inline(text, onLink, onTab, keyBase) {
   return text.split(TOKEN).filter(Boolean).map((part, i) => {
     const key = `${keyBase}-${i}`
     if (part.startsWith('**')) return <Text key={key} style={{ fontWeight: '700' }}>{part.slice(2, -2)}</Text>
     if (part.startsWith('`')) return <Text key={key} style={{ fontFamily: 'Courier', backgroundColor: C.bg }}>{part.slice(1, -1)}</Text>
+    const tab = part.match(/^\[tab\s*#?(\d+)\]$/i)
+    if (tab) {
+      return (
+        <Text key={key} style={{ color: C.orange, fontWeight: '700' }} onPress={onTab ? () => onTab(Number(tab[1])) : undefined}>
+          [tab {tab[1]}]
+        </Text>
+      )
+    }
     const link = part.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/)
     if (link || /^https?:\/\//.test(part)) {
       const url = link ? link[2] : part
@@ -22,7 +31,7 @@ function inline(text, onLink, keyBase) {
   })
 }
 
-export function Markdown({ text, onLink, color = C.ink }) {
+export function Markdown({ text, onLink, onTab, color = C.ink }) {
   const lines = String(text).replace(/```[a-z]*\n?/g, '').split('\n')
   return (
     <View style={{ gap: 4 }}>
@@ -34,7 +43,7 @@ export function Markdown({ text, onLink, color = C.ink }) {
         return (
           <Text key={i} style={{ color, fontSize: 15, lineHeight: 21, fontWeight: heading ? '700' : '400' }}>
             {item ? '•  ' : ''}
-            {inline(body, onLink, i)}
+            {inline(body, onLink, onTab, i)}
           </Text>
         )
       })}

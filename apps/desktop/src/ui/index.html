@@ -10,6 +10,7 @@
 <body>
   <div id="tabstrip">
     <div class="logo" title="Bit Browser">B</div>
+    <button id="space" class="pxbtn space" title="Spaces: Personal, Work, 128bit… (each keeps its own tabs)">PERSONAL</button>
     <div id="tabs"></div>
     <button id="newtab" class="pxbtn" title="New tab (Ctrl+T)">+</button>
   </div>
@@ -19,17 +20,28 @@
     <button id="reload" class="pxbtn" title="Reload">R</button>
     <form id="addressform">
       <span id="agentbadge" hidden title="The AI agent is using this window">AGENT</span>
-      <span id="shield" title="Ads &amp; trackers blocked in this window">0</span>
+      <button type="button" id="shield" title="Bit Shields: ads and trackers blocked on this page. Click for options.">0</button>
       <input id="address" spellcheck="false" autocomplete="off" placeholder="Search, type a URL, or ask AI a question">
     </form>
+    <button id="tracker" class="pxbtn" hidden title="Add this show or movie to 128bittracker">+TRK</button>
     <button id="ask" class="pxbtn" title="Ask Bitter (Shift+Enter in the address bar)">ASK</button>
     <browser-action-list id="actions" alignment="bottom right"></browser-action-list>
     <button id="ai" class="pxbtn ai" title="Bitter sidebar (Ctrl+J)">AI</button>
     <button id="aitoggle" class="pxswitch on" role="switch" aria-checked="true" title="AI on/off. Off = private: nothing is sent to any AI."><span class="knob"></span><span class="lbl">AI</span></button>
     <button id="store" class="pxbtn" title="Get extensions (Chrome Web Store)">EXT</button>
     <button id="private" class="pxbtn" title="New private window (Ctrl+Shift+N)">PVT</button>
+    <button id="panic" class="pxbtn" title="Panic: close private windows and wipe recent activity (Ctrl+Shift+X)">!</button>
     <button id="settings" class="pxbtn" title="Settings: search engine, AI, sync (Ctrl+,)">SET</button>
     <button id="update" class="pxbtn" hidden title="A new version is ready. Click to restart and update.">UPDATE</button>
+  </div>
+  <div id="lock" hidden>
+    <form id="lockform">
+      <div class="logo big">B</div>
+      <p>PRIVATE WINDOW LOCKED</p>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" aria-label="PIN">
+      <button class="pxbtn hot">UNLOCK</button>
+      <p id="pinerr" hidden>Wrong PIN.</p>
+    </form>
   </div>
   <script src="ui.js"></script>
 </body>

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; font-src 'self'">
+<title>Dangerous site blocked</title>
+<style>
+  @font-face { font-family: 'Press Start 2P'; src: url('fonts/press-start-2p.woff2') format('woff2'); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { min-height: 100vh; display: grid; place-items: center; background: #1a0610; color: #fff1f4; font: 15px/1.6 system-ui, sans-serif; padding: 24px; }
+  main { max-width: 560px; border: 4px solid #ff5d8f; background: #2a0b18; box-shadow: 6px 6px 0 #05050f; padding: 28px; }
+  .sign { width: 56px; height: 56px; display: grid; place-items: center; background: #ff5d8f; color: #1a0610; font: 28px 'Press Start 2P', monospace; margin-bottom: 18px; }
+  h1 { font: 13px/1.6 'Press Start 2P', monospace; color: #ff5d8f; margin-bottom: 14px; }
+  p { margin-bottom: 12px; color: #f0c9d4; }
+  code { font: 14px ui-monospace, monospace; color: #fff; word-break: break-all; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+  a { display: inline-flex; align-items: center; height: 40px; padding: 0 14px; text-decoration: none; font: 9px 'Press Start 2P', monospace; border: 3px solid #ff5d8f; color: #fff1f4; }
+  a.safe { background: #ff5d8f; color: #1a0610; }
+  a:focus-visible { outline: 2px solid #ffd23f; outline-offset: 2px; }
+  small { color: #b98a99; }
+</style>
+</head>
+<body>
+  <main>
+    <div class="sign">!</div>
+    <h1>DANGEROUS SITE BLOCKED</h1>
+    <p><code id="host"></code> is on a list of phishing and malware sites. It may try to steal your passwords or card details, or install harmful software.</p>
+    <p><small>Bit Browser checked this on your device. Nothing about your browsing was sent anywhere.</small></p>
+    <div class="row">
+      <a id="back" class="safe" href="https://warning.bitbrowser.invalid/back">GO BACK TO SAFETY</a>
+      <a id="go" href="#">CONTINUE ANYWAY</a>
+    </div>
+  </main>
+  <script src="warning.js"></script>
+</body>
+</html>

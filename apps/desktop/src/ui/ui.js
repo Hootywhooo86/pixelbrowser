@@ -11,6 +11,7 @@ if (new URLSearchParams(location.search).get('private') === '1') {
   $('ask').hidden = true
   $('ai').hidden = true
   $('aitoggle').hidden = true
+  $('space').hidden = true
 }
 
 function render() {
@@ -42,7 +43,17 @@ function render() {
   $('back').disabled = !active?.canGoBack
   $('forward').disabled = !active?.canGoForward
   $('reload').textContent = active?.loading ? 'X' : 'R'
-  $('shield').textContent = state.blockedCount > 999 ? '999+' : String(state.blockedCount || 0)
+  $('shield').textContent = state.shieldsDown ? 'OFF' : state.blockedCount > 999 ? '999+' : String(state.blockedCount || 0)
+  $('shield').classList.toggle('down', !!state.shieldsDown)
+  $('shield').title = state.shieldsDown
+    ? `Bit Shields are down${state.site ? ' for ' + state.site : ''}. Click to turn them back up.`
+    : `Bit Shields: ${state.blockedCount || 0} ads and trackers blocked on this page. Click for options.`
+  const space = (state.spaces || []).find((x) => x.id === state.space)
+  if (space) $('space').textContent = space.name.toUpperCase().slice(0, 10)
+  $('tracker').hidden = !state.tracker
+  if (state.tracker) $('tracker').title = `Add "${state.tracker}" to 128bittracker`
+  document.body.classList.toggle('skin-chunky', state.skin === 'chunky')
+  showLock(!!state.locked)
   if (active && document.activeElement !== address) address.value = active.url
   $('actions').setAttribute('tab', String(state.activeId ?? ''))
   $('ai').classList.toggle('on', !!state.sidebarOpen)
@@ -98,3 +109,51 @@ $('reload').onclick = () => {
 }
 $('store').onclick = () => window.pixel.openExtensionStore()
 $('private').onclick = () => window.pixel.newPrivateWindow()
+
+$('shield').onclick = () => window.pixel.shieldsMenu()
+$('space').onclick = () => window.pixel.spaceMenu()
+$('panic').onclick = () => window.pixel.panic()
+$('tracker').onclick = () => window.pixel.addToTracker()
+
+// ---------- private window lock ----------
+
+function showLock(locked) {
+  const was = !$('lock').hidden
+  $('lock').hidden = !locked
+  document.body.classList.toggle('locked', locked)
+  if (locked && !was) setTimeout(() => $('pin').focus(), 50)
+}
+$('lockform').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const ok = await window.pixel.unlock($('pin').value)
+  $('pinerr').hidden = ok
+  $('pin').value = ''
+})
+
+// ---------- retro sounds (off by default; Settings → Appearance) ----------
+
+let audio = null
+function beep(notes) {
+  try {
+    audio = audio || new AudioContext()
+    let t = audio.currentTime
+    for (const [freq, dur] of notes) {
+      const osc = audio.createOscillator()
+      const gain = audio.createGain()
+      osc.type = 'square'
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.04, t)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+      osc.connect(gain).connect(audio.destination)
+      osc.start(t)
+      osc.stop(t + dur)
+      t += dur
+    }
+  } catch {}
+}
+const SOUNDS = {
+  tab: [[660, 0.05], [880, 0.07]],
+  block: [[220, 0.04]],
+  levelup: [[523, 0.08], [659, 0.08], [784, 0.08], [1047, 0.16]],
+}
+window.pixel.onSound((kind) => state.sounds && SOUNDS[kind] && beep(SOUNDS[kind]))

@@ -18,6 +18,7 @@ export const LISTS = [
     name: 'EasyPrivacy',
     description: 'Blocks trackers and analytics that follow you around the web.',
     default: true,
+    kind: 'trackers',
     urls: ['https://easylist.to/easylist/easyprivacy.txt'],
   },
   {

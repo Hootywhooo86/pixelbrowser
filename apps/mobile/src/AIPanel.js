@@ -1,14 +1,16 @@
 // Bitter panel: slides up over the bottom of the page (so you can watch
-// the agent work above it). Chat with Ask/Agent modes, tab context, and AI
-// web apps (ChatGPT, Claude, Gemini…) signed in with your own account.
+// the agent work above it), or sits beside the page on tablets (`side`).
+// Chat with Ask/Agent modes, tab context, page and video summaries, source
+// chips, and AI web apps (ChatGPT, Claude, Gemini…) with your own account.
 
 import { useEffect, useRef, useState } from 'react'
 import { View, ScrollView, TextInput, Pressable, Text, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native'
 import { WebView } from 'react-native-webview'
-import { WEB_APPS, EXTRACT_PAGE } from '@pixelbrowser/ai-core'
+import { WEB_APPS, EXTRACT_PAGE, isYouTubeWatch } from '@pixelbrowser/ai-core'
 import { ask, session, answerConfirm } from './ai'
 import { useStore } from './store'
 import { PButton, PText } from './ui'
+import Mascot from './Mascot'
 import { Markdown } from './markdown'
 import { C, PIXEL_FONT } from './theme'
 
@@ -36,8 +38,12 @@ const SUGGEST = {
   agent: ['Search this site for pixel art lamps and open the top result.', 'Go through the results and tell me the 3 cheapest.'],
 }
 
-export default function AIPanel({ browser, visible, request, onClose, onOpenSettings, onAgent, onStep, openUrl }) {
+export default function AIPanel({ browser, visible, side = false, request, onClose, onOpenSettings, onAgent, onStep, openUrl }) {
   const provider = useStore((s) => s.ai.provider)
+  const space = useStore((s) => s.activeSpace)
+  const spaceName = useStore((s) => (s.spaces || []).find((x) => x.id === s.activeSpace)?.name)
+  const [talking, setTalking] = useState(false)
+  const talkTimer = useRef(null)
   const model = useStore((s) => s.ai.providers[s.ai.provider]?.model)
   const [items, setItems] = useState([])
   const [busy, setBusy] = useState(false)
@@ -58,7 +64,10 @@ export default function AIPanel({ browser, visible, request, onClose, onOpenSett
       case 'user':
         return setItems((x) => [...x, { kind: 'user', text: e.text, mode: e.mode }])
       case 'text':
-        return setItems((x) => [...x, { kind: 'ai', text: e.text }])
+        clearTimeout(talkTimer.current)
+        setTalking(true)
+        talkTimer.current = setTimeout(() => setTalking(false), 1600)
+        return setItems((x) => [...x, { kind: 'ai', text: e.text, sources: e.sources }])
       case 'tool': {
         const text = (TOOL_TEXT[e.name] || (() => e.name))(e.input || {})
         onStep?.(text)
@@ -74,7 +83,7 @@ export default function AIPanel({ browser, visible, request, onClose, onOpenSett
           return copy
         })
       case 'confirm':
-        return setItems((x) => [...x, { kind: 'confirm', id: e.id, reason: e.reason, url: e.url, read: e.kind === 'read' }])
+        return setItems((x) => [...x, { kind: 'confirm', id: e.id, reason: e.reason, url: e.url, read: e.kind === 'read', budget: e.kind === 'budget' }])
       case 'error':
         return setItems((x) => [...x, { kind: 'error', text: e.message, openSettings: e.openSettings }])
       case 'notice':
@@ -103,8 +112,13 @@ export default function AIPanel({ browser, visible, request, onClose, onOpenSett
     if (!request) return
     // "Let Bitter take over" switches to Agent mode and waits for the task.
     if (request.mode === 'agent' && !request.input) return setMode('agent')
-    send(request.input, { search: request.search, includePage: request.includePage, mode: request.mode || 'ask' })
+    send(request.input, { search: request.search, includePage: request.includePage, video: request.video, mode: request.mode || 'ask' })
   }, [request?.nonce])
+
+  // Each Space has its own chat.
+  useEffect(() => {
+    setItems([])
+  }, [space])
 
   useEffect(() => {
     setTimeout(() => scroller.current?.scrollToEnd({ animated: true }), 50)
@@ -125,15 +139,21 @@ export default function AIPanel({ browser, visible, request, onClose, onOpenSett
   const tabs = browser.tabs().filter((t) => !t.private)
   const active = browser.tabs().find((t) => t.id === browser.activeId())
   const privateTab = !!active?.private
+  const onVideo = !!active && isYouTubeWatch(active.url)
+  const summarizePage = () => send('Summarize this page in 5 short bullet points, then one line on why it matters.', { mode: 'ask', includePage: true, tabIds: undefined })
+  const summarizeVideo = () => send('Summarize this video: the main points in order, then a one-line takeaway.', { mode: 'ask', includePage: false, tabIds: undefined, video: true })
+  const selectTab = (id) => {
+    if (browser.tabs().some((t) => t.id === id)) browser.selectTab(id)
+  }
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[st.panel, { height: tall || app ? '88%' : '58%' }, !visible && { display: 'none' }]}
+      style={[side ? st.side : [st.panel, { height: tall || app ? '88%' : '58%' }], !visible && { display: 'none' }]}
     >
       {/* header */}
-      <View style={st.head}>
-        <Pressable onPress={() => setTall(!tall)} style={st.grip} accessibilityLabel="Resize panel" />
+      <View style={[st.head, side && { paddingTop: 8 }]}>
+        {!side && <Pressable onPress={() => setTall(!tall)} style={st.grip} accessibilityLabel={tall ? 'Make the panel smaller' : 'Make the panel taller'} hitSlop={10} />}
         {app ? (
           <>
             <PButton small label="< BITTER" onPress={() => setApp(null)} />
@@ -142,7 +162,11 @@ export default function AIPanel({ browser, visible, request, onClose, onOpenSett
           </>
         ) : (
           <>
-            <PText style={{ flex: 1 }}>BITTER</PText>
+            <Mascot state={busy ? 'thinking' : talking ? 'talking' : 'idle'} size={28} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <PText numberOfLines={1}>BITTER</PText>
+              {space && space !== 'personal' && <Text style={st.space} numberOfLines={1}>{(spaceName || space).toUpperCase()}</Text>}
+            </View>
             <PButton small label={view === 'apps' ? 'CHAT' : 'APPS'} onPress={() => setView(view === 'apps' ? 'chat' : 'apps')} />
             <PButton small label="NEW" onPress={() => { session.newChat(); setItems([]) }} />
           </>
@@ -179,13 +203,17 @@ export default function AIPanel({ browser, visible, request, onClose, onOpenSett
               </View>
             )}
             {items.map((item, i) => (
-              <Item key={i} item={item} onAnswer={answer} onLink={openUrl} onOpenSettings={onOpenSettings} />
+              <Item key={i} item={item} onAnswer={answer} onLink={openUrl} onTab={selectTab} onOpenSettings={onOpenSettings} />
             ))}
           </ScrollView>
-          {!!status && <Text style={st.status}>{'> '}{status}</Text>}
+          {!!status && <Text style={st.status} numberOfLines={2}>{'> '}{status}</Text>}
 
           {/* composer */}
-          <View style={st.composer}>
+          <View style={[st.composer, side && { paddingBottom: 10 }]}>
+            <View style={[st.row, { flexWrap: 'wrap' }]}>
+              <Chip label="SUMMARIZE PAGE" onPress={() => !busy && summarizePage()} bright />
+              {onVideo && <Chip label="SUMMARIZE VIDEO" onPress={() => !busy && summarizeVideo()} bright color={C.orange} />}
+            </View>
             <View style={st.row}>
               {picked.length ? (
                 <Chip on label={`${picked.length} TAB${picked.length > 1 ? 'S' : ''} ×`} onPress={() => setPicked([])} />
@@ -232,15 +260,42 @@ export default function AIPanel({ browser, visible, request, onClose, onOpenSett
   )
 }
 
-function Chip({ label, on, onPress }) {
+function Chip({ label, on, onPress, bright, color }) {
   return (
-    <Pressable onPress={onPress} style={[st.chip, on && { borderColor: C.teal }]}>
-      <Text style={[st.chipText, on && { color: C.ink }]} numberOfLines={1}>{label}</Text>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={4}
+      style={({ pressed }) => [st.chip, on && { borderColor: C.teal }, color && { borderColor: color }, pressed && { backgroundColor: C.edge }]}
+    >
+      <Text style={[st.chipText, (on || bright) && { color: C.ink }]} numberOfLines={1}>{label}</Text>
     </Pressable>
   )
 }
 
-function Item({ item, onAnswer, onLink, onOpenSettings }) {
+/** Source chips under an answer: a link opens in a new tab; "TAB 3" switches to that tab. */
+function Sources({ sources, onLink, onTab }) {
+  if (!sources?.length) return null
+  return (
+    <View style={st.sources}>
+      <Text style={st.sourcesLabel}>SOURCES</Text>
+      {sources.map((s, i) =>
+        s.type === 'tab' ? (
+          <Pressable key={i} onPress={() => onTab(s.tabId)} style={[st.src, { borderColor: C.orange }]} accessibilityLabel={`Switch to tab ${s.tabId}`}>
+            <Text style={[st.srcText, { color: C.orange }]}>TAB {s.tabId}</Text>
+          </Pressable>
+        ) : (
+          <Pressable key={i} onPress={() => onLink(s.url)} style={st.src} accessibilityLabel={`Open ${s.title}`}>
+            <Text style={st.srcText} numberOfLines={1}>{(s.host || s.title).slice(0, 26)}</Text>
+          </Pressable>
+        )
+      )}
+    </View>
+  )
+}
+
+function Item({ item, onAnswer, onLink, onTab, onOpenSettings }) {
   switch (item.kind) {
     case 'user':
       return (
@@ -252,7 +307,8 @@ function Item({ item, onAnswer, onLink, onOpenSettings }) {
     case 'ai':
       return (
         <View style={st.ai}>
-          <Markdown text={item.text} onLink={onLink} />
+          <Markdown text={item.text} onLink={onLink} onTab={onTab} />
+          <Sources sources={item.sources} onLink={onLink} onTab={onTab} />
         </View>
       )
     case 'tool':
@@ -260,13 +316,13 @@ function Item({ item, onAnswer, onLink, onOpenSettings }) {
     case 'confirm':
       return (
         <View style={st.confirm}>
-          <PText style={{ color: C.orange, fontSize: 8 }}>{item.answered || (item.read ? 'SHARE THIS PAGE?' : 'ALLOW THIS STEP?')}</PText>
+          <PText style={{ color: C.orange, fontSize: 8 }}>{item.answered || (item.budget ? 'SPENDING CAP REACHED' : item.read ? 'SHARE THIS PAGE?' : 'ALLOW THIS STEP?')}</PText>
           <Text style={{ color: C.ink, marginTop: 6 }}>{item.reason}</Text>
           {!!item.url && <Text style={[st.muted, { fontSize: 11 }]}>{item.url}</Text>}
           {!item.answered && (
             <View style={st.row}>
-              <PButton hot color={C.orange} label="ALLOW" onPress={() => onAnswer(item, true)} />
-              <PButton label="NO" onPress={() => onAnswer(item, false)} />
+              <PButton hot color={C.orange} label={item.budget ? 'CONTINUE' : 'ALLOW'} onPress={() => onAnswer(item, true)} />
+              <PButton label={item.budget ? 'STOP' : 'NO'} onPress={() => onAnswer(item, false)} />
             </View>
           )}
         </View>
@@ -287,26 +343,32 @@ function Item({ item, onAnswer, onLink, onOpenSettings }) {
 
 const st = StyleSheet.create({
   panel: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: C.bg, borderTopWidth: 3, borderTopColor: C.teal },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingTop: 14, paddingBottom: 8, backgroundColor: C.panel, borderBottomWidth: 3, borderBottomColor: C.edge },
-  grip: { position: 'absolute', top: 3, left: '42%', width: '16%', height: 6, backgroundColor: C.edge },
+  side: { flex: 1, backgroundColor: C.bg, borderLeftWidth: 3, borderLeftColor: C.teal },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 52, paddingHorizontal: 10, paddingTop: 14, paddingBottom: 8, backgroundColor: C.panel, borderBottomWidth: 3, borderBottomColor: C.edge },
+  grip: { position: 'absolute', top: 4, left: '42%', width: '16%', height: 5, backgroundColor: C.edge },
+  space: { fontFamily: PIXEL_FONT, fontSize: 6, color: C.orange, marginTop: 3 },
+  sources: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.edge },
+  sourcesLabel: { fontFamily: PIXEL_FONT, fontSize: 6, color: C.muted, marginRight: 2 },
+  src: { borderWidth: 2, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 6, paddingVertical: 5, maxWidth: 170 },
+  srcText: { fontFamily: PIXEL_FONT, fontSize: 7, color: C.teal, includeFontPadding: false },
   list: { padding: 12, gap: 10 },
   apps: { padding: 12, gap: 12 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   muted: { color: C.muted, fontSize: 13 },
   suggest: { borderWidth: 3, borderColor: C.edge, backgroundColor: C.panel, padding: 10 },
-  suggestText: { color: C.ink, fontFamily: PIXEL_FONT, fontSize: 8, lineHeight: 14 },
+  suggestText: { color: C.ink, fontFamily: PIXEL_FONT, fontSize: 8, lineHeight: 14, includeFontPadding: false },
   user: { alignSelf: 'flex-end', maxWidth: '88%', backgroundColor: C.teal, padding: 10 },
   userTag: { fontFamily: PIXEL_FONT, fontSize: 7, color: C.bg, opacity: 0.7, marginBottom: 4 },
   ai: { backgroundColor: C.panel, borderWidth: 3, borderColor: C.edge, padding: 10 },
-  tool: { fontFamily: PIXEL_FONT, fontSize: 7, color: C.muted, borderLeftWidth: 3, paddingLeft: 8, paddingVertical: 2 },
+  tool: { fontFamily: PIXEL_FONT, fontSize: 7, lineHeight: 12, color: C.muted, borderLeftWidth: 3, paddingLeft: 8, paddingVertical: 2 },
   confirm: { borderWidth: 3, borderColor: C.orange, backgroundColor: '#2a1a05', padding: 10 },
   status: { fontFamily: PIXEL_FONT, fontSize: 8, color: C.orange, paddingHorizontal: 12, paddingVertical: 6 },
-  composer: { padding: 10, gap: 8, backgroundColor: C.panel, borderTopWidth: 3, borderTopColor: C.edge, paddingBottom: 24 },
+  composer: { padding: 10, gap: 8, backgroundColor: C.panel, borderTopWidth: 3, borderTopColor: C.edge, paddingBottom: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  chip: { borderWidth: 2, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 6, paddingVertical: 5, maxWidth: '60%' },
-  chipText: { fontFamily: PIXEL_FONT, fontSize: 7, color: C.muted },
+  chip: { borderWidth: 2, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 7, minHeight: 26, justifyContent: 'center', maxWidth: '60%' },
+  chipText: { fontFamily: PIXEL_FONT, fontSize: 7, color: C.muted, includeFontPadding: false, textAlignVertical: 'center' },
   picker: { borderWidth: 2, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 8, maxHeight: 140 },
-  mode: { borderWidth: 3, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 10, paddingVertical: 7 },
-  modeText: { fontFamily: PIXEL_FONT, fontSize: 8, color: C.muted },
-  input: { flex: 1, minHeight: 44, maxHeight: 110, backgroundColor: C.bg, borderWidth: 3, borderColor: C.edge, color: C.ink, padding: 8, fontSize: 15 },
+  mode: { borderWidth: 3, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 12, height: 32, justifyContent: 'center' },
+  modeText: { fontFamily: PIXEL_FONT, fontSize: 8, color: C.muted, includeFontPadding: false, textAlignVertical: 'center' },
+  input: { flex: 1, minHeight: 44, maxHeight: 110, backgroundColor: C.bg, borderWidth: 3, borderColor: C.edge, color: C.ink, paddingHorizontal: 10, paddingVertical: 10, fontSize: 15, textAlignVertical: 'top' },
 })

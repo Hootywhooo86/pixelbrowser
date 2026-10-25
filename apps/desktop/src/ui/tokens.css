@@ -31,10 +31,10 @@ body.private {
 }
 .pxswitch .knob {
   position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
-  background: var(--muted); transition: left .12s steps(3);
+  background: var(--muted); transition: transform .12s steps(3);
 }
 .pxswitch .lbl { position: absolute; right: 6px; top: 8px; }
 .pxswitch.on { border-color: var(--teal-dark); background: var(--teal); color: var(--bg); }
-.pxswitch.on .knob { left: 31px; background: var(--bg); }
+.pxswitch.on .knob { transform: translateX(28px); background: var(--bg); }
 .pxswitch.on .lbl { right: auto; left: 6px; }
 .pxswitch:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }

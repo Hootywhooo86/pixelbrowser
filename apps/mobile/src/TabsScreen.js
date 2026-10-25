@@ -58,12 +58,15 @@ export default function TabsScreen({ visible, tabs, activeId, thumbs = {}, onSel
   const close = useCallback((id) => closeTabRef.current(id), [])
 
   // Private tabs aren't in a Space; normal tabs show for the current Space.
-  const inView = (t) => !!t.private === privateMode && (privateMode || spaceOf(t) === activeSpace)
+  // A tab whose Space was deleted shows in the current Space.
+  const known = new Set(spaces.map((x) => x.id))
+  const spaceFor = (t) => (known.has(spaceOf(t)) ? spaceOf(t) : activeSpace)
+  const inView = (t) => !!t.private === privateMode && (privateMode || spaceFor(t) === activeSpace)
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
     return tabs.filter((t) => inView(t) && (!q || `${t.title} ${t.url}`.toLowerCase().includes(q)))
-  }, [tabs, privateMode, query, activeSpace])
+  }, [tabs, privateMode, query, activeSpace, spaces])
 
   const count = tabs.filter(inView).length
   const accent = privateMode ? C.purple : C.teal
@@ -114,7 +117,7 @@ export default function TabsScreen({ visible, tabs, activeId, thumbs = {}, onSel
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.spaces} contentContainerStyle={st.spacesRow} keyboardShouldPersistTaps="handled">
             {spaces.map((sp) => {
               const on = sp.id === activeSpace
-              const n = tabs.filter((t) => !t.private && spaceOf(t) === sp.id).length
+              const n = tabs.filter((t) => !t.private && spaceFor(t) === sp.id).length
               return (
                 <Pressable
                   key={sp.id}

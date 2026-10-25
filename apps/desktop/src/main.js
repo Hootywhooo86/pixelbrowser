@@ -40,7 +40,8 @@ app.commandLine.appendSwitch('enable-features', 'ReduceUserAgent')
 app.commandLine.appendSwitch('enable-smooth-scrolling')
 // Autoplay (Settings → Media). Chromium reads this once, so changes need a restart.
 const AUTOPLAY = { off: 'user-gesture-required', muted: 'document-user-activation-required', on: 'no-user-gesture-required' }
-app.commandLine.appendSwitch('autoplay-policy', AUTOPLAY[store.settings.data.autoplay] || AUTOPLAY.muted)
+const runningAutoplay = AUTOPLAY[store.settings.data.autoplay] ? store.settings.data.autoplay : 'muted'
+app.commandLine.appendSwitch('autoplay-policy', AUTOPLAY[runningAutoplay])
 
 const WARNING_PAGE = path.join(__dirname, 'ui', 'warning.html')
 // Links on the warning page go to this made-up host; main handles them.
@@ -648,6 +649,244 @@ async function openWindow({ isPrivate = false, url } = {}) {
   return pw
 }
 
+// ---------- themes ----------
+
+const themeKeys = new WeakMap() // webContents -> inserted CSS key
+
+/** Apply the chosen pixel theme to a local UI page (shell, sidebar, settings). */
+async function applyTheme(wc) {
+  if (!wc || wc.isDestroyed()) return
+  const old = themeKeys.get(wc)
+  if (old) await wc.removeInsertedCSS(old).catch(() => {})
+  const key = await wc.insertCSS(themeCss(store.settings.data.theme)).catch(() => null)
+  if (key) themeKeys.set(wc, key)
+}
+
+function applyThemeEverywhere() {
+  for (const pw of windows.values()) {
+    applyTheme(pw.win.webContents)
+    applyTheme(pw.sidebar.view?.webContents)
+    pw.pushState()
+  }
+  if (settingsWin && !settingsWin.isDestroyed()) applyTheme(settingsWin.webContents)
+}
+
+function setTheme({ id, custom, skin } = {}) {
+  const t = store.settings.data.theme
+  if (id && (THEMES[id] || id === 'custom')) t.id = id
+  if (custom) t.custom = { accent: custom.accent, bg: custom.bg, panel: custom.panel, ink: custom.ink }
+  if (skin && ['classic', 'chunky'].includes(skin)) t.skin = skin
+  t.updatedAt = Date.now()
+  store.settings.save()
+  store.putRecord('settings', 'theme', { id: t.id, custom: t.custom, skin: t.skin })
+  applyThemeEverywhere()
+}
+
+function applyRemoteTheme() {
+  const rec = store.records.data.settings.theme
+  const t = store.settings.data.theme
+  if (!rec || rec.deleted || rec.deviceId === store.settings.data.deviceId || rec.updatedAt <= (t.updatedAt || 0)) return
+  Object.assign(t, { id: rec.data.id || t.id, custom: rec.data.custom || t.custom, skin: rec.data.skin || t.skin, updatedAt: rec.updatedAt })
+  store.settings.save()
+  applyThemeEverywhere()
+}
+
+// ---------- Spaces ----------
+
+function saveSpaces() {
+  store.settings.data.spaces.updatedAt = Date.now()
+  store.settings.save()
+  store.putRecord('settings', 'spaces', { list: spaceList() })
+  for (const pw of windows.values()) pw.pushState()
+}
+
+function addSpace(name) {
+  const clean = String(name || '').trim().slice(0, 24)
+  if (!clean) return
+  spaceList().push({ id: crypto.randomUUID().slice(0, 8), name: clean })
+  saveSpaces()
+}
+
+function renameSpace(id, name) {
+  const sp = spaceList().find((x) => x.id === id)
+  const clean = String(name || '').trim().slice(0, 24)
+  if (!sp || !clean) return
+  sp.name = clean
+  saveSpaces()
+}
+
+function deleteSpace(id) {
+  if (spaceList().length <= 1) return
+  store.settings.data.spaces.list = spaceList().filter((x) => x.id !== id)
+  for (const pw of windows.values()) pw.dropSpace(id)
+  saveSpaces()
+}
+
+function applyRemoteSpaces() {
+  const rec = store.records.data.settings.spaces
+  const sp = store.settings.data.spaces
+  if (!rec || rec.deleted || rec.deviceId === store.settings.data.deviceId || rec.updatedAt <= (sp.updatedAt || 0)) return
+  if (!Array.isArray(rec.data?.list) || !rec.data.list.length) return
+  const gone = sp.list.filter((x) => !rec.data.list.some((y) => y.id === x.id)).map((x) => x.id)
+  sp.list = rec.data.list.map((x) => ({ id: String(x.id), name: String(x.name).slice(0, 24) }))
+  sp.updatedAt = rec.updatedAt
+  store.settings.save()
+  for (const id of gone) for (const pw of windows.values()) pw.dropSpace(id)
+  for (const pw of windows.values()) pw.pushState()
+}
+
+function spaceMenu(pw) {
+  Menu.buildFromTemplate([
+    ...spaceList().map((sp) => ({ label: sp.name, type: 'radio', checked: sp.id === pw.space, click: () => pw.switchSpace(sp.id) })),
+    { type: 'separator' },
+    { label: 'Manage Spaces…', click: () => openSettings('spaces') },
+  ]).popup({ window: pw.win })
+}
+
+// ---------- Shields menu (the toolbar shield) ----------
+
+function shieldsMenu(pw) {
+  const active = pw.activeTab()
+  const url = active?.view.webContents.getURL() || ''
+  const site = /^https?:/.test(url) ? shields.hostOf(url).replace(/^www\./, '') : ''
+  const down = shields.siteDown(site)
+  const count = active ? shields.pageCount(active.id) : 0
+  const items = [{ label: `${count} ads and trackers blocked on this page`, enabled: false }]
+  if (site) {
+    items.push({
+      label: down ? `Shields are DOWN for ${site}: turn them back up` : `Shields are UP for ${site}: turn them down`,
+      click: () => {
+        shields.setSiteDown(site, !down)
+        active.view.webContents.reload()
+        pw.pushState()
+      },
+    })
+  }
+  items.push({ type: 'separator' }, { label: 'Shields settings…', click: () => openSettings('shields') })
+  Menu.buildFromTemplate(items).popup({ window: pw.win })
+}
+
+// ---------- panic button ----------
+
+const PANIC_RANGES = { '15m': 15 * 60000, '1h': 60 * 60000, today: null }
+
+/** Close every private window and wipe recent history, cache and tab history. */
+async function runPanic(range = store.settings.data.privacy.panicRange) {
+  const since = range === 'today' ? new Date(new Date().setHours(0, 0, 0, 0)).getTime() : Date.now() - (PANIC_RANGES[range] || PANIC_RANGES['1h'])
+  for (const pw of [...windows.values()]) if (pw.isPrivate) pw.win.destroy()
+  let wiped = 0
+  for (const r of store.liveRecords('history')) {
+    if ((r.data?.visitedAt || r.updatedAt) >= since) {
+      store.putRecord('history', r.id, null, { deleted: true })
+      wiped += 1
+    }
+  }
+  for (const pw of windows.values()) for (const t of pw.tabs) t.view.webContents.navigationHistory.clear()
+  const ses = session.fromPartition(PROFILE_PARTITION)
+  await ses.clearCache().catch(() => {})
+  await ses.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }).catch(() => {})
+  return { wiped }
+}
+
+async function panic(win) {
+  const ranges = ['15m', '1h', 'today']
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning',
+    message: 'Panic: close all private windows and wipe recent activity?',
+    detail: 'Clears history, cache and back/forward history from the time you pick. Open regular tabs stay open.',
+    buttons: ['Last 15 minutes', 'Last hour', 'Today', 'Cancel'],
+    defaultId: 1,
+    cancelId: 3,
+  })
+  if (response > 2) return
+  store.settings.data.privacy.panicRange = ranges[response]
+  store.settings.save()
+  await runPanic(ranges[response])
+}
+
+// ---------- private window lock ----------
+
+function hashPin(pin, salt = crypto.randomBytes(8).toString('hex')) {
+  return `${salt}:${crypto.pbkdf2Sync(String(pin), salt, 50000, 32, 'sha256').toString('hex')}`
+}
+
+function checkPin(pin) {
+  const saved = store.settings.data.privateLock.pin
+  if (!saved) return true
+  const [salt] = saved.split(':')
+  const a = Buffer.from(hashPin(pin, salt))
+  const b = Buffer.from(saved)
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
+
+// ---------- secure DNS (DNS over HTTPS) ----------
+
+const DOH = {
+  cloudflare: 'https://cloudflare-dns.com/dns-query',
+  quad9: 'https://dns.quad9.net/dns-query',
+  nextdns: 'https://dns.nextdns.io/dns-query',
+}
+
+function applyDns() {
+  const p = store.settings.data.privacy
+  const server = p.doh === 'custom' ? p.dohCustom : DOH[p.doh]
+  try {
+    if (server && /^https:\/\//.test(server)) app.configureHostResolver({ secureDnsMode: 'secure', secureDnsServers: [server] })
+    else app.configureHostResolver({ secureDnsMode: 'automatic', secureDnsServers: [] })
+  } catch (err) {
+    console.error('[dns]', err.message)
+  }
+}
+
+// ---------- data dashboard ----------
+
+async function dataReport() {
+  const ses = session.fromPartition(PROFILE_PARTITION)
+  const count = (c) => store.liveRecords(c).length
+  let extensions = 0
+  try {
+    extensions = (ses.extensions?.getAllExtensions?.() || ses.getAllExtensions?.() || []).length
+  } catch {}
+  const cookies = await ses.cookies.get({}).then((c) => c.length).catch(() => 0)
+  const cache = await ses.getCacheSize().catch(() => 0)
+  const sync = !!store.secrets.has('syncCode')
+  const s = store.settings.data
+  return {
+    syncOn: sync,
+    rows: [
+      { id: 'history', label: 'History', value: `${count('history')} pages`, synced: true },
+      { id: 'memory', label: 'Bitter memory', value: `${count('memory')} facts`, synced: true },
+      { id: 'tabs', label: 'Open tabs list', value: `${windows.size} windows`, synced: true },
+      { id: 'settings', label: 'Settings (search engine, AI choice, theme, Spaces, Shields sites)', value: 'saved', synced: true },
+      { id: 'keys', label: 'AI keys', value: 'encrypted with your OS keychain', synced: !!s.sync.syncKeys },
+      { id: 'cookies', label: 'Cookies and site data', value: `${cookies} cookies`, synced: false },
+      { id: 'cache', label: 'Cache', value: `${(cache / 1048576).toFixed(1)} MB`, synced: false },
+      { id: 'extensions', label: 'Extensions', value: `${extensions} installed`, synced: false },
+      { id: 'shields', label: 'Shields stats', value: `${s.shields.totals.ads + s.shields.totals.trackers} blocked`, synced: false },
+      { id: 'xp', label: '128bit XP', value: `${xp.summary().xp} XP`, synced: true },
+      { id: 'downloads', label: 'Downloads', value: 'saved in your Downloads folder', synced: false },
+    ],
+  }
+}
+
+async function deleteData(id) {
+  const ses = session.fromPartition(PROFILE_PARTITION)
+  if (id === 'history') {
+    for (const r of store.liveRecords('history')) store.putRecord('history', r.id, null, { deleted: true })
+  } else if (id === 'memory') {
+    for (const r of store.liveRecords('memory')) store.putRecord('memory', r.id, null, { deleted: true })
+  } else if (id === 'cookies') {
+    await ses.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage', 'websql', 'filesystem'] })
+  } else if (id === 'cache') {
+    await ses.clearCache()
+  } else if (id === 'shields') {
+    shields.resetTotals()
+  } else if (id === 'xp') {
+    xp.reset()
+  }
+  return dataReport()
+}
+
 // ---------- IPC from the pixel shell ----------
 
 function fromSender(event) {
@@ -670,6 +909,25 @@ ipcMain.on('nav:ask', (e, input) => {
   if (pw) askFromAddressBar(pw, String(input || ''))
 })
 ipcMain.on('sidebar:toggle', (e) => fromSender(e)?.toggleSidebar())
+ipcMain.on('shields:menu', (e) => {
+  const pw = fromSender(e)
+  if (pw) shieldsMenu(pw)
+})
+ipcMain.on('space:menu', (e) => {
+  const pw = fromSender(e)
+  if (pw) spaceMenu(pw)
+})
+ipcMain.on('panic', (e) => panic(BrowserWindow.fromWebContents(e.sender)))
+ipcMain.on('tracker:add', (e) => {
+  const pw = fromSender(e)
+  if (pw) addToTracker(pw)
+})
+ipcMain.handle('lock:unlock', (e, pin) => {
+  const pw = fromSender(e)
+  if (!pw || !checkPin(pin)) return false
+  pw.setLocked(false)
+  return true
+})
 ipcMain.on('ai:set-enabled', (_e, on) => setAIEnabled(on))
 
 /** The AI slider. Off stops any running agent, closes AI apps, and blocks every AI call. */
@@ -691,8 +949,11 @@ function setAIEnabled(on) {
 
 let settingsWin = null
 
-function openSettings() {
-  if (settingsWin && !settingsWin.isDestroyed()) return settingsWin.focus()
+function openSettings(section) {
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    if (section) settingsWin.webContents.send('settings:goto', section)
+    return settingsWin.focus()
+  }
   settingsWin = new BrowserWindow({
     width: 580,
     height: 780,
@@ -706,7 +967,8 @@ function openSettings() {
     openUrlInBrowser(url)
     return { action: 'deny' }
   })
-  settingsWin.loadFile(path.join(__dirname, 'ui', 'settings.html'))
+  settingsWin.webContents.on('did-finish-load', () => applyTheme(settingsWin.webContents))
+  settingsWin.loadFile(path.join(__dirname, 'ui', 'settings.html'), section ? { hash: section } : undefined)
 }
 
 function openUrlInBrowser(url) {
@@ -728,6 +990,18 @@ function settingsState() {
     update: updater.status(),
     sync: syncHost.status(),
     remoteTabs: syncHost.remoteTabs(),
+    shields: shields.publicState(),
+    autoplay: s.autoplay,
+    autoplayRunning: runningAutoplay,
+    theme: s.theme,
+    themes: Object.fromEntries(Object.entries(THEMES).map(([id, t]) => [id, t])),
+    sounds: !!s.sounds,
+    privacy: { doh: s.privacy.doh, dohCustom: s.privacy.dohCustom, panicRange: s.privacy.panicRange },
+    privateLock: { enabled: s.privateLock.enabled, hasPin: !!s.privateLock.pin, minutes: s.privateLock.minutes },
+    phishing: { enabled: s.phishing.enabled, lastUpdate: s.phishing.lastUpdate, hosts: phishing.count() },
+    spaces: spaceList(),
+    xp: xp.summary(),
+    familyLinks: s.familyLinks,
   }
 }
 
@@ -780,7 +1054,46 @@ ipcMain.handle('settings:make-default', async () => {
   return defaultBrowserState()
 })
 
-ipcMain.on('settings:open', () => openSettings())
+ipcMain.on('settings:open', (_e, section) => openSettings(section))
+ipcMain.handle('settings:update', async (_e, patch = {}) => {
+  const s = store.settings.data
+  if (patch.shields) shields.setOptions(patch.shields)
+  if (patch.updateLists) await shields.update()
+  if (patch.autoplay && AUTOPLAY[patch.autoplay]) s.autoplay = patch.autoplay
+  if (patch.theme) setTheme(patch.theme)
+  if (typeof patch.sounds === 'boolean') s.sounds = patch.sounds
+  if (patch.privacy) {
+    if (['automatic', 'cloudflare', 'quad9', 'nextdns', 'custom'].includes(patch.privacy.doh)) s.privacy.doh = patch.privacy.doh
+    if (typeof patch.privacy.dohCustom === 'string') s.privacy.dohCustom = patch.privacy.dohCustom.trim().slice(0, 300)
+    applyDns()
+  }
+  if (patch.privateLock) {
+    const l = s.privateLock
+    if (typeof patch.privateLock.pin === 'string') l.pin = patch.privateLock.pin ? hashPin(patch.privateLock.pin) : ''
+    if (typeof patch.privateLock.enabled === 'boolean') l.enabled = patch.privateLock.enabled && !!l.pin
+    if (patch.privateLock.minutes) l.minutes = Math.max(1, Math.min(120, Number(patch.privateLock.minutes) || 5))
+  }
+  if (patch.phishing && typeof patch.phishing.enabled === 'boolean') {
+    s.phishing.enabled = patch.phishing.enabled
+    if (patch.phishing.enabled && !phishing.count()) phishing.refresh().catch(() => {})
+  }
+  if (patch.space) {
+    const { op, id, name } = patch.space
+    if (op === 'add') addSpace(name)
+    if (op === 'rename') renameSpace(id, name)
+    if (op === 'delete') deleteSpace(id)
+  }
+  if (patch.familyLinks) for (const k of ['bitcaller', 'tracker']) if (typeof patch.familyLinks[k] === 'boolean') s.familyLinks[k] = patch.familyLinks[k]
+  store.settings.save()
+  for (const pw of windows.values()) pw.pushState()
+  return settingsState()
+})
+ipcMain.handle('settings:panic', async (_e, range) => {
+  await runPanic(range)
+  return settingsState()
+})
+ipcMain.handle('settings:data', () => dataReport())
+ipcMain.handle('settings:delete-data', (_e, id) => deleteData(id))
 ipcMain.on('settings:open-url', (_e, url) => openUrlInBrowser(url))
 ipcMain.handle('settings:get', () => settingsState())
 ipcMain.handle('settings:set-search', (_e, { engine, customUrl }) => {
@@ -820,7 +1133,7 @@ function fromSidebar(event) {
 }
 
 function sidebarTabs(pw) {
-  return pw.tabs.map((t) => ({ id: t.id, title: t.view.webContents.getTitle() || 'New tab', url: t.view.webContents.getURL(), active: t.id === pw.activeId }))
+  return pw.tabsInSpace().map((t) => ({ id: t.id, title: t.view.webContents.getTitle() || 'New tab', url: t.view.webContents.getURL(), active: t.id === pw.activeId }))
 }
 
 ipcMain.handle('sidebar:get-state', (e) => {
@@ -882,6 +1195,10 @@ syncHost.onChange(({ status, changed }) => {
   if (changed.includes('settings')) {
     applyRemoteSettings()
     applyRemoteSearch()
+    shields.applyRemote()
+    applyRemoteTheme()
+    applyRemoteSpaces()
+    xp.applyRemote()
   }
   broadcastSettings()
   for (const pw of windows.values()) {
@@ -925,6 +1242,23 @@ app.on('open-url', (event, url) => {
   else pendingUrls.push(url)
 })
 
+// XP changes reach the shell (level-up sound) and Settings.
+xp.onChange((_summary, leveledUp) => {
+  if (leveledUp) for (const pw of windows.values()) pw.sound('levelup')
+  broadcastSettingsSoon()
+})
+
+let settingsTimer = null
+function broadcastSettingsSoon() {
+  clearTimeout(settingsTimer)
+  settingsTimer = setTimeout(broadcastSettings, 500)
+}
+
+// Hooks for the end-to-end test only.
+if (process.env.PIXEL_E2E) {
+  globalThis.__bitTest = { runPanic, shields, xp, setTheme, windows, history: store.history, records: store.records }
+}
+
 app.whenReady().then(async () => {
   if (!gotInstanceLock) return
   Menu.setApplicationMenu(
@@ -938,6 +1272,7 @@ app.whenReady().then(async () => {
           { label: 'New Private Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => openWindow({ isPrivate: true }) },
           { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: (_i, w) => { const pw = w && windows.get(w.id); pw?.closeTab(pw.activeId) } },
           { label: 'Bitter Sidebar', accelerator: 'CmdOrCtrl+J', click: (_i, w) => w && windows.get(w.id)?.toggleSidebar() },
+          { label: 'Panic: Close Private Windows and Wipe Recent Activity', accelerator: 'CmdOrCtrl+Shift+X', click: (_i, w) => panic(w) },
           { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
           { type: 'separator' },
           { role: 'quit' },

@@ -106,6 +106,7 @@ export function createCompiler() {
   const block3p = new Set()
   const allow = new Set()
   const pageAllow = new Set() // @@||host^$document: no blocking on that site
+  const trackers = new Set() // blocked hosts that came from tracker lists (for the counts)
   const cosmeticOff = {} // host -> 'generic' | 'all'
   const generic = []
   const genericSeen = new Set()
@@ -116,7 +117,7 @@ export function createCompiler() {
   const scriptletExceptions = {}
   const stats = { lines: 0, network: 0, cosmetic: 0, scriptlets: 0, skipped: 0 }
 
-  function network(line) {
+  function network(line, kind) {
     let exception = false
     if (line.startsWith('@@')) {
       exception = true
@@ -154,8 +155,11 @@ export function createCompiler() {
     if (exception) {
       if (documentLevel) pageAllow.add(host)
       else allow.add(host)
-    } else if (thirdParty) block3p.add(host)
-    else block.add(host)
+    } else {
+      if (thirdParty) block3p.add(host)
+      else block.add(host)
+      if (kind === 'trackers') trackers.add(host)
+    }
   }
 
   function cosmetic(prefix, sep, body) {
@@ -200,7 +204,7 @@ export function createCompiler() {
     return true
   }
 
-  function line(raw, trusted) {
+  function line(raw, trusted, kind) {
     stats.lines++
     const text = raw.trim()
     if (!text || text.startsWith('!') || text.startsWith('[')) return
@@ -211,7 +215,7 @@ export function createCompiler() {
       if (body.startsWith('+js(') && /^\+js\(\s*trusted-/.test(body) && !trusted) return void stats.skipped++
       if (cosmetic(prefix, sep[0], body)) return
     }
-    network(text)
+    network(text, kind)
   }
 
   function result() {
@@ -219,7 +223,7 @@ export function createCompiler() {
     for (const h of block3p) if (block.has(h)) block3p.delete(h)
     return {
       version: 1,
-      network: { block: [...block], block3p: [...block3p], allow: [...allow], pageAllow: [...pageAllow] },
+      network: { block: [...block], block3p: [...block3p], allow: [...allow], pageAllow: [...pageAllow], trackers: [...trackers] },
       cosmetic: { generic, genericExceptions: [...genericExceptions], hosts, hostExceptions, off: cosmeticOff },
       scriptlets,
       scriptletExceptions,
@@ -245,7 +249,7 @@ export function preprocess(text) {
 }
 
 /**
- * Compiles lists: [{ text, trusted }]. Async so the phone can stay responsive;
+ * Compiles lists: [{ text, trusted, kind }] (kind 'trackers' marks tracker lists). Async so the phone can stay responsive;
  * `yieldEvery` lines it awaits `pause()` (defaults to a setTimeout(0)).
  */
 export async function compileLists(lists, { yieldEvery = 4000, pause = () => new Promise((r) => setTimeout(r, 0)) } = {}) {
@@ -253,7 +257,7 @@ export async function compileLists(lists, { yieldEvery = 4000, pause = () => new
   let n = 0
   for (const list of lists) {
     for (const l of preprocess(list.text)) {
-      c.line(l, !!list.trusted)
+      c.line(l, !!list.trusted, list.kind)
       if (++n % yieldEvery === 0) await pause()
     }
   }
@@ -263,6 +267,6 @@ export async function compileLists(lists, { yieldEvery = 4000, pause = () => new
 /** Same as compileLists, synchronously (tests, desktop, build scripts). */
 export function compileListsSync(lists) {
   const c = createCompiler()
-  for (const list of lists) for (const l of preprocess(list.text)) c.line(l, !!list.trusted)
+  for (const list of lists) for (const l of preprocess(list.text)) c.line(l, !!list.trusted, list.kind)
   return c.result()
 }
