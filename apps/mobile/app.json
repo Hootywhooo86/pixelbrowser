@@ -3,13 +3,14 @@
     "name": "Bit Browser",
     "slug": "pixelbrowser",
     "version": "0.2.1",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.pixelbrowser.app",
-      "buildNumber": "201"
+      "buildNumber": "201",
+      "requireFullScreen": false
     },
     "android": {
       "adaptiveIcon": {
@@ -89,7 +90,16 @@
         {
           "faceIDPermission": "Bit Browser uses Face ID to unlock your saved passwords."
         }
-      ]
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
+      "expo-asset"
     ],
     "scheme": "pixelbrowser",
     "backgroundColor": "#0b0b16"

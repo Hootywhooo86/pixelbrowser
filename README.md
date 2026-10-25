@@ -95,6 +95,17 @@ feed so 128bitlife can issue browsing quests and XP. It also reads the
 feed — quest packs from 128bitlife ("finish 3 articles today") land as
 tab quests. Don't silo the data.
 
+### Family app links (Bit Browser 0.3)
+
+Bit Browser opens the other family apps with these links. The apps should register the schemes so the links land in them:
+
+| Link | Opens | Sent when |
+|---|---|---|
+| `bitcaller://call?number=<digits, may start with +>` | BitCaller, ready to call | You tap a phone number on a web page. If BitCaller isn't installed, the phone's dialer opens instead. |
+| `128bittracker://add?title=<title>&url=<page url>&source=bitbrowser` | 128bittracker, adding that show or movie | You pick Menu → Add to 128bittracker on an IMDb or TMDB title page |
+
+You can switch both off in Settings → 128bit family.
+
 ## Monetization (family default)
 
 128bit Pro bundle covers Bit Browser. Core browsing — tabs, privacy,

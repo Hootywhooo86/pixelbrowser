@@ -7,6 +7,8 @@
     "@pixelbrowser/sync-core": "*",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.30",
+    "expo-asset": "~57.0.20",
+    "expo-audio": "~57.0.5",
     "expo-camera": "~57.0.6",
     "expo-constants": "~57.0.22",
     "expo-crypto": "~57.0.4",

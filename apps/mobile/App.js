@@ -3,7 +3,7 @@
 // the same Comet-style AI and encrypted sync as the desktop app.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { View, TextInput, Text, Pressable, StyleSheet, Platform, Linking, Alert, ToastAndroid, Modal } from 'react-native'
+import { View, TextInput, Text, Pressable, StyleSheet, Platform, Linking, Alert, ToastAndroid, Modal, ScrollView, AppState, Dimensions, useWindowDimensions } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import { useFonts } from 'expo-font'
 import { WebView } from 'react-native-webview'
@@ -13,12 +13,12 @@ import * as NavigationBar from 'expo-navigation-bar'
 import { captureRef } from 'react-native-view-shot'
 import * as Crypto from 'expo-crypto'
 import { looksLikeQuestion, isAllowedUrl, searchUrlFor, searchHome } from '@pixelbrowser/ai-core'
-import { loadStore, getState, putRecord, addHistory, useStore } from './src/store'
+import { loadStore, getState, putRecord, addHistory, useStore, update, liveRecords } from './src/store'
 import { setAIEnabled, session } from './src/ai'
 import { checkForAppUpdate } from './src/updates'
 import { startSync } from './src/sync'
 import { startDownload, looksLikeDownload, guessFilename } from './src/downloads'
-import { CAPTURE_LOGIN_JS, autofillJS, findLogins, saveLogin, hasLogin, startPasswordSync } from './src/passwords'
+import { CAPTURE_LOGIN_JS, autofillJS, findLogins, saveLogin, hasLogin, startPasswordSync, unlock } from './src/passwords'
 import { emit } from './src/events'
 import AIPanel from './src/AIPanel'
 import SettingsScreen from './src/SettingsScreen'
@@ -42,7 +42,7 @@ function normalizeInput(input, aiEnabled = true) {
   return searchFor(text, aiEnabled)
 }
 
-const newTab = (url = homeUrl(), opts = {}) => ({ id: nextTabId++, url, source: url, title: 'New tab', loading: true, canGoBack: false, canGoForward: false, private: !!opts.private })
+const newTab = (url = homeUrl(), opts = {}) => ({ id: nextTabId++, url, source: url, title: 'New tab', loading: true, canGoBack: false, canGoForward: false, private: !!opts.private, space: opts.space || getState().activeSpace || 'personal' })
 
 const hostOf = (url) => {
   try {
@@ -50,6 +50,14 @@ const hostOf = (url) => {
   } catch {
     return ''
   }
+}
+
+// Phones stay upright; tablets and Chromebooks turn freely.
+const lockForDevice = () => {
+  const { width, height } = Dimensions.get('screen')
+  return Math.min(width, height) < 600
+    ? ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
+    : ScreenOrientation.unlockAsync()
 }
 
 const toast = (text) => (Platform.OS === 'android' ? ToastAndroid.show(text, ToastAndroid.SHORT) : Alert.alert(text))
@@ -69,7 +77,23 @@ const FULLSCREEN_JS = `(function(){
   ['playing','pause','ended','emptied'].forEach(function(t){ document.addEventListener(t, vid, true) });
 })();`
 
-const INJECTED_JS = `${FULLSCREEN_JS}\n${CAPTURE_LOGIN_JS}\ntrue;`
+// Autoplay control (Settings → Media): 'off' pauses videos that start on
+// their own, 'muted' lets them play without sound, 'on' leaves them alone.
+const autoplayJS = (mode) => `(function(){
+  if (window.__bitAutoplay) return; window.__bitAutoplay = true;
+  var mode = ${JSON.stringify(mode)}, lastTouch = 0;
+  ['touchstart','pointerdown','keydown','click'].forEach(function(t){ document.addEventListener(t, function(){ lastTouch = Date.now() }, true) });
+  document.addEventListener('play', function(e){
+    var v = e.target; if (!v || v.tagName !== 'VIDEO' && v.tagName !== 'AUDIO') return;
+    if (Date.now() - lastTouch < 1500) return;
+    if (mode === 'off') { try { v.pause() } catch(_){} }
+    else if (mode === 'muted' && !v.muted) { v.muted = true }
+  }, true);
+})();`
+
+const injectedJS = (autoplay) => `${FULLSCREEN_JS}\n${autoplay === 'on' ? '' : autoplayJS(autoplay)}\n${CAPTURE_LOGIN_JS}\ntrue;`
+
+const TRACKER_PAGE = /^https?:\/\/(www\.|m\.)?(imdb\.com\/title\/tt\d+|themoviedb\.org\/(movie|tv)\/\d+)/i
 
 export default function App() {
   const [ready, setReady] = useState(false)
@@ -94,7 +118,13 @@ function Browser() {
   useStore((s) => s.deviceName)
   const aiEnabled = useStore((s) => s.aiEnabled)
   const textZoom = useStore((s) => s.textZoom || 100)
+  const autoplay = useStore((s) => s.autoplay || 'muted')
+  const activeSpace = useStore((s) => s.activeSpace || 'personal')
+  const familyLinks = useStore((s) => s.familyLinks || {})
   const insets = useSafeAreaInsets()
+  const { width } = useWindowDimensions()
+  const wide = width >= 700 // tablets and Chromebooks
+  const [locked, setLocked] = useState(false) // private tabs hidden until fingerprint/face
   const [tabs, setTabs] = useState(() => [newTab()])
   const [activeId, setActiveId] = useState(tabs[0].id)
   const [address, setAddress] = useState('')
@@ -115,6 +145,7 @@ function Browser() {
 
   useEffect(() => {
     if (getState().checkUpdates) checkForAppUpdate().then(setAppUpdate)
+    lockForDevice().catch(() => {})
   }, [])
 
   const tabsRef = useRef(tabs)
@@ -147,7 +178,11 @@ function Browser() {
       return
     }
     setTabs(list)
-    if (activeRef.current === id) setActiveId(list[list.length - 1].id)
+    if (activeRef.current === id) {
+      const space = getState().activeSpace || 'personal'
+      const same = list.filter((t) => (t.space || 'personal') === space)
+      setActiveId((same.length ? same : list)[(same.length ? same : list).length - 1].id)
+    }
   }
 
   // Closes every tab of one kind (normal or private) from the tab grid.
@@ -160,6 +195,51 @@ function Browser() {
   }
 
   const navigate = (id, url) => patchTab(id, { source: url, url, loading: true })
+
+  // Spaces: each Space has its own tabs (and Bitter memory). Switching shows
+  // that Space's tabs, opening a fresh one if it has none.
+  const spaceTabs = tabs.filter((t) => (t.space || 'personal') === activeSpace)
+  const switchSpace = (id) => {
+    update((s) => (s.activeSpace = id))
+    const mine = tabsRef.current.filter((t) => (t.space || 'personal') === id)
+    if (mine.length) setActiveId(mine[mine.length - 1].id)
+    else openTab(homeUrl(), { space: id })
+  }
+
+  // Panic button: close every private tab and wipe recent history.
+  const panic = () => {
+    const wipe = (minutes) => {
+      const cutoff = minutes ? Date.now() - minutes * 60000 : new Date().setHours(0, 0, 0, 0)
+      for (const r of liveRecords('history')) if ((r.data?.visitedAt || r.updatedAt) >= cutoff) putRecord('history', r.id, null, { deleted: true })
+      closeAllTabs({ private: true })
+      setThumbs({})
+      toast('Private tabs closed and recent history wiped')
+    }
+    Alert.alert('Panic button', 'Close all private tabs and delete history from the last…', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: '15 minutes', onPress: () => wipe(15) },
+      { text: '1 hour', onPress: () => wipe(60) },
+      { text: 'Today', onPress: () => wipe(0) },
+    ])
+  }
+
+  // Private tab lock: private tabs need your fingerprint/face to show again
+  // after you leave the app or come back to them from a normal tab.
+  const unlockPrivate = async () => {
+    if (await unlock('Unlock your private tabs').catch(() => false)) setLocked(false)
+  }
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st !== 'active' && getState().privateLock && tabsRef.current.some((t) => t.private)) setLocked(true)
+    })
+    return () => sub.remove()
+  }, [])
+  const prevPrivate = useRef(false)
+  useEffect(() => {
+    const isPriv = !!tabsRef.current.find((t) => t.id === activeId)?.private
+    if (isPriv && !prevPrivate.current && getState().privateLock) setLocked(true)
+    prevPrivate.current = isPriv
+  }, [activeId])
 
   // Links opened from other apps (Bit Browser as the default browser) open as new tabs.
   useEffect(() => {
@@ -225,7 +305,8 @@ function Browser() {
     setFullscreen(on)
     try {
       if (getState().rotateFullscreen !== false) {
-        await ScreenOrientation.lockAsync(on ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP)
+        if (on) await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE)
+        else await lockForDevice()
       }
       if (Platform.OS === 'android') await NavigationBar.setVisibilityAsync(on ? 'hidden' : 'visible')
     } catch {}
@@ -275,7 +356,7 @@ function Browser() {
       const s = getState()
       putRecord('tabs', s.deviceId, {
         deviceName: s.deviceName,
-        tabs: tabs.filter((x) => !x.private && /^https?:/.test(x.url)).map((x) => ({ title: x.title, url: x.url })),
+        tabs: tabs.filter((x) => !x.private && /^https?:/.test(x.url)).map((x) => ({ title: x.title, url: x.url, space: x.space || 'personal' })),
       })
     }, 3000)
     return () => clearTimeout(t)
@@ -320,6 +401,30 @@ function Browser() {
     setAiRequest({ mode: 'agent', nonce: Date.now() })
   }
 
+  const explain = (text) => {
+    const clean = String(text || '').trim().slice(0, 2000)
+    if (!clean) return
+    if (!aiEnabled) return Alert.alert('AI is off', 'Turn on the AI slider to ask Bitter.')
+    if (active.private) return Alert.alert('Private tab', 'Bitter is off in private tabs.')
+    setAiOpen(true)
+    setAiRequest({ input: `Explain this simply: "${clean}"`, mode: 'ask', includePage: true, nonce: Date.now() })
+  }
+
+  // 128bit family: send a show or movie to 128bittracker.
+  const addToTracker = () => {
+    setMenuOpen(false)
+    const q = new URLSearchParams({ title: active.title || '', url: active.url, source: 'bitbrowser' }).toString()
+    Linking.openURL(`128bittracker://add?${q}`).catch(() => Alert.alert('128bittracker', "128bittracker isn't installed on this phone yet."))
+  }
+
+  // Phone numbers open in BitCaller when it's installed, else the phone app.
+  const openTel = (url) => {
+    const number = decodeURIComponent(url.replace(/^tel:/i, '')).replace(/[^\d+]/g, '')
+    const fallback = () => Linking.openURL(url).catch(() => {})
+    if (getState().familyLinks?.bitcaller === false) return fallback()
+    Linking.openURL(`bitcaller://call?number=${encodeURIComponent(number)}`).catch(fallback)
+  }
+
   const stopAgent = () => {
     session.stop()
     setAgentActive(false)
@@ -336,9 +441,9 @@ function Browser() {
       {/* address bar (slides away while you scroll down) */}
       {!fullscreen && !barsHidden && (
         <View style={[st.top, { borderBottomColor: accent }]}>
-          <View style={[st.logo, { backgroundColor: accent }]}>
+          <Pressable onLongPress={panic} delayLongPress={600} style={[st.logo, { backgroundColor: accent }]} accessibilityLabel="Bit Browser. Long-press for the panic button">
             <Text style={st.logoText}>B</Text>
-          </View>
+          </Pressable>
           <TextInput
             style={st.address}
             value={editing ? address : active.url}
@@ -372,6 +477,21 @@ function Browser() {
           />
         </View>
       )}
+      {!fullscreen && !barsHidden && wide && (
+        <ScrollView horizontal style={st.strip} contentContainerStyle={st.stripRow} showsHorizontalScrollIndicator={false}>
+          {spaceTabs.map((t) => (
+            <Pressable key={t.id} onPress={() => setActiveId(t.id)} style={[st.stripTab, t.id === active.id && { borderColor: t.private ? C.purple : C.teal, backgroundColor: C.bg }]}>
+              <Text style={st.stripText} numberOfLines={1}>{t.private ? 'PRIVATE · ' : ''}{t.title || 'New tab'}</Text>
+              <Pressable onPress={() => closeTab(t.id)} hitSlop={8} accessibilityLabel={`Close ${t.title || 'tab'}`}>
+                <Text style={st.stripX}>X</Text>
+              </Pressable>
+            </Pressable>
+          ))}
+          <Pressable onPress={() => openTab(homeUrl())} style={st.stripNew} accessibilityLabel="New tab">
+            <Text style={st.stripX}>+</Text>
+          </Pressable>
+        </ScrollView>
+      )}
       {!fullscreen && barsHidden && (
         <Pressable onPress={() => showBars(true)} style={[st.mini, { borderBottomColor: accent }]} accessibilityLabel="Show the address bar and buttons">
           <Text style={st.miniText} numberOfLines={1}>{hostOf(active.url) || 'Bit Browser'}</Text>
@@ -402,6 +522,7 @@ function Browser() {
       )}
 
       {/* pages */}
+      <View style={[{ flex: 1 }, wide && { flexDirection: 'row' }]}>
       <View style={[{ flex: 1 }, agentActive && !fullscreen && st.agentFrame]}>
         <View ref={pageArea} collapsable={false} style={{ flex: 1 }}>
           {tabs.map((t) => (
@@ -421,9 +542,11 @@ function Browser() {
               allowsBackForwardNavigationGestures
               allowsFullscreenVideo
               allowsInlineMediaPlayback
-              mediaPlaybackRequiresUserAction
+              mediaPlaybackRequiresUserAction={autoplay === 'off'}
               textZoom={textZoom}
-              injectedJavaScript={INJECTED_JS}
+              injectedJavaScript={injectedJS(autoplay)}
+              menuItems={t.private || !aiEnabled ? [] : [{ label: 'Explain with Bitter', key: 'explain' }]}
+              onCustomMenuSelection={(e) => e.nativeEvent.key === 'explain' && explain(e.nativeEvent.selectedText)}
               onMessage={onMessage(t)}
               onScroll={(e) => {
                 if (t.id !== activeRef.current) return
@@ -438,6 +561,10 @@ function Browser() {
                 else if (scrollRun.current < -70) showBars(true)
               }}
               onShouldStartLoadWithRequest={(req) => {
+                if (/^tel:/i.test(req.url)) {
+                  openTel(req.url)
+                  return false
+                }
                 if (looksLikeDownload(req.url)) {
                   download(req.url)
                   return false
@@ -462,6 +589,17 @@ function Browser() {
             />
           ))}
         </View>
+        {locked && active.private && !fullscreen && (
+          <View style={st.lock}>
+            <Text style={st.agentTitle}>PRIVATE TABS LOCKED</Text>
+            <PButton hot color={C.purple} label="UNLOCK" onPress={unlockPrivate} />
+            <PButton small label="GO TO A NORMAL TAB" onPress={() => {
+              const normal = tabsRef.current.filter((t) => !t.private)
+              if (normal.length) setActiveId(normal[normal.length - 1].id)
+              else openTab(homeUrl())
+            }} />
+          </View>
+        )}
         {agentActive && !fullscreen && (
           <View style={st.agentBar}>
             <View style={{ flex: 1 }}>
@@ -475,7 +613,7 @@ function Browser() {
             </Pressable>
           </View>
         )}
-        {aiEnabled && (
+        {aiEnabled && !wide && (
           <AIPanel
             browser={browser}
             visible={aiOpen && !fullscreen}
@@ -491,6 +629,25 @@ function Browser() {
           />
         )}
       </View>
+      {aiEnabled && wide && aiOpen && !fullscreen && (
+        <View style={st.side}>
+          <AIPanel
+            side
+            browser={browser}
+            visible
+            request={aiRequest}
+            onClose={() => setAiOpen(false)}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onAgent={(on) => {
+              setAgentActive(on)
+              if (on) setAgentSteps([])
+            }}
+            onStep={(s) => setAgentSteps((x) => [...x.slice(-20), s])}
+            openUrl={openUrl}
+          />
+        </View>
+      )}
+      </View>
 
       {/* bottom bar: icon + label, long-press for a hint */}
       {!fullscreen && !barsHidden && (
@@ -503,7 +660,7 @@ function Browser() {
             onPress={() => (active.loading ? views.current[active.id]?.stopLoading() : views.current[active.id]?.reload())}
             onLongPress={hint('Reload this page, or stop it loading')}
           />
-          <BarButton icon={String(tabs.length)} boxed label="Tabs" onPress={openTabs} onLongPress={hint('Tabs: see, search and close your tabs')} />
+          <BarButton icon={String(spaceTabs.length)} boxed label="Tabs" onPress={openTabs} onLongPress={hint('Tabs: see, search and close your tabs')} />
           {aiEnabled && <BarButton icon="B" label="Bitter" hot={aiOpen} onPress={() => setAiOpen(!aiOpen)} onLongPress={hint('Bitter: ask about this page or let it take over')} />}
           <BarButton icon="..." label="Menu" onPress={() => setMenuOpen(true)} onLongPress={hint('Menu: new tab, downloads, settings')} />
         </View>
@@ -515,8 +672,10 @@ function Browser() {
             <MenuItem label="+ NEW TAB" onPress={() => (setMenuOpen(false), openTab(homeUrl()))} />
             <MenuItem label="+ NEW PRIVATE TAB" onPress={() => (setMenuOpen(false), openTab(homeUrl(), { private: true }))} />
             {aiEnabled && <MenuItem label="LET BITTER TAKE OVER" color={C.pink} onPress={takeOver} />}
+            {familyLinks.tracker !== false && TRACKER_PAGE.test(active.url) && <MenuItem label="ADD TO 128BITTRACKER" color={C.orange} onPress={addToTracker} />}
             <MenuItem label="DOWNLOADS" onPress={() => (setMenuOpen(false), setDownloadsOpen(true))} />
             <MenuItem label="SETTINGS" onPress={() => (setMenuOpen(false), setSettingsOpen(true))} />
+            <MenuItem label="PANIC: WIPE PRIVATE" color={C.pink} onPress={() => (setMenuOpen(false), panic())} />
           </View>
         </Pressable>
       </Modal>
@@ -542,6 +701,7 @@ function Browser() {
         }}
         onCloseTab={closeTab}
         onCloseAll={closeAllTabs}
+        onSwitchSpace={switchSpace}
         onNewTab={(opts) => {
           openTab(homeUrl(), opts)
           setTabsOpen(false)
@@ -616,5 +776,13 @@ const st = StyleSheet.create({
   menuItem: { paddingHorizontal: 14, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: C.edge },
   menuText: { fontFamily: PIXEL_FONT, fontSize: 9, color: C.ink },
   sheet: { flex: 1, backgroundColor: C.bg },
+  strip: { flexGrow: 0, backgroundColor: C.panel, borderBottomWidth: 2, borderBottomColor: C.edge },
+  stripRow: { alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6 },
+  stripTab: { flexDirection: 'row', alignItems: 'center', gap: 8, width: 200, height: 34, paddingHorizontal: 10, borderWidth: 2, borderColor: C.edge },
+  stripText: { flex: 1, color: C.ink, fontSize: 13, includeFontPadding: false },
+  stripX: { fontFamily: PIXEL_FONT, fontSize: 9, color: C.muted, includeFontPadding: false },
+  stripNew: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.edge },
+  side: { width: 380, borderLeftWidth: 3, borderLeftColor: C.edge, backgroundColor: C.panel },
+  lock: { ...StyleSheet.absoluteFillObject, backgroundColor: C.purpleDark, alignItems: 'center', justifyContent: 'center', gap: 16 },
   sheetHead: { flexDirection: 'row', alignItems: 'center', padding: 14, backgroundColor: C.panel, borderBottomWidth: 3, borderBottomColor: C.edge },
 })
