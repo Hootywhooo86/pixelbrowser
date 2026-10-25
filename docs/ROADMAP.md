@@ -10,7 +10,7 @@ on desktop and phone, with everything synced between your devices.
 | Engine | Chromium via Electron | WKWebView / Android WebView via Expo |
 | Pixel shell, tabs, private tabs | ✅ | ✅ |
 | Chrome extensions | ✅ Chrome Web Store | ❌ (see below) |
-| Ad and tracker blocking | ✅ Ghostery filter lists | ❌ not yet |
+| Ad and tracker blocking (Bit Shields) | ✅ uBlock/EasyList lists, YouTube | ✅ native blocking on Android, page-level on iPhone |
 | AI sidebar/panel: ask about the page | ✅ | ✅ |
 | Ask across several tabs | ✅ | ✅ |
 | AI answers from the address bar | ✅ | ✅ |
@@ -79,7 +79,7 @@ blobs it can't read.
 
 ### Privacy and security
 - [ ] HTTPS-only mode, fingerprinting protection, and blocking third-party cookies by default on desktop
-- [ ] Ad and tracker blocking on the phone (iOS content rules, Android request filtering)
+- [x] Ad and tracker blocking on the phone (Android request filtering; iPhone page-level. Full iOS content rules still to do)
 - [ ] A per-site "never let AI read this site" list
 - [ ] An outside security review of the agent and the sync code before launch
 - [ ] Opt-in crash reports
@@ -96,8 +96,8 @@ blobs it can't read.
 - [ ] Saved agent tasks ("every morning, check these 3 sites")
 
 ### 128bit family
-- [ ] XP, streaks and quests events (see the README)
-- [ ] Pixel themes and tab-bar skins (cosmetic in-app purchases)
+- [x] XP, levels, streaks and badges on device (quests need a 128bit server)
+- [x] Pixel themes and tab-bar skins (paid skins later)
 
 ## Things to know
 

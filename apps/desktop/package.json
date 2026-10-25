@@ -1,6 +1,6 @@
 {
   "name": "@pixelbrowser/desktop",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "Bit Browser desktop: Chromium engine (via Electron), pixel shell, Chrome extensions, built-in ad/tracker blocking.",
   "main": "src/main.js",
