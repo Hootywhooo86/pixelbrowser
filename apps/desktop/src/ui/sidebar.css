@@ -45,7 +45,11 @@ label.check input { width: auto; margin: 0; }
   padding: 0 8px; background: var(--panel); border-bottom: 3px solid var(--edge);
 }
 .brand { font-size: 9px; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; }
-.mark { width: 18px; height: 18px; display: grid; place-items: center; background: var(--teal); color: var(--bg); font-size: 9px; }
+.brand { line-height: 1; min-width: 0; }
+.mark { width: 18px; height: 18px; display: grid; place-items: center; background: var(--teal); color: var(--bg); font-size: 9px; flex: none; }
+.mascot { width: 28px; height: 28px; image-rendering: pixelated; flex: none; }
+.brand .space { color: var(--orange); font-size: 7px; overflow: hidden; text-overflow: ellipsis; }
+#head .px { flex: none; }
 
 /* ---------- views ---------- */
 .view { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; }
@@ -95,6 +99,19 @@ label.check input { width: auto; margin: 0; }
 #composer textarea { resize: none; flex: 1; background: var(--bg); }
 #composer #send { height: auto; }
 #context-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.quick { margin: 0 0 6px; flex-wrap: wrap; gap: 5px; }
+.quick .chip { color: var(--ink); line-height: 1; }
+.quick .chip:hover, .src:hover { border-color: var(--teal); }
+#q-video { border-color: var(--orange); }
+
+/* source chips under answers */
+.sources { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--edge); }
+.sources .muted { font: 6px 'Press Start 2P', monospace; margin-right: 2px; }
+.src {
+  font: 7px/1 'Press Start 2P', monospace; padding: 4px 5px; background: var(--bg); color: var(--teal);
+  border: 2px solid var(--edge); cursor: pointer; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+a.tabref { color: var(--orange); }
 .chip {
   font-size: 7px; padding: 5px 6px; background: var(--bg); color: var(--muted);
   border: 2px solid var(--edge); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -133,3 +150,15 @@ label.check input { width: auto; margin: 0; }
 #ai-switch.on .knob { left: 27px; }
 #ai-switch .lbl { top: 6px; }
 #off-view p { margin-top: 10px; }
+
+/* ---------- agent log ---------- */
+#log-list { list-style: none; margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+#log-list li { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: baseline; padding: 6px 8px; background: var(--panel); border-left: 3px solid var(--teal); }
+#log-list li.confirm-log { border-left-color: var(--orange); }
+#log-list .when { font-size: 11px; color: var(--muted); white-space: nowrap; }
+#log-list .what { font-size: 13px; overflow-wrap: anywhere; }
+#log-list .site { grid-column: 2; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- spending caps ---------- */
+.caps label { flex: 1; }
+.caps input { width: 100%; }

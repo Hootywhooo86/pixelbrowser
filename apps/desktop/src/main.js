@@ -8,7 +8,8 @@
 // sync (sync-host.js) plug in here too.
 
 const path = require('node:path')
-const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, shell } = require('electron')
+const crypto = require('node:crypto')
+const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, shell, dialog } = require('electron')
 
 // The app was called Pixelbrowser before it became Bit Browser. Keep the
 // old profile folder so settings, keys, extensions and sync survive the rename.
@@ -17,12 +18,15 @@ app.setPath('userData', path.join(app.getPath('appData'), 'Pixelbrowser'))
 
 const { ElectronChromeExtensions } = require('electron-chrome-extensions')
 const { installChromeWebStore, updateExtensions } = require('electron-chrome-web-store')
-const { ElectronBlocker } = require('@ghostery/adblocker-electron')
 const { looksLikeQuestion, isAllowedUrl, SEARCH_ENGINES, searchUrlFor, searchHome } = require('@pixelbrowser/ai-core')
 const store = require('./store')
 const syncHost = require('./sync-host')
 const updater = require('./updater')
 const { AISession, publicState, saveSettings, applyRemoteSettings, syncedSettingsChanged } = require('./ai-host')
+const shields = require('./shields')
+const phishing = require('./phishing')
+const xp = require('./xp')
+const { THEMES, themeCss } = require('./ui/themes')
 
 const SHELL_HEIGHT = 96 // px: tab strip + toolbar
 const PROFILE_PARTITION = 'persist:pixel'
@@ -32,9 +36,19 @@ const SIDEBAR_HEADER = 44 // px of the sidebar UI kept above an AI web app
 // Privacy defaults, applied before any window opens.
 app.commandLine.appendSwitch('disable-features', 'InterestFeedContentSuggestions,PrivacySandboxAdsAPIs')
 app.commandLine.appendSwitch('enable-features', 'ReduceUserAgent')
+// Autoplay (Settings → Media). Chromium reads this once, so changes need a restart.
+const AUTOPLAY = { off: 'user-gesture-required', muted: 'document-user-activation-required', on: 'no-user-gesture-required' }
+app.commandLine.appendSwitch('autoplay-policy', AUTOPLAY[store.settings.data.autoplay] || AUTOPLAY.muted)
+
+const WARNING_PAGE = path.join(__dirname, 'ui', 'warning.html')
+// Links on the warning page go to this made-up host; main handles them.
+const WARNING_ACTION = 'https://warning.bitbrowser.invalid/'
+const STALE_TAB_MS = 3 * 24 * 60 * 60 * 1000
 
 const windows = new Map() // BrowserWindow.id -> PixelWindow
-let blocker = null
+
+const spaceList = () => store.settings.data.spaces.list
+const defaultSpace = () => spaceList()[0]?.id || 'personal'
 
 function homeUrl() {
   return searchHome(store.settings.data.searchEngine, store.settings.data.customSearchUrl)

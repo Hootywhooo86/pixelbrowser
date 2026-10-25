@@ -4,3 +4,6 @@ export { runAssistant, toolsFor, systemPrompt, historySize } from './assistant.j
 export { EXTRACT_PAGE, SNAPSHOT_PAGE, actScript, locateScript, focusScript } from './page-scripts.js'
 export { isSensitivePage, riskyActionReason, isAllowedUrl } from './safety.js'
 export { webSearch, searchUrl, parseDuckDuckGo, looksLikeQuestion, SEARCH_ENGINES, searchUrlFor, searchHome } from './search.js'
+export { PRICES, priceFor, estimateCost, tokensFromChars, capStatus, addSpend, capMessage, dayKey } from './pricing.js'
+export { parseCitations } from './citations.js'
+export { isYouTubeWatch, parseJson3, pickTrack, VIDEO_TRANSCRIPT, transcriptBlock } from './video.js'

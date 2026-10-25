@@ -24,6 +24,7 @@ function inline(s) {
     .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>')
     .replace(/_\(([^)]+)\)_/g, '<i>($1)</i>')
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_m, t, u) => `<a href="#" data-url="${u}">${t}</a>`)
+    .replace(/\[tab\s*#?(\d+)\]/gi, (_m, n) => `<a href="#" class="tabref" data-tab="${n}">tab ${n}</a>`)
     .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (_m, pre, u) => `${pre}<a href="#" data-url="${u}">${u.length > 50 ? u.slice(0, 50) + '…' : u}</a>`)
 }
 
@@ -60,20 +61,26 @@ function markdown(src) {
 }
 
 document.addEventListener('click', (e) => {
-  const a = e.target.closest('a[data-url]')
+  const a = e.target.closest('a[data-url], [data-url].src')
   if (a) {
     e.preventDefault()
     ai.openUrl(a.dataset.url)
+  }
+  const t = e.target.closest('[data-tab]')
+  if (t) {
+    e.preventDefault()
+    ai.selectTab(Number(t.dataset.tab))
   }
 })
 
 // ---------- views ----------
 
 function show(view) {
-  for (const v of ['chat', 'apps', 'settings']) $(`${v}-view`).hidden = v !== view
+  for (const v of ['chat', 'apps', 'settings', 'log']) $(`${v}-view`).hidden = v !== view
   $('btn-settings').classList.toggle('hot', view === 'settings')
   $('btn-apps').classList.toggle('hot', view === 'apps')
   if (view === 'settings') renderSettings()
+  if (view === 'log') renderLog()
 }
 
 $('btn-settings').onclick = () => show($('settings-view').hidden ? 'settings' : 'chat')
@@ -150,7 +157,8 @@ ai.onEvent((e) => {
       $('status').textContent = e.text
       break
     case 'text':
-      currentAI = addMsg('ai', markdown(e.text))
+      currentAI = addMsg('ai', markdown(e.text) + sourcesHtml(e.sources))
+      talk()
       break
     case 'tool': {
       $('empty').hidden = true
@@ -184,6 +192,7 @@ ai.onEvent((e) => {
       break
     case 'busy':
       busy = e.busy
+      setMascot(busy ? 'think' : 'idle')
       $('send').textContent = busy ? 'STOP' : 'SEND'
       $('send').classList.toggle('hot', !busy)
       if (!busy) $('status').hidden = true
@@ -212,12 +221,114 @@ function showConfirm(e) {
   $('messages').scrollTop = $('messages').scrollHeight
 }
 
-function send(text) {
+// Source chips under an answer: links open in a new tab, [tab N] switches tabs.
+function sourcesHtml(sources) {
+  if (!sources?.length) return ''
+  const chips = sources.map((s) =>
+    s.type === 'tab'
+      ? `<button class="src" data-tab="${s.tabId}" title="Switch to tab ${s.tabId}">TAB ${s.tabId}</button>`
+      : `<button class="src" data-url="${esc(s.url)}" title="${esc(s.title)} - ${esc(s.url)}">${esc(s.host || s.title).slice(0, 28)}</button>`
+  )
+  return `<div class="sources"><span class="muted">SOURCES</span>${chips.join('')}</div>`
+}
+
+function send(text, extra = {}) {
   const input = (text ?? $('input').value).trim()
   if (!input) return
   const tabIds = pickedTabs.size ? [...pickedTabs] : undefined
-  ai.ask({ input, mode, tabIds, includePage })
+  ai.ask({ input, mode, tabIds, includePage, ...extra })
   $('input').value = ''
+}
+
+// ---------- quick actions ----------
+
+const isYouTubeWatch = (url) => {
+  try {
+    const u = new URL(url)
+    const host = u.host.replace(/^(www|m|music)\./, '')
+    if (host === 'youtu.be') return u.pathname.length > 1
+    return host === 'youtube.com' && ((u.pathname === '/watch' && u.searchParams.has('v')) || u.pathname.startsWith('/shorts/') || u.pathname.startsWith('/live/'))
+  } catch {
+    return false
+  }
+}
+
+$('q-page').onclick = () => !busy && send('Summarize this page in 5 short bullet points, then one line on why it matters.', { mode: 'ask', includePage: true, tabIds: undefined })
+$('q-video').onclick = () => !busy && send('Summarize this video: the main points in order, with rough timestamps if the captions show them, then a one-line takeaway.', { mode: 'ask', includePage: false, tabIds: undefined, video: true })
+
+// ---------- mascot ----------
+
+const FRAMES = { idle: ['idle1', 'idle2'], think: ['think1', 'think2'], talk: ['talk1', 'talk2'] }
+const TIMING = { idle: [2600, 160], think: [380, 380], talk: [180, 180] }
+let mascotState = 'idle'
+let mascotTimer = null
+let talkTimer = null
+function setMascot(next) {
+  if (next === mascotState && mascotTimer) return
+  mascotState = next
+  clearTimeout(mascotTimer)
+  let i = 0
+  const tick = () => {
+    $('mascot').src = `img/bitter-${FRAMES[mascotState][i]}-64.png`
+    mascotTimer = setTimeout(() => {
+      i = (i + 1) % 2
+      tick()
+    }, TIMING[mascotState][i])
+  }
+  tick()
+}
+function talk() {
+  setMascot('talk')
+  clearTimeout(talkTimer)
+  talkTimer = setTimeout(() => setMascot(busy ? 'think' : 'idle'), 1600)
+}
+$('mascot').addEventListener('error', () => {
+  $('mascot').hidden = true
+  $('mark').hidden = false
+  clearTimeout(mascotTimer)
+})
+setMascot('idle')
+
+// ---------- agent activity log ----------
+
+$('btn-log').onclick = () => show('log')
+$('log-back').onclick = () => show('chat')
+$('log-clear').onclick = async () => {
+  await ai.clearLog()
+  renderLog()
+}
+
+async function renderLog() {
+  const entries = await ai.log()
+  const list = $('log-list')
+  if (!entries.length) {
+    list.innerHTML = '<li class="muted">Nothing yet. Steps appear here when Bitter works in Agent mode.</li>'
+    return
+  }
+  list.replaceChildren(
+    ...entries.map((e) => {
+      const li = document.createElement('li')
+      li.className = e.kind === 'confirm' ? 'confirm-log' : ''
+      const when = document.createElement('span')
+      when.className = 'when'
+      when.textContent = new Date(e.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+      const text = document.createElement('span')
+      text.className = 'what'
+      text.textContent = e.text
+      li.append(when, text)
+      if (e.site) {
+        const site = document.createElement('span')
+        site.className = 'site'
+        try {
+          site.textContent = new URL(e.site).host
+        } catch {
+          site.textContent = e.site
+        }
+        li.append(site)
+      }
+      return li
+    })
+  )
 }
 
 $('send').onclick = () => (busy ? ai.stop() : send())
@@ -252,6 +363,7 @@ document.querySelectorAll('.modes button').forEach((b) => {
 // Which tabs go along with the question.
 async function renderContext() {
   const tabs = await ai.tabs()
+  updateVideoButton(tabs)
   for (const id of pickedTabs) if (!tabs.some((t) => t.id === id)) pickedTabs.delete(id)
   const row = $('context-row')
   row.replaceChildren()
@@ -351,6 +463,11 @@ function renderSettings() {
   sel.value = state.provider
   fillProvider(state.provider)
 
+  const sp = state.spending || {}
+  if (document.activeElement !== $('cap-day')) $('cap-day').value = sp.capDay || 0
+  if (document.activeElement !== $('cap-month')) $('cap-month').value = sp.capMonth || 0
+  $('spent').textContent = `About $${(sp.today || 0).toFixed(2)} today, $${(sp.month || 0).toFixed(2)} this month.`
+
   $('memory-on').checked = state.memoryEnabled
   $('memory-list').replaceChildren(
     ...state.memory.map((m) => {
@@ -406,6 +523,12 @@ $('memory-add').onsubmit = async (e) => {
 
 $('open-settings').onclick = () => ai.openSettings()
 
+$('save-caps').onclick = async () => {
+  const spending = await ai.setSpending({ capDay: $('cap-day').value, capMonth: $('cap-month').value })
+  applyState({ spending })
+  $('spent').textContent = 'Saved. ' + $('spent').textContent.replace(/^Saved\. /, '')
+}
+
 // ---------- AI on/off slider ----------
 
 function renderEnabled() {
@@ -416,7 +539,7 @@ function renderEnabled() {
   if (!on) setAppMode(null)
   for (const id of ['btn-apps', 'btn-new', 'btn-settings']) $(id).hidden = !on || !!state.app
   if (!on) {
-    for (const v of ['chat', 'apps', 'settings']) $(`${v}-view`).hidden = true
+    for (const v of ['chat', 'apps', 'settings', 'log']) $(`${v}-view`).hidden = true
     $('off-view').hidden = false
   } else if (!$('off-view').hidden) {
     $('off-view').hidden = true
@@ -436,6 +559,7 @@ function applyState(next) {
   state = { ...state, ...next }
   renderEnabled()
   renderProviderLabel()
+  renderSpace()
   if (!$('settings-view').hidden) renderSettings()
 }
 
@@ -456,6 +580,22 @@ async function init() {
   if (state.aiEnabled === false) return
   const p = state.providers[state.provider]
   if (!p.hasKey && !p.noKey && !p.keyOptional && !isPrivate) show('settings')
+}
+
+function updateVideoButton(tabs) {
+  const active = tabs.find((t) => t.active)
+  $('q-video').hidden = !(active && isYouTubeWatch(active.url))
+}
+// The active tab can change while the sidebar isn't focused.
+setInterval(async () => {
+  if (document.hidden || $('chat-view').hidden) return
+  updateVideoButton(await ai.tabs().catch(() => []))
+}, 2000)
+
+function renderSpace() {
+  const sp = state.space && state.space !== 'personal' ? state.space : ''
+  $('space-label').textContent = sp ? `· ${sp.toUpperCase()}` : ''
+  $('space-label').title = sp ? `Space: ${sp}. Bitter's memory here is separate from your other Spaces.` : ''
 }
 
 window.addEventListener('focus', () => renderContext())

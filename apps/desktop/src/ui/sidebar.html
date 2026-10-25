@@ -6,11 +6,12 @@
 <title>Bitter</title>
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="sidebar.css">
+<script src="theme-apply.js"></script>
 </head>
 <body>
   <header id="head">
     <button id="btn-back" class="px" hidden title="Back to Bitter">&lt; BITTER</button>
-    <div id="brand" class="brand"><span class="mark">B</span> BITTER</div>
+    <div id="brand" class="brand"><img id="mascot" class="mascot" src="img/bitter-idle1-64.png" alt="" width="28" height="28"><span id="mark" class="mark" hidden>B</span> BITTER <span id="space-label" class="space"></span></div>
     <div id="appname" class="brand" hidden></div>
     <span class="spacer"></span>
     <button id="ai-switch" class="pxswitch on" role="switch" aria-checked="true" title="AI on/off. Off = private: nothing is sent to any AI."><span class="knob"></span><span class="lbl">AI</span></button>
@@ -49,6 +50,12 @@
     </div>
     <div id="status" hidden></div>
     <footer id="composer">
+      <div id="quick" class="row quick">
+        <button id="q-page" class="chip" title="Summarize the page you're on">SUMMARIZE PAGE</button>
+        <button id="q-video" class="chip" hidden title="Summarize this YouTube video from its captions">SUMMARIZE VIDEO</button>
+        <span class="spacer"></span>
+        <button id="btn-log" class="chip" title="Everything Bitter clicked, typed or opened">LOG</button>
+      </div>
       <div id="context-row"></div>
       <div id="tabpicker" hidden></div>
       <div class="row">
@@ -63,6 +70,14 @@
         <button id="send" class="px hot">SEND</button>
       </div>
     </footer>
+  </section>
+
+  <!-- agent activity log -->
+  <section id="log-view" class="view" hidden>
+    <h2>AGENT ACTIVITY</h2>
+    <p class="muted">Everything Bitter clicked, typed, chose or opened for you, and every step you allowed or declined. Kept on this computer.</p>
+    <div class="row"><button id="log-back" class="px">&lt; BACK</button><span class="spacer"></span><button id="log-clear" class="px">CLEAR</button></div>
+    <ol id="log-list"></ol>
   </section>
 
   <!-- AI web apps -->
@@ -97,6 +112,14 @@
       <input id="memory-input" placeholder="e.g. I'm vegetarian">
       <button class="px">ADD</button>
     </form>
+
+    <h2>SPENDING CAP</h2>
+    <p class="muted">Bitter estimates what each AI request costs with your key and stops to ask once you reach a cap. 0 = no cap. Local AIs (Ollama, LM Studio) are free.</p>
+    <div class="row caps">
+      <label>Per day $ <input id="cap-day" type="number" min="0" step="0.5" inputmode="decimal"></label>
+      <label>Per month $ <input id="cap-month" type="number" min="0" step="1" inputmode="decimal"></label>
+    </div>
+    <div class="row"><button id="save-caps" class="px hot">SAVE CAPS</button><span id="spent" class="muted"></span></div>
 
     <h2>BROWSER</h2>
     <p class="muted">Search engine, sync between your devices, and clearing data are in Settings.</p>

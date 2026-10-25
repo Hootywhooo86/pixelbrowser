@@ -2,11 +2,14 @@
 // shared agent uses to reach tabs, and one chat session per window.
 
 const crypto = require('node:crypto')
+const { ipcMain } = require('electron')
 const {
   PROVIDERS, WEB_APPS, resolveProvider, providerProblem, runAssistant, historySize,
-  locateScript, focusScript, EXTRACT_PAGE,
+  locateScript, focusScript, EXTRACT_PAGE, capStatus, addSpend,
 } = require('@pixelbrowser/ai-core')
 const store = require('./store')
+
+const LOG_LIMIT = 500
 
 const MAX_HISTORY_CHARS = 600_000
 const SCRIPT_TIMEOUT_MS = 10_000
@@ -36,7 +39,9 @@ function publicState() {
     webApps: WEB_APPS,
     memoryEnabled: store.settings.data.memoryEnabled,
     aiEnabled: store.settings.data.aiEnabled,
-    memory: store.memory.items(),
+    memory: spaceMemory().items(),
+    space: currentSpace(),
+    spending: spendingSummary(),
   }
 }
 
@@ -83,11 +88,96 @@ function applyRemoteSettings() {
   }
 }
 
-const memoryApi = () => ({
-  enabled: store.settings.data.memoryEnabled,
-  items: store.memory.items(),
-  add: async (fact) => store.memory.add(fact),
-  remove: async (fact) => store.memory.remove(fact),
+// ---------- memory, kept per Space ----------
+// Records in the synced 'memory' collection are { text, space }. Older ones
+// are plain strings and belong to Personal. Same format as the phone.
+
+const currentSpace = () => store.settings.data.activeSpace || 'personal'
+const memSpace = (r) => (typeof r.data === 'string' ? 'personal' : r.data?.space || 'personal')
+const memText = (r) => (typeof r.data === 'string' ? r.data : r.data?.text || '')
+
+function spaceMemory(space = currentSpace()) {
+  const mine = () => store.liveRecords('memory').filter((r) => memSpace(r) === space)
+  return {
+    items: () => mine().sort((a, b) => a.updatedAt - b.updatedAt).map(memText).filter(Boolean),
+    add(text) {
+      const clean = String(text || '').trim().slice(0, 500)
+      if (!clean || this.items().includes(clean)) return
+      store.putRecord('memory', crypto.randomUUID(), { text: clean, space })
+    },
+    remove(text) {
+      const hit = mine().find((r) => memText(r) === text)
+      if (!hit) return false
+      store.putRecord('memory', hit.id, null, { deleted: true })
+      return true
+    },
+  }
+}
+
+const memoryApi = (space) => {
+  const m = spaceMemory(space)
+  return {
+    enabled: store.settings.data.memoryEnabled,
+    items: m.items(),
+    add: async (fact) => m.add(fact),
+    remove: async (fact) => m.remove(fact),
+  }
+}
+
+// ---------- spending cap ----------
+
+function spending() {
+  const s = store.settings.data
+  if (!s.spending) s.spending = { capDay: 0, capMonth: 0, spent: {} }
+  return s.spending
+}
+
+function spendingSummary() {
+  const sp = spending()
+  const today = new Date()
+  const key = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const day = Number(sp.spent[key(today)]) || 0
+  const month = Object.entries(sp.spent).reduce((n, [k, v]) => (k.startsWith(key(today).slice(0, 7)) ? n + v : n), 0)
+  return { capDay: sp.capDay, capMonth: sp.capMonth, today: day, month }
+}
+
+const spendApi = () => ({
+  check: () => capStatus(spending()),
+  add: (dollars) => {
+    addSpend(spending().spent, dollars)
+    store.settings.save()
+  },
+})
+
+ipcMain.handle('ai:get-spending', () => spendingSummary())
+ipcMain.handle('ai:set-spending', (_e, { capDay, capMonth } = {}) => {
+  const sp = spending()
+  sp.capDay = Math.max(0, Number(capDay) || 0)
+  sp.capMonth = Math.max(0, Number(capMonth) || 0)
+  store.settings.save()
+  return spendingSummary()
+})
+
+// ---------- agent activity log ----------
+
+function agentLog() {
+  const s = store.settings.data
+  if (!Array.isArray(s.agentLog)) s.agentLog = []
+  return s.agentLog
+}
+
+function addLog(entry) {
+  const log = agentLog()
+  log.push({ id: crypto.randomUUID(), at: Date.now(), ...entry })
+  if (log.length > LOG_LIMIT) log.splice(0, log.length - LOG_LIMIT)
+  store.settings.save()
+}
+
+ipcMain.handle('ai:get-log', () => agentLog().slice().reverse())
+ipcMain.handle('ai:clear-log', () => {
+  store.settings.data.agentLog = []
+  store.settings.save()
+  return []
 })
 
 // ---------- driver: how the shared agent reaches this window's tabs ----------
@@ -169,6 +259,15 @@ class AISession {
     this.confirms = new Map()
   }
 
+  /** Switch this window's Bitter to another Space: its own memory and a fresh chat. */
+  setSpace(id) {
+    if (!id || id === currentSpace()) return
+    store.settings.data.activeSpace = String(id)
+    store.settings.save()
+    this.newChat()
+    this.pw.sendSidebar('sidebar:state', publicState())
+  }
+
   emit(event) {
     this.pw.sendSidebar('ai:event', event)
   }
@@ -201,7 +300,7 @@ class AISession {
     })
   }
 
-  async ask({ input, mode = 'ask', tabIds, search = false, includePage = true }) {
+  async ask({ input, mode = 'ask', tabIds, search = false, includePage = true, video = false }) {
     if (!store.settings.data.aiEnabled) {
       this.emit({ type: 'error', message: 'AI is off. Turn on the AI slider to use Bitter.' })
       return
@@ -224,6 +323,7 @@ class AISession {
     }
 
     const controller = new AbortController()
+    controller.runId = crypto.randomUUID()
     this.abort = controller
     this.emit({ type: 'busy', busy: true })
     try {
@@ -236,10 +336,13 @@ class AISession {
         tabIds,
         search,
         includePage,
+        video,
         memory: memoryApi(),
+        spend: spendApi(),
         signal: controller.signal,
         onEvent: (e) => {
           if (e.type === 'agent') this.pw.setAgentActive(e.active)
+          if (e.type === 'log') addLog({ ...e, type: undefined, runId: controller.runId })
           this.emit(e)
         },
         confirm: (req) => this.confirm(req),
@@ -279,4 +382,4 @@ function friendlyError(err, provider) {
   return msg.slice(0, 400)
 }
 
-module.exports = { AISession, publicState, saveSettings, applyRemoteSettings, syncedSettingsChanged }
+module.exports = { AISession, publicState, saveSettings, applyRemoteSettings, syncedSettingsChanged, spaceMemory }

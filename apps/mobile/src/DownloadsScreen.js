@@ -1,19 +1,33 @@
 // Settings → Downloads: files saved from web pages.
 
-import { View, Text, StyleSheet, Alert } from 'react-native'
+import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native'
 import { useDownloads, openDownload, shareDownload, deleteDownload, formatSize } from './downloads'
 import { PButton, PText } from './ui'
 import { C } from './theme'
 
 const run = (fn) => fn().catch((e) => Alert.alert("Couldn't do that", String(e?.message || e)))
 
-export default function DownloadsScreen() {
+/**
+ * The downloads list. Inside Settings it's part of the page's scroll view;
+ * on its own (Menu → Downloads) pass `scroll` so it scrolls and has padding.
+ */
+export default function DownloadsScreen({ scroll = false, bottomInset = 0 }) {
+  const body = <DownloadsList />
+  if (!scroll) return body
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 16 + bottomInset }} keyboardShouldPersistTaps="handled">
+      {body}
+    </ScrollView>
+  )
+}
+
+function DownloadsList() {
   const list = useDownloads()
   if (!list.length) {
     return (
       <View style={st.empty}>
         <PText style={{ color: C.muted }}>NO DOWNLOADS YET</PText>
-        <Text style={st.muted}>Tap a file link on a web page (an APK, PDF, ZIP…) and it's saved here.</Text>
+        <Text style={[st.muted, { textAlign: 'center' }]}>Tap a file link on a web page (an APK, PDF, ZIP…) and it's saved here.</Text>
       </View>
     )
   }
@@ -52,5 +66,5 @@ const st = StyleSheet.create({
   muted: { color: C.muted, fontSize: 13, textAlign: 'left' },
   bar: { height: 8, backgroundColor: C.bg, borderWidth: 2, borderColor: C.edge },
   fill: { height: '100%', backgroundColor: C.teal },
-  row: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
 })

@@ -17,7 +17,7 @@ import Anthropic from '@anthropic-ai/sdk'
 const MAX_TOKENS = 16000
 
 /**
- * @returns {Promise<{ blocks: object[], native: object, stop: 'end'|'tool'|'length'|'refusal' }>}
+ * @returns {Promise<{ blocks: object[], native: object, stop: 'end'|'tool'|'length'|'refusal', usage?: { input, output } }>}
  */
 export async function chat(provider, { system, messages, tools = [], signal }) {
   const useTools = provider.tools && tools.length > 0 ? tools : []
@@ -64,12 +64,18 @@ async function chatAnthropic(provider, { system, messages, tools, signal }) {
     response = await client.messages.create(params, { signal })
   }
 
+  const u = response.usage || {}
+  const usage = {
+    input: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) * 0.1,
+    output: u.output_tokens || 0,
+  }
   if (response.stop_reason === 'refusal') {
     const why = response.stop_details?.explanation
     return {
       blocks: [{ type: 'text', text: why ? `I can't help with that: ${why}` : "I can't help with that one." }],
       native: { provider: 'anthropic', content: response.content },
       stop: 'refusal',
+      usage,
     }
   }
 
@@ -82,6 +88,7 @@ async function chatAnthropic(provider, { system, messages, tools, signal }) {
     blocks,
     native: { provider: 'anthropic', content: response.content },
     stop: response.stop_reason === 'tool_use' ? 'tool' : response.stop_reason === 'max_tokens' ? 'length' : 'end',
+    usage,
   }
 }
 
@@ -153,6 +160,7 @@ async function chatOpenAICompatible(provider, { system, messages, tools, signal 
     blocks,
     native: { provider: provider.id, content: null },
     stop: hasCalls ? 'tool' : choice?.finish_reason === 'length' ? 'length' : 'end',
+    ...(data.usage ? { usage: { input: data.usage.prompt_tokens || 0, output: data.usage.completion_tokens || 0 } } : {}),
   }
 }
 

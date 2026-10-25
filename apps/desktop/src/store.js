@@ -47,6 +47,32 @@ const settings = new JsonFile('pixel-settings.json', {
   customSearchUrl: '',
   sync: { server: '', cursor: 0, lastPushedAt: 0, lastSyncAt: 0, syncKeys: false },
   updatedAt: { ai: 0 },
+  // v0.3
+  shields: {
+    enabled: true,
+    lists: { easylist: true, easyprivacy: true, ublock: true, ublockQuick: true, peterlowe: true, annoyances: false, cookies: false },
+    regional: [], // extra regional list ids (see shields.js)
+    siteOff: {}, // host -> true when Shields are down for that site (synced)
+    totals: { ads: 0, trackers: 0 },
+    lastUpdate: 0,
+    updatedAt: 0,
+  },
+  autoplay: 'muted', // 'off' | 'muted' | 'on' (applies after a restart)
+  theme: { id: 'bit', custom: null, skin: 'classic', updatedAt: 0 },
+  sounds: false, // retro sound effects, off by default
+  privacy: { doh: 'automatic', dohCustom: '', panicRange: '1h' },
+  privateLock: { enabled: false, pin: '', minutes: 5 }, // pin = salted hash
+  phishing: { enabled: true, lastUpdate: 0 },
+  spaces: {
+    list: [
+      { id: 'personal', name: 'Personal' },
+      { id: 'work', name: 'Work' },
+      { id: '128bit', name: '128bit' },
+    ],
+    updatedAt: 0,
+  },
+  xp: { counters: { blocked: 0, tabsCleaned: 0, streakDays: 0 }, lastDay: '', streak: 0, updatedAt: 0 },
+  familyLinks: { bitcaller: true, tracker: true },
 })
 settings.save()
 

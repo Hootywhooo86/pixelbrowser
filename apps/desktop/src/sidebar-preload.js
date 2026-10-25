@@ -16,6 +16,10 @@ contextBridge.exposeInMainWorld('pixelAI', {
   openApp: (id, url) => ipcRenderer.send('sidebar:open-app', { id, url }),
   closeApp: () => ipcRenderer.send('sidebar:close-app'),
   sharePage: () => ipcRenderer.send('sidebar:share-page'),
+  selectTab: (id) => ipcRenderer.send('sidebar:select-tab', id),
+  log: () => ipcRenderer.invoke('ai:get-log'),
+  clearLog: () => ipcRenderer.invoke('ai:clear-log'),
+  setSpending: (caps) => ipcRenderer.invoke('ai:set-spending', caps),
   memory: {
     setEnabled: (on) => ipcRenderer.invoke('memory:set-enabled', on),
     add: (text) => ipcRenderer.invoke('memory:add', text),

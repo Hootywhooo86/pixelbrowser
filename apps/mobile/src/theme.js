@@ -1,4 +1,7 @@
-// Pixel design tokens, same palette as desktop and the landing page.
+// Pixel design tokens. C starts as the Bit theme; index.js swaps in the
+// saved theme (src/themes.js) before any screen builds its styles.
+import { themeColors } from './themes'
+
 export const C = {
   bg: '#0b0b16',
   panel: '#141428',
@@ -14,3 +17,59 @@ export const C = {
 }
 
 export const PIXEL_FONT = 'PressStart2P'
+
+let light = false
+
+/** Copy a saved theme choice { id, custom } into C. Call before styles are built. */
+export function applyThemeToC(choice) {
+  const t = themeColors(choice)
+  Object.assign(C, t.colors)
+  light = t.light
+}
+
+/** True when the current theme has a light background (use a dark status bar). */
+export function isLightTheme() {
+  return light
+}
+
+// ---------- saving and syncing the choice ----------
+
+export const THEME_KEY = 'pixel-theme-v1'
+
+/**
+ * Save a theme choice { id, custom }, sync it, and reload the app so every
+ * screen redraws in the new colors. Returns false if the app couldn't reload
+ * (then the theme applies on the next start).
+ */
+export async function setTheme(choice, { sync = true } = {}) {
+  const AsyncStorage = require('@react-native-async-storage/async-storage').default
+  const { update, putRecord } = require('./store')
+  const clean = { id: choice?.id || 'bit', custom: choice?.id === 'custom' ? choice.custom || null : null }
+  update((s) => {
+    s.theme = clean.id
+    s.customTheme = clean.custom
+  })
+  if (sync) putRecord('settings', 'theme', clean)
+  await AsyncStorage.setItem(THEME_KEY, JSON.stringify(clean)).catch(() => {})
+  try {
+    const { reloadAppAsync } = require('expo')
+    await reloadAppAsync('Theme changed')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Apply a theme chosen on another device (call after sync pulls records).
+ * Only reloads when the synced choice differs from what's on screen now.
+ */
+export async function applyRemoteTheme() {
+  const { getState } = require('./store')
+  const rec = getState()?.records?.settings?.theme
+  if (!rec || rec.deleted || !rec.data || rec.deviceId === getState().deviceId) return false
+  const s = getState()
+  const same = rec.data.id === s.theme && JSON.stringify(rec.data.custom || null) === JSON.stringify(s.customTheme || null)
+  if (same) return false
+  return setTheme(rec.data, { sync: false })
+}
