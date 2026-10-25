@@ -1,0 +1,16 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest7822868439175442597.xml:2:13-83
+INJECTED from /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest7822868439175442597.xml:2:13-83
+	package
+		INJECTED from /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest7822868439175442597.xml
+	xmlns:android
+		ADDED from /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest7822868439175442597.xml:2:23-81
+uses-sdk
+INJECTED from /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest7822868439175442597.xml reason: use-sdk injection requested
+INJECTED from /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest7822868439175442597.xml
+INJECTED from /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest7822868439175442597.xml
+	android:targetSdkVersion
+		INJECTED from /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest7822868439175442597.xml
+	android:minSdkVersion
+		INJECTED from /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest7822868439175442597.xml

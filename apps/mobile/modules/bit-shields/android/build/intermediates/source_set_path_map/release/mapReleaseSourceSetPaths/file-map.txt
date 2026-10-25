@@ -1,0 +1,10 @@
+expo.modules.bitshields.bit-shields-pngs-0 /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/generated/res/pngs/release
+expo.modules.bitshields.bit-shields-resValues-1 /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/generated/res/resValues/release
+expo.modules.bitshields.bit-shields-mergeReleaseResources-2 /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/intermediates/incremental/release/mergeReleaseResources/merged.dir
+expo.modules.bitshields.bit-shields-mergeReleaseResources-3 /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/intermediates/incremental/release/mergeReleaseResources/stripped.dir
+expo.modules.bitshields.bit-shields-release-4 /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/build/intermediates/merged_res/release/mergeReleaseResources
+expo.modules.bitshields.bit-shields-main-5 /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/src/main/res
+expo.modules.bitshields.bit-shields-release-6 /home/user/pixelbrowser/apps/mobile/modules/bit-shields/android/src/release/res
+expo.modules.bitshields.bit-shields-webkit-1.14.0-7 /root/.gradle/caches/9.3.1/transforms/14ef7776a467909a3b5b21ac8b14a297/transformed/webkit-1.14.0/res
+expo.modules.bitshields.bit-shields-annotation-experimental-1.4.1-8 /root/.gradle/caches/9.3.1/transforms/51eaccd41a5b51e089c56736f34f7b5c/transformed/annotation-experimental-1.4.1/res
+expo.modules.bitshields.bit-shields-core-1.1.0-9 /root/.gradle/caches/9.3.1/transforms/abea6fb2152f4f4e274dc6792046b418/transformed/core-1.1.0/res

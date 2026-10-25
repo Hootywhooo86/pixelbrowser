@@ -55,6 +55,7 @@ export function createMatcher(network) {
   const block3p = toSet(network?.block3p)
   const allow = toSet(network?.allow)
   const pageAllow = toSet(network?.pageAllow)
+  const paths = network?.paths || {}
   return {
     size: block.size + block3p.size,
     /** True if a request to `url` from a page at `pageUrl` should be blocked. */
@@ -63,12 +64,43 @@ export function createMatcher(network) {
       if (!host) return false
       const pageHost = hostOf(pageUrl)
       if (pageHost && findIn(pageAllow, pageHost)) return false
+      const third = !pageHost || siteOf(host) !== siteOf(pageHost)
       let hit = findIn(block, host)
-      if (!hit && block3p.size && (!pageHost || siteOf(host) !== siteOf(pageHost))) hit = findIn(block3p, host)
+      if (!hit && block3p.size && third) hit = findIn(block3p, host)
+      if (!hit) hit = pathHit(paths, host, url, third)
       if (!hit) return false
       return !findIn(allow, host)
     },
   }
+}
+
+/** ||host/path rules: the rule host if one of its path patterns matches `url`. */
+export function pathHit(paths, host, url, thirdParty) {
+  let rest = null
+  for (const h of parents(host)) {
+    const rules = paths[h]
+    if (!rules) continue
+    if (rest === null) {
+      const s = String(url)
+      const start = s.indexOf(host, s.indexOf('://') + 3)
+      rest = s.slice(start + host.length).toLowerCase()
+    }
+    for (const r of rules) {
+      if (r.t && !thirdParty) continue
+      let at = 0
+      let ok = true
+      for (const part of r.p) {
+        const i = rest.indexOf(part, at)
+        if (i < 0) {
+          ok = false
+          break
+        }
+        at = i + part.length
+      }
+      if (ok) return h
+    }
+  }
+  return null
 }
 
 /** Lines of a hosts file or plain domain list -> unique lowercase hosts. */

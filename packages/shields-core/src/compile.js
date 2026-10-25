@@ -1,7 +1,8 @@
 // Turns Adblock Plus / uBlock Origin filter lists into compact, JSON-friendly
 // data for the phone:
-//   network   host sets for request blocking (||host^ rules only; path and
-//             regex rules are skipped to keep matching fast on a phone)
+//   network   host sets for request blocking (||host^ rules, plus ||host/path
+//             rules checked only on their host; regex and bare path rules
+//             are skipped to keep matching fast on a phone)
 //   cosmetic  CSS selectors to hide, generic and per site
 //   scriptlets  uBlock Origin +js(...) calls per site (YouTube needs these)
 //
@@ -107,6 +108,7 @@ export function createCompiler() {
   const allow = new Set()
   const pageAllow = new Set() // @@||host^$document: no blocking on that site
   const trackers = new Set() // blocked hosts that came from tracker lists (for the counts)
+  const paths = {} // host -> [{ p: [substrings in order], t: third-party only }] for ||host/path rules
   const cosmeticOff = {} // host -> 'generic' | 'all'
   const generic = []
   const genericSeen = new Set()
@@ -131,8 +133,18 @@ export function createCompiler() {
       pattern = line.slice(0, dollar)
       options = line.slice(dollar + 1).toLowerCase().split(',').map((o) => o.trim()).filter(Boolean)
     }
-    const m = /^\|\|([a-z0-9._-]+)\^?\|?$/i.exec(pattern)
-    if (!m || !HOST.test(m[1])) return stats.skipped++
+    let m = /^\|\|([a-z0-9._-]+)\^?\|?$/i.exec(pattern)
+    let parts = null
+    if (!m) {
+      // ||host/path or ||host^*path: block matching paths on that host
+      m = /^\|\|([a-z0-9._-]+)([/^].*)$/i.exec(pattern)
+      if (m && !exception) {
+        parts = m[2].toLowerCase().replace(/\|$/, '').split(/[*^]/).filter(Boolean)
+        if (!parts.length) parts = null
+      }
+      if (!parts) return stats.skipped++
+    }
+    if (!HOST.test(m[1])) return stats.skipped++
     const host = m[1].toLowerCase()
     let thirdParty = false
     let documentLevel = false
@@ -152,6 +164,11 @@ export function createCompiler() {
       else if (!TYPE_OPTIONS.has(name)) return stats.skipped++
     }
     stats.network++
+    if (parts) {
+      const list = paths[host] || (paths[host] = [])
+      if (list.length < 50) list.push(thirdParty ? { p: parts, t: 1 } : { p: parts })
+      return
+    }
     if (exception) {
       if (documentLevel) pageAllow.add(host)
       else allow.add(host)
@@ -223,7 +240,7 @@ export function createCompiler() {
     for (const h of block3p) if (block.has(h)) block3p.delete(h)
     return {
       version: 1,
-      network: { block: [...block], block3p: [...block3p], allow: [...allow], pageAllow: [...pageAllow], trackers: [...trackers] },
+      network: { block: [...block], block3p: [...block3p], allow: [...allow], pageAllow: [...pageAllow], trackers: [...trackers], paths },
       cosmetic: { generic, genericExceptions: [...genericExceptions], hosts, hostExceptions, off: cosmeticOff },
       scriptlets,
       scriptletExceptions,
