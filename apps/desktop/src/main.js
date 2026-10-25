@@ -36,6 +36,8 @@ const SIDEBAR_HEADER = 44 // px of the sidebar UI kept above an AI web app
 // Privacy defaults, applied before any window opens.
 app.commandLine.appendSwitch('disable-features', 'InterestFeedContentSuggestions,PrivacySandboxAdsAPIs')
 app.commandLine.appendSwitch('enable-features', 'ReduceUserAgent')
+// Smooth like silk: animated scrolling (GPU acceleration stays on).
+app.commandLine.appendSwitch('enable-smooth-scrolling')
 // Autoplay (Settings → Media). Chromium reads this once, so changes need a restart.
 const AUTOPLAY = { off: 'user-gesture-required', muted: 'document-user-activation-required', on: 'no-user-gesture-required' }
 app.commandLine.appendSwitch('autoplay-policy', AUTOPLAY[store.settings.data.autoplay] || AUTOPLAY.muted)
@@ -72,9 +74,12 @@ class PixelWindow {
     this.ses = ses
     this.extensions = extensions
     this.isPrivate = isPrivate
-    this.tabs = [] // { id, view }
+    this.tabs = [] // { id, view, space, lastActive }
     this.activeId = null
-    this.blockedCount = 0
+    this.space = defaultSpace()
+    this.spaceActive = {} // space id -> last active tab id
+    this.locked = false
+    this.blurredAt = 0
     this.sidebar = { open: false, view: null, ready: null, appView: null, app: null }
     this.agentActive = false
     this.ai = new AISession(this)
@@ -100,7 +105,23 @@ class PixelWindow {
     this.win.loadFile(path.join(__dirname, 'ui', 'index.html'), {
       query: { private: isPrivate ? '1' : '0' },
     })
-    this.win.on('resize', () => this.layout())
+    // Coalesce resize bursts into one layout per frame.
+    this.win.on('resize', () => {
+      if (this.layoutTimer) return
+      this.layoutTimer = setTimeout(() => {
+        this.layoutTimer = null
+        this.layout()
+      }, 16)
+    })
+    this.win.webContents.on('did-finish-load', () => applyTheme(this.win.webContents))
+    // Private window lock: after being away a while, a PIN reveals the window again.
+    if (isPrivate) {
+      this.win.on('blur', () => (this.blurredAt = Date.now()))
+      this.win.on('focus', () => {
+        const lock = store.settings.data.privateLock
+        if (lock.enabled && lock.pin && this.blurredAt && Date.now() - this.blurredAt > (lock.minutes || 5) * 60000) this.setLocked(true)
+      })
+    }
     this.win.on('closed', () => {
       this.ai.stop()
       for (const tab of this.tabs) this.destroyTab(tab)
@@ -126,27 +147,54 @@ class PixelWindow {
     }
   }
 
+  /** Send the shell its state, at most once per 50 ms (loading ticks come fast). */
   pushState() {
+    if (this.stateTimer) return
+    this.stateTimer = setTimeout(() => {
+      this.stateTimer = null
+      this.pushStateNow()
+    }, 50)
+  }
+
+  pushStateNow() {
+    clearTimeout(this.stateTimer)
+    this.stateTimer = null
+    const active = this.activeTab()
+    const url = active && !active.view.webContents.isDestroyed() ? active.view.webContents.getURL() : ''
+    const site = /^https?:/.test(url) ? shields.hostOf(url) : ''
     this.send('tabs:state', {
       activeId: this.activeId,
-      tabs: this.tabs.map((t) => this.tabState(t)),
-      blockedCount: this.blockedCount,
+      tabs: this.tabsInSpace().map((t) => this.tabState(t)),
+      blockedCount: active ? shields.pageCount(active.id) : 0,
+      site,
+      shieldsDown: !store.settings.data.shields.enabled || shields.siteDown(site),
       isPrivate: this.isPrivate,
       sidebarOpen: this.sidebar.open,
       aiEnabled: store.settings.data.aiEnabled,
       update: updater.status(),
       agentActive: this.agentActive,
+      spaces: spaceList(),
+      space: this.space,
+      skin: store.settings.data.theme.skin,
+      sounds: !!store.settings.data.sounds,
+      tracker: store.settings.data.familyLinks.tracker ? trackerTitle(url, active?.view.webContents.getTitle()) : null,
+      locked: this.locked,
     })
   }
 
-  createTab(url = '') {
+  tabsInSpace(space = this.space) {
+    return this.tabs.filter((t) => t.space === space)
+  }
+
+  createTab(url = '', { space = this.space, select = true } = {}) {
     const view = new WebContentsView({
       webPreferences: { session: this.ses, sandbox: true, contextIsolation: true },
     })
     const wc = view.webContents
-    const tab = { id: wc.id, view }
+    const tab = { id: wc.id, view, space, lastActive: Date.now() }
     this.tabs.push(tab)
     this.extensions.addTab(wc, this.win)
+    this.sound('tab')
 
     const update = () => this.pushState()
     wc.on('did-start-loading', update)
@@ -155,7 +203,20 @@ class PixelWindow {
       if (!this.isPrivate) {
         store.history.add(wc.getURL(), wc.getTitle())
         publishTabs()
+        if (/^https?:/.test(wc.getURL())) xp.touchDay()
       }
+    })
+    // The warning page's buttons: go back, or continue to the site once.
+    wc.on('will-navigate', (e, target) => {
+      if (!target.startsWith(WARNING_ACTION)) return
+      e.preventDefault()
+      const u = new URL(target)
+      if (u.pathname === '/continue') {
+        const dest = u.searchParams.get('url') || ''
+        if (!/^https?:/.test(dest)) return
+        shields.allowOnce(shields.hostOf(dest))
+        wc.loadURL(dest)
+      } else leaveWarning(wc)
     })
     wc.on('did-navigate', update)
     wc.on('did-navigate-in-page', update)
@@ -174,18 +235,28 @@ class PixelWindow {
       this.layout()
     })
     wc.setWindowOpenHandler(({ url: target }) => {
+      if (/^tel:/i.test(target)) {
+        callWithBitCaller(target.slice(4))
+        return { action: 'deny' }
+      }
       this.selectTab(this.createTab(target).id)
       return { action: 'deny' }
     })
     wc.on('context-menu', (_e, params) => {
       const items = this.extensions.getContextMenuItems(wc, params)
-      if (params.linkURL) {
+      if (params.linkURL && !/^tel:/i.test(params.linkURL)) {
         items.unshift({ label: 'Open link in new tab', click: () => this.createTab(params.linkURL) })
       }
+      const phone = /^tel:/i.test(params.linkURL) ? decodeURIComponent(params.linkURL.slice(4)) : looksLikePhone(params.selectionText) ? params.selectionText.trim() : ''
+      if (phone && store.settings.data.familyLinks.bitcaller) {
+        items.unshift({ label: `Call ${phone.slice(0, 30)} with BitCaller`, click: () => callWithBitCaller(phone) }, { type: 'separator' })
+      }
       if (params.selectionText && !this.isPrivate && store.settings.data.aiEnabled) {
-        const quote = params.selectionText.trim().slice(0, 80)
+        const text = params.selectionText.trim()
+        const quote = text.slice(0, 80)
         items.unshift(
-          { label: `Ask Bitter about "${quote}${params.selectionText.length > 80 ? '…' : ''}"`, click: () => this.askAI({ input: `Explain this: "${params.selectionText.trim()}"` }) },
+          { label: 'Explain this with Bitter', click: () => this.askAI({ input: `Explain this simply: "${text}"` }) },
+          { label: `Ask Bitter about "${quote}${text.length > 80 ? '…' : ''}"`, click: () => this.askAI({ input: `Tell me more about this: "${text}"` }) },
           { type: 'separator' }
         )
       }
@@ -193,8 +264,50 @@ class PixelWindow {
     })
 
     wc.loadURL(normalizeInput(url))
-    this.selectTab(tab.id)
+    if (select) this.selectTab(tab.id)
     return tab
+  }
+
+  sound(kind) {
+    if (store.settings.data.sounds) this.send('sound', kind)
+  }
+
+  // ---------- Spaces ----------
+
+  /** Show another Space's tabs (Work, Personal, 128bit…). */
+  switchSpace(id) {
+    if (!spaceList().some((s) => s.id === id) || id === this.space) return
+    this.spaceActive[this.space] = this.activeId
+    this.space = id
+    this.ai.setSpace?.(id)
+    const tabs = this.tabsInSpace()
+    if (!tabs.length) return this.createTab()
+    const last = this.spaceActive[id]
+    this.selectTab(tabs.some((t) => t.id === last) ? last : tabs[tabs.length - 1].id)
+  }
+
+  /** A Space was deleted: its tabs move to the first Space. */
+  dropSpace(id) {
+    const to = defaultSpace()
+    for (const t of this.tabs) if (t.space === id) t.space = to
+    if (this.space === id) {
+      this.space = to
+      this.ai.setSpace?.(to)
+    }
+    this.pushState()
+  }
+
+  // ---------- private window lock ----------
+
+  setLocked(locked) {
+    this.locked = locked
+    const views = [this.activeTab()?.view, this.sidebar.open && this.sidebar.view, this.sidebar.open && this.sidebar.appView].filter(Boolean)
+    for (const v of views) {
+      if (locked) this.win.contentView.removeChildView(v)
+      else this.win.contentView.addChildView(v)
+    }
+    if (!locked) this.layout()
+    this.pushStateNow()
   }
 
   getTab(id) {
@@ -208,9 +321,18 @@ class PixelWindow {
   selectTab(id) {
     const tab = this.getTab(id)
     if (!tab) return
+    if (tab.space !== this.space) {
+      this.spaceActive[this.space] = this.activeId
+      this.space = tab.space
+      this.ai.setSpace?.(tab.space)
+    }
+    tab.lastActive = Date.now()
     const prev = this.activeTab()
-    if (prev && prev !== tab) this.win.contentView.removeChildView(prev.view)
-    this.win.contentView.addChildView(tab.view)
+    if (prev && prev !== tab) {
+      prev.lastActive = Date.now()
+      this.win.contentView.removeChildView(prev.view)
+    }
+    if (!this.locked) this.win.contentView.addChildView(tab.view)
     this.activeId = id
     this.layout()
     this.extensions.selectTab(tab.view.webContents)
@@ -221,6 +343,7 @@ class PixelWindow {
   destroyTab(tab) {
     const wc = tab.view.webContents
     if (wc.isDestroyed()) return
+    shields.forget(wc.id)
     this.extensions.removeTab(wc)
     wc.close()
   }
@@ -229,15 +352,22 @@ class PixelWindow {
     const idx = this.tabs.findIndex((t) => t.id === id)
     if (idx === -1) return
     const [tab] = this.tabs.splice(idx, 1)
+    // Closing a tab nobody looked at for days counts as tidying up (XP).
+    if (id !== this.activeId && Date.now() - tab.lastActive > STALE_TAB_MS) xp.add('tabsCleaned')
     if (!this.win.isDestroyed()) this.win.contentView.removeChildView(tab.view)
     this.destroyTab(tab)
     publishTabs()
     if (this.tabs.length === 0) return this.win.close()
-    if (this.activeId === id) this.selectTab(this.tabs[Math.min(idx, this.tabs.length - 1)].id)
-    else this.pushState()
+    if (this.activeId === id) {
+      const left = this.tabsInSpace()
+      if (!left.length) return this.createTab()
+      const before = this.tabs.slice(0, idx).filter((t) => t.space === this.space)
+      this.selectTab((before[before.length - 1] || left[0]).id)
+    } else this.pushState()
   }
 
   layout() {
+    if (this.win.isDestroyed() || this.locked) return
     const { width, height } = this.win.getContentBounds()
     if (this.htmlFullscreen) {
       this.activeTab()?.view.setBounds({ x: 0, y: 0, width, height })
@@ -260,6 +390,7 @@ class PixelWindow {
       webPreferences: { preload: path.join(__dirname, 'sidebar-preload.js'), sandbox: true, contextIsolation: true },
     })
     view.setBackgroundColor('#0b0b16')
+    view.webContents.on('did-finish-load', () => applyTheme(view.webContents))
     this.sidebar.view = view
     this.sidebar.ready = new Promise((resolve) => view.webContents.once('did-finish-load', resolve))
     view.webContents.setWindowOpenHandler(({ url }) => {
@@ -345,7 +476,7 @@ function publishTabs() {
       if (pw.isPrivate) continue
       for (const t of pw.tabs) {
         const wc = t.view.webContents
-        if (!wc.isDestroyed() && /^https?:/.test(wc.getURL())) tabs.push({ title: wc.getTitle(), url: wc.getURL() })
+        if (!wc.isDestroyed() && /^https?:/.test(wc.getURL())) tabs.push({ title: wc.getTitle(), url: wc.getURL(), space: t.space })
       }
     }
     store.putRecord('tabs', store.settings.data.deviceId, { deviceName: store.settings.data.deviceName, tabs: tabs.slice(0, 100) })
@@ -397,8 +528,8 @@ async function prepareSession(ses, { isPrivate }) {
   ElectronChromeExtensions.handleCRXProtocol(ses)
   sessionSetup.set(ses, extensions)
 
-  // Private by default: block third-party ad/tracker requests everywhere.
-  if (blocker) attachBlocker(ses)
+  // Bit Shields: ads, trackers and phishing warnings in every profile.
+  shields.attach(ses)
 
   // No silent permission grants. Geolocation, camera etc. are denied until
   // we ship a pixel permission prompt.
@@ -429,26 +560,81 @@ function windowForExtensionCall(windowId, ses) {
   return [...windows.values()].find((w) => w.ses === ses)
 }
 
-function attachBlocker(ses) {
-  blocker.enableBlockingInSession(ses)
+function windowForTab(wcId) {
+  for (const pw of windows.values()) if (pw.getTab(wcId)) return pw
+  return null
 }
 
-async function loadBlocker() {
-  try {
-    blocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch)
-    blocker.on('request-blocked', (request) => {
-      const wcId = request.tabId
-      for (const pw of windows.values()) {
-        if (pw.getTab(wcId)) {
-          pw.blockedCount += 1
-          pw.pushState()
-        }
-      }
-    })
-    for (const ses of sessionSetup.keys()) attachBlocker(ses)
-  } catch (err) {
-    console.error('[privacy] could not load block lists, browsing continues unblocked:', err.message)
+// Blocked counts reach the toolbar at most every 250 ms.
+const countTimers = new Map()
+shields.onBlocked((wcId) => {
+  if (countTimers.has(wcId)) return
+  countTimers.set(
+    wcId,
+    setTimeout(() => {
+      countTimers.delete(wcId)
+      const pw = windowForTab(wcId)
+      if (pw && pw.activeId === wcId) pw.pushState()
+    }, 250)
+  )
+  xp.add('blocked')
+  const pw = windowForTab(wcId)
+  if (pw && Date.now() - (pw.lastBlockSound || 0) > 3000) {
+    pw.lastBlockSound = Date.now()
+    pw.sound('block')
   }
+})
+shields.onPage((wcId) => windowForTab(wcId)?.pushState())
+
+// A phishing/malware site: show the warning page in that tab instead.
+shields.onWarn((wcId, url) => {
+  const pw = windowForTab(wcId)
+  const wc = pw?.getTab(wcId)?.view.webContents
+  if (!wc) return
+  setImmediate(() => wc.loadFile(WARNING_PAGE, { query: { url, host: shields.hostOf(url) } }))
+})
+
+/** "Go back" from the warning page: the last page that isn't the warning or the blocked site. */
+function leaveWarning(wc) {
+  const h = wc.navigationHistory
+  const entries = h.getAllEntries ? h.getAllEntries() : []
+  const current = h.getActiveIndex ? h.getActiveIndex() : entries.length - 1
+  for (let i = current - 1; i >= 0; i--) {
+    const u = entries[i]?.url || ''
+    if (/^https?:/.test(u) && !phishing.isDangerous(u)) return h.goToIndex(i)
+  }
+  wc.loadURL(homeUrl())
+}
+
+// ---------- 128bit family links ----------
+
+function looksLikePhone(text) {
+  const t = String(text || '').trim()
+  return t.length <= 30 && /^\+?[\d\s().-]+$/.test(t) && t.replace(/\D/g, '').length >= 7
+}
+
+/** Open a number in BitCaller (bitcaller://call?number=…), or the phone app. */
+function callWithBitCaller(number) {
+  const clean = String(number || '').replace(/[^\d+]/g, '')
+  if (!clean) return
+  const hasBitCaller = !!app.getApplicationNameForProtocol('bitcaller://')
+  shell.openExternal(hasBitCaller ? `bitcaller://call?number=${encodeURIComponent(clean)}` : `tel:${clean}`).catch(() => {})
+}
+
+/** On an IMDb or TMDB title page, the show/movie name for "Add to 128bittracker". */
+function trackerTitle(url, title) {
+  if (!/^https:\/\/(www\.|m\.)?(imdb\.com\/title\/tt\d+|themoviedb\.org\/(movie|tv)\/\d+)/i.test(url || '')) return null
+  return String(title || '').replace(/\s*[-|—]\s*(IMDb|The Movie Database.*)$/i, '').replace(/\s*\(TMDB\)$/, '').trim() || null
+}
+
+function addToTracker(pw) {
+  const wc = pw.activeTab()?.view.webContents
+  if (!wc) return
+  const title = trackerTitle(wc.getURL(), wc.getTitle())
+  if (!title) return
+  const link = `128bittracker://add?title=${encodeURIComponent(title)}&url=${encodeURIComponent(wc.getURL())}&source=bitbrowser`
+  if (app.getApplicationNameForProtocol('128bittracker://')) return shell.openExternal(link).catch(() => {})
+  dialog.showMessageBox(pw.win, { type: 'info', message: '128bittracker isn\'t installed on this computer yet.', detail: `When it is, this button adds "${title}" to your list.` })
 }
 
 async function openWindow({ isPrivate = false, url } = {}) {
@@ -769,7 +955,8 @@ app.whenReady().then(async () => {
     ])
   )
 
-  await loadBlocker()
+  applyDns()
+  await shields.start()
   const startUrls = [...urlsFromArgv(process.argv.slice(1)), ...pendingUrls]
   await openWindow({ url: startUrls[0] || process.env.PIXEL_START_URL })
   startUrls.slice(1).forEach(openUrlInBrowser)

@@ -3,7 +3,7 @@
 // gesture bar with safe-area insets.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Modal, ScrollView, View, Text, Pressable, Switch, StyleSheet, Alert, Platform, Linking, BackHandler } from 'react-native'
+import { Modal, ScrollView, View, Text, Pressable, Switch, StyleSheet, Alert, Platform, Linking, BackHandler, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import Constants from 'expo-constants'
@@ -16,7 +16,11 @@ import { checkForAppUpdate } from './updates'
 import * as pw from './passwords'
 import { EVENT_TYPES, FAMILY_APPS, setShare, disconnectFamily } from './events'
 import { PButton, PText, Field, PSwitch } from './ui'
-import { C } from './theme'
+import { C, setTheme, PIXEL_FONT } from './theme'
+import { THEMES, SWATCHES, themeColors } from './themes'
+import { BADGES, levelOf, progressOf } from './xp'
+import DataDashboard from './DataDashboard'
+import Mascot from './Mascot'
 
 const REPO_URL = 'https://github.com/Hootywhooo86/pixelbrowser'
 
@@ -25,10 +29,10 @@ const SECTIONS = [
   {
     title: 'FEATURES',
     rows: [
-      { id: 'shields', title: 'Shields & privacy', sub: 'Blocking, cookies, clear data', keywords: 'privacy tracker ads cookies https clear history data' },
-      { id: 'ai', title: 'Bitter AI', sub: 'AI slider, model, keys, memory', keywords: 'ai bitter model provider key api memory claude chatgpt gemini' },
+      { id: 'shields', title: 'Shields & privacy', sub: 'Blocking, cookies, clear data', keywords: 'privacy tracker ads cookies https clear history data shields block blocker youtube phishing malware dns lock dashboard' },
+      { id: 'ai', title: 'Bitter AI', sub: 'AI slider, model, keys, memory', keywords: 'ai bitter model provider key api memory claude chatgpt gemini spending cap budget cost activity log' },
       { id: 'sync', title: 'Sync', sub: 'Encrypted sync with your computer', keywords: 'sync qr code devices tabs encrypted' },
-      { id: 'family', title: '128bit family', sub: 'Account, XP and streaks', keywords: '128bit family account xp streak quests events' },
+      { id: 'family', title: '128bit family', sub: 'Account, XP and streaks', keywords: '128bit family account xp streak quests events badges level bitcaller tracker' },
     ],
   },
   {
@@ -47,9 +51,9 @@ const SECTIONS = [
   {
     title: 'DISPLAY',
     rows: [
-      { id: 'tabs', title: 'Tabs and tab groups', keywords: 'tabs groups grid list' },
-      { id: 'media', title: 'Media', sub: 'Full-screen video', keywords: 'media video fullscreen full screen rotate landscape' },
-      { id: 'appearance', title: 'Appearance', keywords: 'appearance theme dark colors' },
+      { id: 'tabs', title: 'Tabs and tab groups', sub: 'Spaces, hide bars when scrolling', keywords: 'tabs groups grid list spaces workspaces work personal scroll hide bars smooth' },
+      { id: 'media', title: 'Media', sub: 'Autoplay, full-screen video', keywords: 'media video fullscreen full screen rotate landscape autoplay' },
+      { id: 'appearance', title: 'Appearance', sub: 'Pixel themes, tab skins, sounds', keywords: 'appearance theme dark light colors custom skin sound effects retro game boy arcade' },
       { id: 'ntp', title: 'New tab page', keywords: 'new tab page synced' },
       { id: 'a11y', title: 'Accessibility', sub: 'Text size', keywords: 'accessibility text size zoom font' },
       { id: 'languages', title: 'Languages', keywords: 'language translate' },
@@ -70,7 +74,15 @@ const SECTIONS = [
   },
 ]
 
-const TITLES = Object.fromEntries(SECTIONS.flatMap((s) => s.rows.map((r) => [r.id, r.title])))
+const TITLES = {
+  ...Object.fromEntries(SECTIONS.flatMap((s) => s.rows.map((r) => [r.id, r.title]))),
+  // pages opened from inside other pages
+  data: 'Data on this phone',
+  agentlog: 'Bitter activity log',
+  spaces: 'Spaces',
+}
+// Where BACK goes from a sub-page.
+const PARENT = { data: 'shields', agentlog: 'ai', spaces: 'tabs' }
 
 export default function SettingsScreen({ visible, onClose, openUrl, downloadsScreen }) {
   const insets = useSafeAreaInsets()
@@ -86,9 +98,12 @@ export default function SettingsScreen({ visible, onClose, openUrl, downloadsScr
     }
   }, [visible])
 
+  const { width } = useWindowDimensions()
+  const wide = width >= 700 // tablets and Chromebooks: list on the left, page on the right
+
   const back = () => {
     if (scanning) return setScanning(null)
-    if (page) return setPage(null)
+    if (page) return setPage(PARENT[page] || null)
     onClose()
   }
 
@@ -107,41 +122,28 @@ export default function SettingsScreen({ visible, onClose, openUrl, downloadsScr
     <Modal visible={visible} animationType="slide" onRequestClose={back} statusBarTranslucent navigationBarTranslucent>
       <View style={[st.wrap, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
         <View style={st.head}>
-          {page ? <PButton small label="< BACK" onPress={() => setPage(null)} /> : null}
+          {page && !(wide && !PARENT[page]) ? <PButton small label="< BACK" onPress={() => setPage(PARENT[page] || null)} /> : null}
           <PText style={{ flex: 1 }} numberOfLines={1}>{page ? (TITLES[page] || '').toUpperCase() : 'SETTINGS'}</PText>
           <PButton small label="DONE" hot onPress={onClose} />
         </View>
-        <ScrollView contentContainerStyle={[st.body, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled">
-          {!page ? (
-            <>
-              <Field value={query} onChangeText={setQuery} placeholder="Search settings" accessibilityLabel="Search settings" />
-              {sections.map((s) => (
-                <View key={s.title}>
-                  <PText style={st.h}>{s.title}</PText>
-                  <View style={st.group}>
-                    {s.rows.map((r, i) => (
-                      <Pressable
-                        key={`${s.title}-${r.id}`}
-                        onPress={() => setPage(r.id)}
-                        accessibilityRole="button"
-                        style={({ pressed }) => [st.navRow, i > 0 && st.navDivider, pressed && { backgroundColor: C.edge }]}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={st.rowTitle}>{r.title}</Text>
-                          {!!r.sub && <Text style={st.muted}>{r.sub}</Text>}
-                        </View>
-                        <Text style={{ color: C.muted, fontSize: 18 }}>›</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-              ))}
-              {!sections.length && <Text style={[st.muted, { marginTop: 16 }]}>No settings match “{query}”.</Text>}
-            </>
-          ) : (
-            <Page id={page} go={go} downloadsScreen={downloadsScreen} onScan={setScanning} />
-          )}
-        </ScrollView>
+        {wide ? (
+          <View style={{ flex: 1, flexDirection: 'row' }}>
+            <ScrollView style={st.pane} contentContainerStyle={[st.body, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled">
+              <SettingsList sections={sections} query={query} setQuery={setQuery} page={page} setPage={setPage} />
+            </ScrollView>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={[st.body, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled">
+              {page ? <Page id={page} go={go} open={setPage} downloadsScreen={downloadsScreen} onScan={setScanning} /> : <Text style={[st.muted, { marginTop: 24 }]}>Pick a setting on the left.</Text>}
+            </ScrollView>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={[st.body, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled">
+            {!page ? (
+              <SettingsList sections={sections} query={query} setQuery={setQuery} page={page} setPage={setPage} />
+            ) : (
+              <Page id={page} go={go} open={setPage} downloadsScreen={downloadsScreen} onScan={setScanning} />
+            )}
+          </ScrollView>
+        )}
       </View>
       {!!scanning && (
         <Scanner
@@ -158,12 +160,48 @@ export default function SettingsScreen({ visible, onClose, openUrl, downloadsScr
   )
 }
 
-function Page({ id, go, downloadsScreen, onScan }) {
+function SettingsList({ sections, query, setQuery, page, setPage }) {
+  return (
+    <>
+      <Field value={query} onChangeText={setQuery} placeholder="Search settings" accessibilityLabel="Search settings" />
+      {sections.map((s) => (
+        <View key={s.title}>
+          <PText style={st.h}>{s.title}</PText>
+          <View style={st.group}>
+            {s.rows.map((r, i) => (
+              <Pressable
+                key={`${s.title}-${r.id}`}
+                onPress={() => setPage(r.id)}
+                accessibilityRole="button"
+                style={({ pressed }) => [st.navRow, i > 0 && st.navDivider, page === r.id && { backgroundColor: C.edge }, pressed && { backgroundColor: C.edge }]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={st.rowTitle} numberOfLines={1}>{r.title}</Text>
+                  {!!r.sub && <Text style={st.muted} numberOfLines={1}>{r.sub}</Text>}
+                </View>
+                <Text style={st.chev}>›</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ))}
+      {!sections.length && <Text style={[st.muted, { marginTop: 16 }]}>No settings match “{query}”.</Text>}
+    </>
+  )
+}
+
+function Page({ id, go, open, downloadsScreen, onScan }) {
   switch (id) {
     case 'shields':
-      return <ShieldsPage />
+      return <ShieldsPage open={open} />
+    case 'data':
+      return <DataDashboard />
     case 'ai':
-      return <AIPage go={go} />
+      return <AIPage go={go} open={open} />
+    case 'agentlog':
+      return <AgentLogPage />
+    case 'spaces':
+      return <SpacesPage />
     case 'sync':
       return <SyncPage go={go} onScan={onScan} />
     case 'family':
@@ -183,11 +221,11 @@ function Page({ id, go, downloadsScreen, onScan }) {
     case 'default':
       return <DefaultBrowserPage />
     case 'tabs':
-      return <TabsPage />
+      return <TabsPage open={open} />
     case 'media':
       return <MediaPage />
     case 'appearance':
-      return <Info text="Bit Browser uses the Pixel dark theme: navy, teal and orange. More pixel themes and tab-bar skins are coming." />
+      return <AppearancePage />
     case 'ntp':
       return <NtpPage />
     case 'a11y':
@@ -246,18 +284,81 @@ function useRun() {
 
 // ---------- features ----------
 
-function ShieldsPage() {
+// Filter lists the phone can use. (Kept in step with the Shields engine.)
+const SHIELD_LISTS = [
+  { id: 'easylist', name: 'EasyList', description: 'Ads on most websites' },
+  { id: 'easyprivacy', name: 'EasyPrivacy', description: 'Trackers and analytics' },
+  { id: 'ublock', name: 'uBlock filters', description: 'Extra ad and tracker fixes, including YouTube ads' },
+  { id: 'ublockQuick', name: 'uBlock quick fixes', description: 'Fast fixes for sites that break ad blocking' },
+  { id: 'peterlowe', name: "Peter Lowe's list", description: 'Known ad and tracking servers' },
+  { id: 'annoyances', name: 'Annoyances', description: 'Pop-ups, "subscribe" boxes, social widgets' },
+  { id: 'cookies', name: 'Cookie banners', description: 'Hides "accept cookies" notices' },
+]
+
+const fmt = (n) => Number(n || 0).toLocaleString()
+
+async function openPrivateDnsSettings() {
+  if (Platform.OS !== 'android') return Linking.openSettings()
+  try {
+    // Android has no direct link to Private DNS; it lives under Network & internet.
+    await Linking.sendIntent('android.settings.WIRELESS_SETTINGS')
+  } catch {
+    await Linking.openSettings()
+  }
+}
+
+function ShieldsPage({ open }) {
+  const sh = useStore((s) => s.shields)
+  const phishing = useStore((s) => s.phishing?.enabled !== false)
+  const privateLock = useStore((s) => !!s.privateLock)
   const history = useStore((s) => Object.keys(s.records.history).length)
+  const siteOff = Object.keys(sh?.siteOff || {}).filter((h) => sh.siteOff[h]).sort()
+  const totals = sh?.totals || {}
+  const setShields = (fn) => update((s) => fn(s.shields))
   return (
     <>
-      <Info text="Bit Browser blocks third-party cookies in every tab, never sells or shares what you browse, and private tabs keep nothing after you close them." />
-      <PText style={st.h}>PROTECTIONS</PText>
-      <Text style={st.body2}>• Third-party cookies: blocked</Text>
-      <Text style={st.body2}>• Private tabs: no history, no cookies kept</Text>
-      <Text style={st.body2}>• HTTPS: sites load over HTTPS when they support it. Bit Browser warns about broken certificates.</Text>
-      <Text style={st.muted}>Ad and tracker blocking on the phone is coming. The desktop app already blocks them.</Text>
-      <PText style={st.h}>CLEAR BROWSING DATA</PText>
-      <Text style={st.muted}>{history} pages in your history.</Text>
+      <View style={[st.card, { borderColor: sh?.enabled ? C.teal : C.edge }]}>
+        <Toggle value={sh?.enabled} onChange={(v) => setShields((x) => (x.enabled = v))} label="Bit Shields" note="Block ads, trackers and YouTube ads on every site" />
+        <View style={[st.row, { marginTop: 4 }]}>
+          <Stat value={fmt(totals.ads)} label="ADS BLOCKED" color={C.orange} />
+          <Stat value={fmt(totals.trackers)} label="TRACKERS" color={C.teal} />
+        </View>
+        <Text style={[st.muted, { marginTop: 8 }]}>Counted on this phone only. Nothing about what you browse is sent anywhere.</Text>
+      </View>
+
+      <PText style={st.h}>FILTER LISTS</PText>
+      <Text style={st.muted}>Lists download straight from the people who make them and update on their own.</Text>
+      {SHIELD_LISTS.map((l) => (
+        <Toggle key={l.id} value={sh?.lists?.[l.id]} onChange={(v) => setShields((x) => (x.lists = { ...x.lists, [l.id]: v }))} label={l.name} note={l.description} disabled={!sh?.enabled} />
+      ))}
+      <View style={st.row}>
+        <PButton label="UPDATE LISTS NOW" onPress={() => setShields((x) => (x.updateRequested = Date.now()))} disabled={!sh?.enabled} />
+        <Text style={st.muted}>{sh?.lastUpdate ? `Updated ${new Date(sh.lastUpdate).toLocaleString()}` : 'Not downloaded yet'}</Text>
+      </View>
+
+      <PText style={st.h}>SHIELDS DOWN FOR</PText>
+      {!siteOff.length && <Text style={st.muted}>No sites. Turn Shields off for one site from the shield button in the address bar.</Text>}
+      {siteOff.map((host) => (
+        <View key={host} style={st.itemRow}>
+          <Text style={[st.rowTitle, { flex: 1 }]} numberOfLines={1}>{host}</Text>
+          <PButton small label="SHIELDS UP" onPress={() => setShields((x) => (x.siteOff = { ...x.siteOff, [host]: false }))} />
+        </View>
+      ))}
+
+      <PText style={st.h}>SAFETY</PText>
+      <Toggle value={phishing} onChange={(v) => update((s) => (s.phishing = { ...s.phishing, enabled: v }))} label="Warn me about phishing and malware sites" note="Checked on this phone against free blocklists. The sites you visit are never sent anywhere." />
+      <Toggle value={privateLock} onChange={(v) => update((s) => (s.privateLock = v))} label="Lock private tabs with fingerprint or face" note="Asks before showing private tabs when you come back to the app" />
+      <Text style={st.label}>Secure DNS (DNS over HTTPS)</Text>
+      <Text style={st.body2}>
+        {Platform.OS === 'android'
+          ? 'On Android, secure DNS is set for the whole phone. Open Settings → Network & internet → Private DNS, then pick "Private DNS provider hostname" and type one of: one.one.one.one (Cloudflare), dns.quad9.net (Quad9) or your NextDNS address.'
+          : 'iPhone uses secure DNS through a DNS profile or app from your provider (Cloudflare 1.1.1.1, Quad9, NextDNS).'}
+      </Text>
+      <PButton label="OPEN NETWORK SETTINGS" style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={openPrivateDnsSettings} />
+
+      <PText style={st.h}>YOUR DATA</PText>
+      <NavRow title="Data on this phone" sub="What's stored, what's synced, delete it" onPress={() => open('data')} />
+      <Text style={[st.muted, { marginTop: 10 }]}>{history} pages in your history.</Text>
       <PButton
         hot
         color={C.pink}
@@ -278,7 +379,32 @@ function ShieldsPage() {
           ])
         }
       />
+      <PText style={st.h}>ALWAYS ON</PText>
+      <Text style={st.body2}>• Third-party cookies blocked</Text>
+      <Text style={st.body2}>• Private tabs keep no history or cookies</Text>
+      <Text style={st.body2}>• Sites load over HTTPS when they support it</Text>
     </>
+  )
+}
+
+function Stat({ value, label, color }) {
+  return (
+    <View style={[st.stat, { borderColor: color }]}>
+      <PText style={{ color }} numberOfLines={1} adjustsFontSizeToFit>{value}</PText>
+      <Text style={st.muted} numberOfLines={1}>{label}</Text>
+    </View>
+  )
+}
+
+function NavRow({ title, sub, onPress }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [st.group, st.navRow, { marginTop: 8 }, pressed && { backgroundColor: C.edge }]}>
+      <View style={{ flex: 1 }}>
+        <Text style={st.rowTitle} numberOfLines={1}>{title}</Text>
+        {!!sub && <Text style={st.muted} numberOfLines={1}>{sub}</Text>}
+      </View>
+      <Text style={st.chev}>›</Text>
+    </Pressable>
   )
 }
 
