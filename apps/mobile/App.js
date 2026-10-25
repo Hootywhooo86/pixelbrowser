@@ -95,6 +95,8 @@ const autoplayJS = (mode) => `(function(){
 
 const injectedJS = (autoplay) => `${FULLSCREEN_JS}\n${autoplay === 'on' ? '' : autoplayJS(autoplay)}\n${CAPTURE_LOGIN_JS}\ntrue;`
 
+const PAUSE_MEDIA_JS = `document.querySelectorAll('video,audio').forEach(function(m){try{m.pause()}catch(e){}});true;`
+
 const TRACKER_PAGE = /^https?:\/\/(www\.|m\.)?(imdb\.com\/title\/tt\d+|themoviedb\.org\/(movie|tv)\/\d+)/i
 
 export default function App() {
@@ -123,6 +125,7 @@ function Browser() {
   const autoplay = useStore((s) => s.autoplay || 'muted')
   const activeSpace = useStore((s) => s.activeSpace || 'personal')
   const familyLinks = useStore((s) => s.familyLinks || {})
+  const hideBarsOnScroll = useStore((s) => !!s.hideBarsOnScroll)
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const wide = width >= 700 // tablets and Chromebooks
@@ -270,8 +273,14 @@ function Browser() {
       goBack: (id) => views.current[id]?.goBack(),
       openTab: (url) => openTab(url),
       selectTab: (id) => setActiveId(id),
-      run: (id, script) =>
-        new Promise((resolve, reject) => {
+      run: async (id, script) => {
+        // Bitter can read a sleeping tab: wake it and wait for its page.
+        if (!views.current[id] && tabsRef.current.some((t) => t.id === id)) {
+          patchTab(id, { loading: true })
+          setAwake((a) => (a.includes(id) ? a : [...a.slice(-2), id]))
+          for (let i = 0; i < 50 && (!views.current[id] || tabsRef.current.find((t) => t.id === id)?.loading !== false); i++) await new Promise((r) => setTimeout(r, 200))
+        }
+        return new Promise((resolve, reject) => {
           const view = views.current[id]
           if (!view) return reject(new Error(`Tab ${id} is not open.`))
           const rid = Crypto.randomUUID()
@@ -283,7 +292,8 @@ function Browser() {
           setTimeout(() => {
             if (pending.current.delete(rid)) reject(new Error('The page did not respond.'))
           }, 10000)
-        }),
+        })
+      },
     }),
     []
   )
@@ -302,6 +312,20 @@ function Browser() {
     scrollRun.current = 0
     setBarsHidden(!show)
   }
+
+  // Only the current tab and the two before it keep a live page. Older
+  // normal tabs are put to sleep (no memory, no CPU) and reload where they
+  // were when you come back. Private tabs stay live, since they can't be
+  // restored. Hidden live tabs have their videos and sounds paused.
+  const recent = useRef([])
+  recent.current = [activeId, ...recent.current.filter((id) => id !== activeId && tabs.some((t) => t.id === id))].slice(0, 3)
+  const [awake, setAwake] = useState([]) // sleeping tabs Bitter woke up to read
+  const live = [...recent.current, ...awake]
+  useEffect(() => {
+    for (const [id, view] of Object.entries(views.current)) {
+      if (Number(id) !== activeId) view?.injectJavaScript(PAUSE_MEDIA_JS)
+    }
+  }, [activeId])
 
   // A different tab starts with the bars showing.
   useEffect(() => {
@@ -447,6 +471,7 @@ function Browser() {
   Object.assign(handlers, {
     ref: (id, r) => {
       if (r) views.current[id] = r
+      else delete views.current[id]
     },
     explain,
     onMessage: (t, e) => onMessage(t)(e),
@@ -584,7 +609,9 @@ function Browser() {
       <View style={[{ flex: 1 }, agentActive && !fullscreen && st.agentFrame]}>
         <View ref={pageArea} collapsable={false} style={{ flex: 1 }}>
           {tabs.map((t) => (
-            <TabView key={t.id} tab={t} active={t.id === active.id} autoplay={autoplay} textZoom={textZoom} aiEnabled={aiEnabled} h={handlers} />
+            (t.private || live.includes(t.id)) && (
+              <TabView key={t.id} tab={t} active={t.id === active.id} autoplay={autoplay} textZoom={textZoom} aiEnabled={aiEnabled} watchScroll={hideBarsOnScroll} h={handlers} />
+            )
           ))}
         </View>
         {locked && active.private && !fullscreen && (
@@ -723,12 +750,20 @@ const NO_MENU = []
 
 // One tab's page. Memoized so typing in the address bar, agent steps or
 // other tabs loading don't re-render every open page.
-const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEnabled, h }) {
+const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEnabled, watchScroll, h }) {
   const js = useMemo(() => injectedJS(autoplay), [autoplay])
+  // A tab woken from sleep reopens its last page; later navigations come in via t.source.
+  const [source, setSource] = useState(() => ({ uri: t.url || t.source }))
+  const firstSource = useRef(t.source)
+  useEffect(() => {
+    if (t.source !== firstSource.current) setSource({ uri: t.source })
+    firstSource.current = null
+  }, [t.source])
+  useEffect(() => () => h.ref(t.id, null), [])
   return (
     <WebView
       ref={(r) => h.ref(t.id, r)}
-      source={useMemo(() => ({ uri: t.source }), [t.source])}
+      source={source}
       // Hidden tabs must not take up space: the WebView's outer
       // container is flex: 1 by default, so hide that, not just the page.
       containerStyle={active ? st.pageBox : st.hidden}
@@ -745,7 +780,8 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
       menuItems={t.private || !aiEnabled ? NO_MENU : EXPLAIN_MENU}
       onCustomMenuSelection={(e) => e.nativeEvent.key === 'explain' && h.explain(e.nativeEvent.selectedText)}
       onMessage={(e) => h.onMessage(t, e)}
-      onScroll={(e) => h.onScroll(t, e)}
+      // Scroll events cross into JS on every frame, so only listen when the bars hide on scroll.
+      onScroll={watchScroll ? (e) => h.onScroll(t, e) : undefined}
       onShouldStartLoadWithRequest={h.shouldStart}
       onFileDownload={(e) => h.download(e.nativeEvent.downloadUrl)}
       onNavigationStateChange={(nav) => h.onNav(t, nav)}
