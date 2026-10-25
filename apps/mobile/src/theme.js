@@ -41,7 +41,7 @@ export const THEME_KEY = 'pixel-theme-v1'
  * screen redraws in the new colors. Returns false if the app couldn't reload
  * (then the theme applies on the next start).
  */
-export async function setTheme(choice, { sync = true } = {}) {
+export async function setTheme(choice, { sync = true, reload = true } = {}) {
   const AsyncStorage = require('@react-native-async-storage/async-storage').default
   const { update, putRecord } = require('./store')
   const clean = { id: choice?.id || 'bit', custom: choice?.id === 'custom' ? choice.custom || null : null }
@@ -51,6 +51,7 @@ export async function setTheme(choice, { sync = true } = {}) {
   })
   if (sync) putRecord('settings', 'theme', clean)
   await AsyncStorage.setItem(THEME_KEY, JSON.stringify(clean)).catch(() => {})
+  if (!reload) return false
   try {
     const { reloadAppAsync } = require('expo')
     await reloadAppAsync('Theme changed')
@@ -62,7 +63,7 @@ export async function setTheme(choice, { sync = true } = {}) {
 
 /**
  * Apply a theme chosen on another device (call after sync pulls records).
- * Only reloads when the synced choice differs from what's on screen now.
+ * It's saved and shows the next time the app opens, so browsing is never interrupted.
  */
 export async function applyRemoteTheme() {
   const { getState } = require('./store')
@@ -71,5 +72,5 @@ export async function applyRemoteTheme() {
   const s = getState()
   const same = rec.data.id === s.theme && JSON.stringify(rec.data.custom || null) === JSON.stringify(s.customTheme || null)
   if (same) return false
-  return setTheme(rec.data, { sync: false })
+  return setTheme(rec.data, { sync: false, reload: false })
 }

@@ -20,6 +20,8 @@ import { startSync } from './src/sync'
 import { startDownload, looksLikeDownload, guessFilename } from './src/downloads'
 import { CAPTURE_LOGIN_JS, autofillJS, findLogins, saveLogin, hasLogin, startPasswordSync, unlock } from './src/passwords'
 import { emit } from './src/events'
+import { initShields, useShieldsScript, siteScript, isBlocked, handleShieldsMessage, useBlockedCount, notePageLoaded, siteShieldsOn, setSiteShields } from './src/shields'
+import { initPhishing, isDangerous, allowOnce } from './src/phishing'
 import AIPanel from './src/AIPanel'
 import SettingsScreen from './src/SettingsScreen'
 import TabsScreen from './src/TabsScreen'
@@ -108,6 +110,8 @@ export default function App() {
       setReady(true)
       startSync()
       startPasswordSync()
+      initShields().catch(() => {})
+      initPhishing().catch(() => {})
     })
   }, [])
 
@@ -126,6 +130,8 @@ function Browser() {
   const activeSpace = useStore((s) => s.activeSpace || 'personal')
   const familyLinks = useStore((s) => s.familyLinks || {})
   const hideBarsOnScroll = useStore((s) => !!s.hideBarsOnScroll)
+  const shieldsJS = useShieldsScript()
+  const shieldsOn = useStore((s) => s.shields?.enabled !== false)
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const wide = width >= 700 // tablets and Chromebooks
@@ -365,6 +371,7 @@ function Browser() {
       return
     }
     if (!msg) return
+    if (handleShieldsMessage(msg, tab.url)) return
     if (msg.__bitFullscreen !== undefined) return setVideoFullscreen(!!msg.__bitFullscreen)
     if (msg.__bitVideo !== undefined) {
       videoPlaying.current = !!msg.__bitVideo && tab.id === activeRef.current
@@ -487,7 +494,17 @@ function Browser() {
       if (scrollRun.current > 140) showBars(false)
       else if (scrollRun.current < -70) showBars(true)
     },
-    shouldStart: (req) => {
+    shouldStart: (req, t) => {
+      // Phishing and malware sites (checked on the phone against downloaded lists).
+      const danger = req.isTopFrame !== false && isDangerous(req.url)
+      if (danger) {
+        Alert.alert('Dangerous site blocked', `${danger.host} is on the ${danger.list} list of phishing or malware sites. It may try to steal your passwords or harm your phone.`, [
+          { text: 'Go back', style: 'cancel' },
+          { text: 'Continue anyway', style: 'destructive', onPress: () => (allowOnce(danger.host), navigate(t.id, req.url)) },
+        ])
+        return false
+      }
+      if (req.isTopFrame === false && isBlocked(req.url, t.url)) return false
       if (/^tel:/i.test(req.url)) {
         openTel(req.url)
         return false
@@ -503,8 +520,15 @@ function Browser() {
       patchTab(t.id, { url: nav.url, title: nav.title || nav.url, loading: nav.loading, canGoBack: nav.canGoBack, canGoForward: nav.canGoForward })
       if (!nav.loading && !t.private) addHistory(nav.url, nav.title)
     },
+    onLoadStart: (t, e) => {
+      const js = siteScript(e.nativeEvent.url)
+      if (js) views.current[t.id]?.injectJavaScript(js)
+    },
     onLoadEnd: (t, e) => {
       patchTab(t.id, { loading: false })
+      const js = siteScript(e.nativeEvent.url)
+      if (js) views.current[t.id]?.injectJavaScript(js)
+      notePageLoaded(e.nativeEvent.url)
       lastScrollY.current = 0
       if (t.private) return
       findLogins(e.nativeEvent.url)
@@ -547,6 +571,15 @@ function Browser() {
             placeholderTextColor={C.muted}
             accessibilityLabel="Address and search bar"
           />
+          <ShieldButton url={active.url} on={shieldsOn} onPress={() => {
+            const host = hostOf(active.url)
+            if (!host) return
+            const up = siteShieldsOn(active.url)
+            Alert.alert(`Bit Shields: ${host}`, up ? 'Ads and trackers are blocked on this site.' : 'Shields are down for this site.', [
+              { text: 'Close', style: 'cancel' },
+              { text: up ? 'Shields down for this site' : 'Shields up for this site', onPress: () => setSiteShields(active.url, !up).then(() => views.current[active.id]?.reload()) },
+            ])
+          }} />
           <PSwitch
             value={aiEnabled}
             accessibilityLabel={aiEnabled ? 'AI on. Turn off for private browsing.' : 'AI off. Nothing is sent to any AI.'}
@@ -610,7 +643,7 @@ function Browser() {
         <View ref={pageArea} collapsable={false} style={{ flex: 1 }}>
           {tabs.map((t) => (
             (t.private || live.includes(t.id)) && (
-              <TabView key={t.id} tab={t} active={t.id === active.id} autoplay={autoplay} textZoom={textZoom} aiEnabled={aiEnabled} watchScroll={hideBarsOnScroll} h={handlers} />
+              <TabView key={t.id} tab={t} active={t.id === active.id} autoplay={autoplay} textZoom={textZoom} aiEnabled={aiEnabled} watchScroll={hideBarsOnScroll} shieldsJS={shieldsJS} h={handlers} />
             )
           ))}
         </View>
@@ -750,7 +783,7 @@ const NO_MENU = []
 
 // One tab's page. Memoized so typing in the address bar, agent steps or
 // other tabs loading don't re-render every open page.
-const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEnabled, watchScroll, h }) {
+const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEnabled, watchScroll, shieldsJS, h }) {
   const js = useMemo(() => injectedJS(autoplay), [autoplay])
   // A tab woken from sleep reopens its last page; later navigations come in via t.source.
   const [source, setSource] = useState(() => ({ uri: t.url || t.source }))
@@ -782,13 +815,27 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
       onMessage={(e) => h.onMessage(t, e)}
       // Scroll events cross into JS on every frame, so only listen when the bars hide on scroll.
       onScroll={watchScroll ? (e) => h.onScroll(t, e) : undefined}
-      onShouldStartLoadWithRequest={h.shouldStart}
+      injectedJavaScriptBeforeContentLoaded={shieldsJS}
+      onShouldStartLoadWithRequest={(req) => h.shouldStart(req, t)}
+      onLoadStart={(e) => h.onLoadStart(t, e)}
       onFileDownload={(e) => h.download(e.nativeEvent.downloadUrl)}
       onNavigationStateChange={(nav) => h.onNav(t, nav)}
       onLoadEnd={(e) => h.onLoadEnd(t, e)}
     />
   )
 })
+
+// Shield in the address bar: how many ads and trackers this page had blocked.
+function ShieldButton({ url, on, onPress }) {
+  const n = useBlockedCount(url)
+  const siteOn = on && siteShieldsOn(url)
+  return (
+    <Pressable onPress={onPress} hitSlop={6} accessibilityRole="button" accessibilityLabel={siteOn ? `Bit Shields: ${n} blocked on this page` : 'Bit Shields are off for this site'} style={[st.shield, !siteOn && { opacity: 0.45 }]}>
+      <Text style={st.shieldIcon}>{siteOn ? 'S' : '-'}</Text>
+      <Text style={st.shieldCount} numberOfLines={1}>{siteOn ? (n > 999 ? '999+' : String(n)) : 'OFF'}</Text>
+    </Pressable>
+  )
+}
 
 function BarButton({ icon, label, onPress, onLongPress, disabled, hot, boxed }) {
   return (
@@ -849,6 +896,9 @@ const st = StyleSheet.create({
   menuItem: { paddingHorizontal: 14, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: C.edge },
   menuText: { fontFamily: PIXEL_FONT, fontSize: 9, color: C.ink },
   sheet: { flex: 1, backgroundColor: C.bg },
+  shield: { minWidth: 34, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 3 },
+  shieldIcon: { fontFamily: PIXEL_FONT, fontSize: 10, color: C.orange, includeFontPadding: false },
+  shieldCount: { color: C.ink, fontSize: 10, marginTop: 2, includeFontPadding: false },
   strip: { flexGrow: 0, backgroundColor: C.panel, borderBottomWidth: 2, borderBottomColor: C.edge },
   stripRow: { alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6 },
   stripTab: { flexDirection: 'row', alignItems: 'center', gap: 8, width: 200, height: 34, paddingHorizontal: 10, borderWidth: 2, borderColor: C.edge },

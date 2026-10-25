@@ -99,7 +99,8 @@
           "enableBackgroundPlayback": false
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "./plugins/with-shields"
     ],
     "scheme": "pixelbrowser",
     "backgroundColor": "#0b0b16"

@@ -181,3 +181,26 @@ test('prepareScriptlets drops calls with no code and pulls dependencies', () => 
   assert.equal(code.length, 2)
 })
 
+
+test('path rules: on a host, host-less with tokens, and exceptions', () => {
+  const r = compileListsSync([{ text: [
+    '||connect.example.net^*/fbevents.js$third-party',
+    '||cdn.example.org/ads/',
+    '/pixel-track.gif',
+    '-ad-banner.',
+    '@@||cdn.example.org/ads/ok/',
+    '@@/pixel-track.gif$domain=allowed.com',
+    '@@||cdn.example.org^$domain=friend.com',
+  ].join('\n') }])
+  const m = createMatcher(r.network)
+  assert.equal(m.isBlocked('https://connect.example.net/en_US/fbevents.js', 'https://news.com/'), true)
+  assert.equal(m.isBlocked('https://connect.example.net/en_US/fbevents.js', 'https://www.example.net/'), false) // first party
+  assert.equal(m.isBlocked('https://cdn.example.org/ads/x.js', 'https://news.com/'), true)
+  assert.equal(m.isBlocked('https://cdn.example.org/ads/ok/x.js', 'https://news.com/'), false)
+  assert.equal(m.isBlocked('https://cdn.example.org/ads/x.js', 'https://www.friend.com/'), false)
+  assert.equal(m.isBlocked('https://cdn.example.org/app.js', 'https://news.com/'), false)
+  assert.equal(m.isBlocked('https://any.site/img/pixel-track.gif?a=1', 'https://news.com/'), true)
+  assert.equal(m.isBlocked('https://any.site/img/pixel-track.gif?a=1', 'https://allowed.com/'), false)
+  assert.equal(m.isBlocked('https://any.site/top-ad-banner.png', 'https://news.com/'), true)
+  assert.equal(m.isBlocked('https://any.site/header-banner.png', 'https://news.com/'), false)
+})

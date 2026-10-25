@@ -102,6 +102,32 @@ function splitDomains(prefix) {
   return { yes, no }
 }
 
+/** Pattern text -> lowercase substrings that must appear in order ('*' and '^' split). */
+function splitParts(text) {
+  const parts = String(text).toLowerCase().replace(/\|$/, '').split(/[*^]/).filter(Boolean)
+  if (!parts.length || parts.join('').length < 4) return null // too short to be safe
+  return parts
+}
+
+/**
+ * The longest run of letters/digits that is bounded by other characters
+ * inside one part, so it is a whole "word" of any URL the pattern matches.
+ * URLs are split into words the same way and looked up by word.
+ */
+export function bestToken(parts) {
+  let best = ''
+  for (const part of parts) {
+    const re = /[a-z0-9%]+/g
+    let m
+    while ((m = re.exec(part))) {
+      const startsInside = m.index > 0
+      const endsInside = m.index + m[0].length < part.length
+      if (startsInside && endsInside && m[0].length > best.length && m[0].length >= 2) best = m[0]
+    }
+  }
+  return best || null
+}
+
 export function createCompiler() {
   const block = new Set()
   const block3p = new Set()
@@ -109,6 +135,9 @@ export function createCompiler() {
   const pageAllow = new Set() // @@||host^$document: no blocking on that site
   const trackers = new Set() // blocked hosts that came from tracker lists (for the counts)
   const paths = {} // host -> [{ p: [substrings in order], t: third-party only }] for ||host/path rules
+  const allowPaths = {} // same, for @@||host/path exceptions
+  const genericPaths = {} // token -> [{ p, t }] for host-less path rules like /fbevents.js
+  const allowGeneric = {} // token -> [{ p }] exceptions
   const cosmeticOff = {} // host -> 'generic' | 'all'
   const generic = []
   const genericSeen = new Set()
@@ -125,50 +154,72 @@ export function createCompiler() {
       exception = true
       line = line.slice(2)
     }
-    if (line.startsWith('/') ) return stats.skipped++ // regex or path rule
     let pattern = line
     let options = []
     const dollar = line.lastIndexOf('$')
-    if (dollar > 0) {
+    if (dollar > 0 && !/^\/.*\/$/.test(line)) {
       pattern = line.slice(0, dollar)
       options = line.slice(dollar + 1).toLowerCase().split(',').map((o) => o.trim()).filter(Boolean)
     }
-    let m = /^\|\|([a-z0-9._-]+)\^?\|?$/i.exec(pattern)
+    if (pattern.length > 2 && pattern.startsWith('/') && pattern.endsWith('/')) return stats.skipped++ // regex
+    // ||host^           -> host set
+    // ||host/path...    -> path patterns checked only on that host
+    // anything else     -> generic path pattern, indexed by a token
+    let host = null
     let parts = null
-    if (!m) {
-      // ||host/path or ||host^*path: block matching paths on that host
-      m = /^\|\|([a-z0-9._-]+)([/^].*)$/i.exec(pattern)
-      if (m && !exception) {
-        parts = m[2].toLowerCase().replace(/\|$/, '').split(/[*^]/).filter(Boolean)
-        if (!parts.length) parts = null
-      }
+    let m = /^\|\|([a-z0-9._-]+)\^?\|?$/i.exec(pattern)
+    if (m) host = m[1].toLowerCase()
+    else if ((m = /^\|\|([a-z0-9._-]+)([/^:].*)$/i.exec(pattern))) {
+      host = m[1].toLowerCase()
+      parts = splitParts(m[2])
+      if (!parts) return stats.skipped++
+    } else if (pattern.startsWith('||')) return stats.skipped++
+    else {
+      parts = splitParts(pattern.replace(/^\|/, ''))
       if (!parts) return stats.skipped++
     }
-    if (!HOST.test(m[1])) return stats.skipped++
-    const host = m[1].toLowerCase()
+    if (host && !HOST.test(host)) return stats.skipped++
     let thirdParty = false
     let documentLevel = false
+    let pageDomains = null // exceptions limited to some sites ($domain=a.com|b.com)
     for (const raw of options) {
       const name = raw.replace(/^~/, '').split('=')[0]
+      if (exception && (name === 'domain' || name === 'from') && !raw.startsWith('~')) {
+        const list = raw.slice(raw.indexOf('=') + 1).split('|')
+        if (list.some((d) => d.startsWith('~') || d.includes('*') || d.startsWith('/'))) return stats.skipped++
+        pageDomains = list
+        continue
+      }
       if (name === 'third-party' || name === '3p') {
         if (raw.startsWith('~')) return stats.skipped++ // ~third-party = first-party only
         thirdParty = true
       } else if (name === 'document' || name === 'doc') documentLevel = true
-      else if (exception && (name === 'elemhide' || name === 'ehide')) {
+      else if (exception && host && !parts && (name === 'elemhide' || name === 'ehide')) {
         cosmeticOff[host] = 'all'
         return stats.network++
-      } else if (exception && (name === 'generichide' || name === 'ghide')) {
+      } else if (exception && host && !parts && (name === 'generichide' || name === 'ghide')) {
         if (cosmeticOff[host] !== 'all') cosmeticOff[host] = 'generic'
         return stats.network++
       } else if (SKIP_OPTIONS.has(name)) return stats.skipped++
       else if (!TYPE_OPTIONS.has(name)) return stats.skipped++
     }
-    stats.network++
-    if (parts) {
-      const list = paths[host] || (paths[host] = [])
-      if (list.length < 50) list.push(thirdParty ? { p: parts, t: 1 } : { p: parts })
-      return
+    if (pageDomains && !parts) parts = [] // @@||host^$domain=x: allow that host on those sites
+    const rule = thirdParty && !exception ? { p: parts, t: 1 } : pageDomains ? { p: parts, d: pageDomains } : { p: parts }
+    if (parts && host) {
+      const map = exception ? allowPaths : paths
+      const list = map[host] || (map[host] = [])
+      if (list.length < 60) list.push(rule)
+      return stats.network++
     }
+    if (parts) {
+      const token = bestToken(parts)
+      if (!token) return stats.skipped++
+      const map = exception ? allowGeneric : genericPaths
+      const list = map[token] || (map[token] = [])
+      if (list.length < 40) list.push(rule)
+      return stats.network++
+    }
+    stats.network++
     if (exception) {
       if (documentLevel) pageAllow.add(host)
       else allow.add(host)
@@ -240,7 +291,7 @@ export function createCompiler() {
     for (const h of block3p) if (block.has(h)) block3p.delete(h)
     return {
       version: 1,
-      network: { block: [...block], block3p: [...block3p], allow: [...allow], pageAllow: [...pageAllow], trackers: [...trackers], paths },
+      network: { block: [...block], block3p: [...block3p], allow: [...allow], pageAllow: [...pageAllow], trackers: [...trackers], paths, allowPaths, generic: genericPaths, allowGeneric },
       cosmetic: { generic, genericExceptions: [...genericExceptions], hosts, hostExceptions, off: cosmeticOff },
       scriptlets,
       scriptletExceptions,

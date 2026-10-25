@@ -9,6 +9,7 @@ import android.webkit.WebView
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.Collections
@@ -36,6 +37,13 @@ object BitShields {
   @Volatile private var pageAllow: Set<String> = emptySet()
   @Volatile private var trackers: Set<String> = emptySet()
   @Volatile private var siteOff: Set<String> = emptySet()
+  // Path rules: ||host/path (by host) and host-less rules (by URL word), with exceptions.
+  @Volatile private var paths: Map<String, List<Rule>> = emptyMap()
+  @Volatile private var allowPaths: Map<String, List<Rule>> = emptyMap()
+  @Volatile private var generic: Map<String, List<Rule>> = emptyMap()
+  @Volatile private var allowGeneric: Map<String, List<Rule>> = emptyMap()
+
+  class Rule(val parts: Array<String>, val thirdParty: Boolean, val domains: Array<String>?)
   @Volatile private var docStart: String? = null
 
   // Current page per WebView (keyed by identity; written on the UI thread,
@@ -90,6 +98,7 @@ object BitShields {
     allow = readSet(File(base, "allow.txt"))
     pageAllow = readSet(File(base, "pageallow.txt"))
     trackers = readSet(File(base, "trackers.txt"))
+    readPaths(File(base, "paths.json"))
     val script = File(base, "docstart.js")
     docStart = if (script.exists()) script.readText() else null
     main.post { synchronized(views) { views.keys.toList() }.forEach { applyDocStart(it) } }
@@ -120,10 +129,98 @@ object BitShields {
     val host = hostOf(url) ?: return null
     val pageHost = page?.let { hostOf(it) }
     if (pageHost != null && (find(pageAllow, pageHost) != null || find(siteOff, pageHost) != null)) return null
+    val third = pageHost == null || siteOf(host) != siteOf(pageHost)
     var hit = find(block, host)
-    if (hit == null && block3p.isNotEmpty() && (pageHost == null || siteOf(host) != siteOf(pageHost))) hit = find(block3p, host)
-    if (hit == null || find(allow, host) != null) return null
+    if (hit == null && block3p.isNotEmpty() && third) hit = find(block3p, host)
+    if (hit == null) hit = pathHit(paths, host, url, third, pageHost)
+    val lower = url.lowercase()
+    if (hit == null && genericHit(generic, lower, third, pageHost)) hit = host
+    if (hit == null) return null
+    if (find(allow, host) != null || pathHit(allowPaths, host, url, true, pageHost) != null || genericHit(allowGeneric, lower, true, pageHost)) return null
     return hit
+  }
+
+  private fun onPage(r: Rule, pageHost: String?): Boolean {
+    val d = r.domains ?: return true
+    if (pageHost == null) return false
+    return d.any { pageHost == it || pageHost.endsWith(".$it") }
+  }
+
+  private fun inOrder(text: String, parts: Array<String>): Boolean {
+    var at = 0
+    for (part in parts) {
+      val i = text.indexOf(part, at)
+      if (i < 0) return false
+      at = i + part.length
+    }
+    return true
+  }
+
+  private fun pathHit(map: Map<String, List<Rule>>, host: String, url: String, third: Boolean, pageHost: String?): String? {
+    if (map.isEmpty()) return null
+    var rest: String? = null
+    var h = host
+    while (true) {
+      val rules = map[h]
+      if (rules != null) {
+        if (rest == null) {
+          val start = url.indexOf(host, url.indexOf("://") + 3)
+          rest = url.substring(start + host.length).lowercase()
+        }
+        for (r in rules) if ((!r.thirdParty || third) && onPage(r, pageHost) && inOrder(rest, r.parts)) return h
+      }
+      val dot = h.indexOf('.')
+      if (dot < 0) return null
+      h = h.substring(dot + 1)
+    }
+  }
+
+  private val wordSplit = Regex("[^a-z0-9%]+")
+
+  private fun genericHit(map: Map<String, List<Rule>>, lowerUrl: String, third: Boolean, pageHost: String?): Boolean {
+    if (map.isEmpty()) return false
+    for (word in lowerUrl.split(wordSplit)) {
+      if (word.length < 2) continue
+      val rules = map[word] ?: continue
+      for (r in rules) if ((!r.thirdParty || third) && onPage(r, pageHost) && inOrder(lowerUrl, r.parts)) return true
+    }
+    return false
+  }
+
+  private fun readPaths(file: File) {
+    if (!file.exists()) {
+      paths = emptyMap(); allowPaths = emptyMap(); generic = emptyMap(); allowGeneric = emptyMap()
+      return
+    }
+    try {
+      val json = JSONObject(file.readText())
+      paths = rules(json.optJSONObject("paths"))
+      allowPaths = rules(json.optJSONObject("allowPaths"))
+      generic = rules(json.optJSONObject("generic"))
+      allowGeneric = rules(json.optJSONObject("allowGeneric"))
+    } catch (e: Throwable) {
+      Log.w(TAG, "couldn't read path rules", e)
+    }
+  }
+
+  private fun rules(obj: JSONObject?): Map<String, List<Rule>> {
+    if (obj == null) return emptyMap()
+    val out = HashMap<String, List<Rule>>(obj.length() * 2)
+    val keys = obj.keys()
+    while (keys.hasNext()) {
+      val key = keys.next()
+      val arr = obj.optJSONArray(key) ?: continue
+      val list = ArrayList<Rule>(arr.length())
+      for (i in 0 until arr.length()) {
+        val r = arr.optJSONObject(i) ?: continue
+        val p = r.optJSONArray("p") ?: continue
+        val parts = Array(p.length()) { p.optString(it) }
+        val d = r.optJSONArray("d")
+        list.add(Rule(parts, r.optInt("t", 0) == 1, d?.let { a -> Array(a.length()) { a.optString(it) } }))
+      }
+      out[key] = list
+    }
+    return out
   }
 
   private fun find(set: Set<String>, host: String): String? {

@@ -284,16 +284,10 @@ function useRun() {
 
 // ---------- features ----------
 
-// Filter lists the phone can use. (Kept in step with the Shields engine.)
-const SHIELD_LISTS = [
-  { id: 'easylist', name: 'EasyList', description: 'Ads on most websites' },
-  { id: 'easyprivacy', name: 'EasyPrivacy', description: 'Trackers and analytics' },
-  { id: 'ublock', name: 'uBlock filters', description: 'Extra ad and tracker fixes, including YouTube ads' },
-  { id: 'ublockQuick', name: 'uBlock quick fixes', description: 'Fast fixes for sites that break ad blocking' },
-  { id: 'peterlowe', name: "Peter Lowe's list", description: 'Known ad and tracking servers' },
-  { id: 'annoyances', name: 'Annoyances', description: 'Pop-ups, "subscribe" boxes, social widgets' },
-  { id: 'cookies', name: 'Cookie banners', description: 'Hides "accept cookies" notices' },
-]
+import { LIST_INFO, setShieldsEnabled, setListEnabled, updateListsNow, setSiteShields, useShieldsStatus } from './shields'
+
+// Filter lists the phone can use, from the Shields engine.
+const SHIELD_LISTS = LIST_INFO.filter((l) => !l.regional)
 
 const fmt = (n) => Number(n || 0).toLocaleString()
 
@@ -314,11 +308,11 @@ function ShieldsPage({ open }) {
   const history = useStore((s) => Object.keys(s.records.history).length)
   const siteOff = Object.keys(sh?.siteOff || {}).filter((h) => sh.siteOff[h]).sort()
   const totals = sh?.totals || {}
-  const setShields = (fn) => update((s) => fn(s.shields))
+  const status = useShieldsStatus() || {}
   return (
     <>
       <View style={[st.card, { borderColor: sh?.enabled ? C.teal : C.edge }]}>
-        <Toggle value={sh?.enabled} onChange={(v) => setShields((x) => (x.enabled = v))} label="Bit Shields" note="Block ads, trackers and YouTube ads on every site" />
+        <Toggle value={sh?.enabled} onChange={(v) => setShieldsEnabled(v)} label="Bit Shields" note="Block ads, trackers and YouTube ads on every site" />
         <View style={[st.row, { marginTop: 4 }]}>
           <Stat value={fmt(totals.ads)} label="ADS BLOCKED" color={C.orange} />
           <Stat value={fmt(totals.trackers)} label="TRACKERS" color={C.teal} />
@@ -329,11 +323,11 @@ function ShieldsPage({ open }) {
       <PText style={st.h}>FILTER LISTS</PText>
       <Text style={st.muted}>Lists download straight from the people who make them and update on their own.</Text>
       {SHIELD_LISTS.map((l) => (
-        <Toggle key={l.id} value={sh?.lists?.[l.id]} onChange={(v) => setShields((x) => (x.lists = { ...x.lists, [l.id]: v }))} label={l.name} note={l.description} disabled={!sh?.enabled} />
+        <Toggle key={l.id} value={sh?.lists?.[l.id]} onChange={(v) => setListEnabled(l.id, v)} label={l.name} note={l.description} disabled={!sh?.enabled} />
       ))}
       <View style={st.row}>
-        <PButton label="UPDATE LISTS NOW" onPress={() => setShields((x) => (x.updateRequested = Date.now()))} disabled={!sh?.enabled} />
-        <Text style={st.muted}>{sh?.lastUpdate ? `Updated ${new Date(sh.lastUpdate).toLocaleString()}` : 'Not downloaded yet'}</Text>
+        <PButton label={status.updating ? 'UPDATING…' : 'UPDATE LISTS NOW'} onPress={() => updateListsNow()} disabled={!sh?.enabled || status.updating} />
+        <Text style={[st.muted, { flex: 1 }]}>{status.error ? `Couldn't update: ${status.error}` : sh?.lastUpdate ? `Updated ${new Date(sh.lastUpdate).toLocaleString()}${status.rules ? ` · ${fmt(status.rules)} rules` : ''}` : 'Not downloaded yet'}</Text>
       </View>
 
       <PText style={st.h}>SHIELDS DOWN FOR</PText>
@@ -341,7 +335,7 @@ function ShieldsPage({ open }) {
       {siteOff.map((host) => (
         <View key={host} style={st.itemRow}>
           <Text style={[st.rowTitle, { flex: 1 }]} numberOfLines={1}>{host}</Text>
-          <PButton small label="SHIELDS UP" onPress={() => setShields((x) => (x.siteOff = { ...x.siteOff, [host]: false }))} />
+          <PButton small label="SHIELDS UP" onPress={() => setSiteShields(`https://${host}/`, true)} />
         </View>
       ))}
 

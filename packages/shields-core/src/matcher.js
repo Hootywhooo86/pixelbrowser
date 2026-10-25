@@ -56,6 +56,9 @@ export function createMatcher(network) {
   const allow = toSet(network?.allow)
   const pageAllow = toSet(network?.pageAllow)
   const paths = network?.paths || {}
+  const allowPaths = network?.allowPaths || {}
+  const generic = network?.generic || {}
+  const allowGeneric = network?.allowGeneric || {}
   return {
     size: block.size + block3p.size,
     /** True if a request to `url` from a page at `pageUrl` should be blocked. */
@@ -68,14 +71,42 @@ export function createMatcher(network) {
       let hit = findIn(block, host)
       if (!hit && block3p.size && third) hit = findIn(block3p, host)
       if (!hit) hit = pathHit(paths, host, url, third)
+      const lower = String(url).toLowerCase()
+      if (!hit && genericHit(generic, lower, third)) hit = host
       if (!hit) return false
-      return !findIn(allow, host)
+      if (findIn(allow, host) || pathHit(allowPaths, host, url, true, pageHost)) return false
+      return !genericHit(allowGeneric, lower, true, pageHost)
     },
   }
 }
 
+// Exceptions can be limited to some sites (r.d = page domains).
+const onPage = (r, pageHost) => !r.d || (!!pageHost && r.d.some((d) => pageHost === d || pageHost.endsWith(`.${d}`)))
+
+const inOrder = (text, parts) => {
+  let at = 0
+  for (const part of parts) {
+    const i = text.indexOf(part, at)
+    if (i < 0) return false
+    at = i + part.length
+  }
+  return true
+}
+
+/** Host-less path rules, looked up by the URL's words. `lowerUrl` must be lowercase. */
+export function genericHit(index, lowerUrl, thirdParty, pageHost) {
+  if (!index) return false
+  for (const word of lowerUrl.split(/[^a-z0-9%]+/)) {
+    if (word.length < 2) continue
+    const rules = index[word]
+    if (!rules || !Array.isArray(rules)) continue
+    for (const r of rules) if ((!r.t || thirdParty) && onPage(r, pageHost) && inOrder(lowerUrl, r.p)) return true
+  }
+  return false
+}
+
 /** ||host/path rules: the rule host if one of its path patterns matches `url`. */
-export function pathHit(paths, host, url, thirdParty) {
+export function pathHit(paths, host, url, thirdParty, pageHost) {
   let rest = null
   for (const h of parents(host)) {
     const rules = paths[h]
@@ -85,20 +116,7 @@ export function pathHit(paths, host, url, thirdParty) {
       const start = s.indexOf(host, s.indexOf('://') + 3)
       rest = s.slice(start + host.length).toLowerCase()
     }
-    for (const r of rules) {
-      if (r.t && !thirdParty) continue
-      let at = 0
-      let ok = true
-      for (const part of r.p) {
-        const i = rest.indexOf(part, at)
-        if (i < 0) {
-          ok = false
-          break
-        }
-        at = i + part.length
-      }
-      if (ok) return h
-    }
+    for (const r of rules) if ((!r.t || thirdParty) && onPage(r, pageHost) && inOrder(rest, r.p)) return h
   }
   return null
 }

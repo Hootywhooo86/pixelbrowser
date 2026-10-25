@@ -19,6 +19,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Platform } from 'react-native'
 import * as FileSystem from 'expo-file-system/legacy'
 import { requireOptionalNativeModule } from 'expo'
+import { award } from './xp'
 import {
   LISTS, REGIONAL_LISTS, SCRIPTLETS_URL, selectedLists, compileLists, createMatcher, buildPageScript, buildSiteScript, hostOf, findIn,
 } from '@pixelbrowser/shields-core'
@@ -166,11 +167,12 @@ export function updateListsNow() {
       await write('allow.txt', n.allow.join('\n'))
       await write('pageallow.txt', n.pageAllow.join('\n'))
       await write('trackers.txt', n.trackers.join('\n'))
+      await write('paths.json', JSON.stringify({ paths: n.paths, allowPaths: n.allowPaths, generic: n.generic, allowGeneric: n.allowGeneric }))
       if (!native) {
         await write('network.json', JSON.stringify(n))
         matcher = createMatcher(n)
       }
-      const rules = n.block.length + n.block3p.length + compiled.stats.cosmetic + compiled.stats.scriptlets
+      const rules = compiled.stats.network + compiled.stats.cosmetic + compiled.stats.scriptlets
       const updatedAt = Date.now()
       await write('meta.json', JSON.stringify({ updatedAt, lists: listsKey(), rules, failed }))
       await rebuildPageScript()
@@ -370,6 +372,7 @@ function flushTotals() {
   pendingJs = 0
   pagesPending = 0
   if (!ads && !trackers && !js && !pages) return
+  if (ads + trackers + js) award('blocked', ads + trackers + js)
   update((st) => {
     const t = st.shields.totals || { ads: 0, trackers: 0, pages: 0 }
     st.shields = { ...st.shields, totals: { ads: (t.ads || 0) + ads + js, trackers: (t.trackers || 0) + trackers, pages: (t.pages || 0) + pages } }
