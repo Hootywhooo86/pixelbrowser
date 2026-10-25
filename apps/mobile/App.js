@@ -25,7 +25,9 @@ import SettingsScreen from './src/SettingsScreen'
 import TabsScreen from './src/TabsScreen'
 import DownloadsScreen from './src/DownloadsScreen'
 import { PButton, PSwitch } from './src/ui'
-import { C, PIXEL_FONT } from './src/theme'
+import { C, PIXEL_FONT, isLightTheme } from './src/theme'
+import { award, onXpEvent } from './src/xp'
+import { play } from './src/sounds'
 
 let nextTabId = 1
 
@@ -146,6 +148,11 @@ function Browser() {
   useEffect(() => {
     if (getState().checkUpdates) checkForAppUpdate().then(setAppUpdate)
     lockForDevice().catch(() => {})
+    award('dailyVisit')
+    return onXpEvent(({ levelUp, level, newBadges }) => {
+      if (levelUp) toast(`Level up! You're level ${level}.`)
+      else if (newBadges?.length) toast(`Badge unlocked: ${newBadges.map((b) => b.name || b.label || b.id || b).join(', ')}`)
+    })
   }, [])
 
   const tabsRef = useRef(tabs)
@@ -165,6 +172,7 @@ function Browser() {
     setTabs((list) => [...list, tab])
     setActiveId(tab.id)
     if (!tab.private) emit('tab.opened')
+    play('tab')
     return tab.id
   }
 
@@ -185,10 +193,13 @@ function Browser() {
     }
   }
 
-  // Closes every tab of one kind (normal or private) from the tab grid.
-  const closeAllTabs = ({ private: priv = false } = {}) => {
-    const keep = tabsRef.current.filter((t) => !!t.private !== priv)
-    for (const t of tabsRef.current) if (!!t.private === priv) delete views.current[t.id]
+  // Closes every private tab, or every normal tab in one Space, from the tab grid.
+  const closeAllTabs = ({ private: priv = false, space } = {}) => {
+    const goes = (t) => !!t.private === priv && (priv || !space || (t.space || 'personal') === space)
+    const closing = tabsRef.current.filter(goes)
+    const keep = tabsRef.current.filter((t) => !goes(t))
+    for (const t of closing) delete views.current[t.id]
+    if (!priv && closing.length) award('tabCleaned', closing.length)
     if (!keep.length) keep.push(newTab())
     setTabs(keep)
     if (!keep.some((t) => t.id === activeRef.current)) setActiveId(keep[keep.length - 1].id)
@@ -483,7 +494,7 @@ function Browser() {
 
   return (
     <View style={[st.root, { paddingTop: fullscreen ? 0 : insets.top, paddingBottom: fullscreen ? 0 : insets.bottom }]}>
-      <StatusBar style="light" hidden={fullscreen} />
+      <StatusBar style={isLightTheme() ? 'dark' : 'light'} hidden={fullscreen} />
 
       {/* address bar (slides away while you scroll down) */}
       {!fullscreen && !barsHidden && (
@@ -686,7 +697,10 @@ function Browser() {
           setActiveId(id)
           setTabsOpen(false)
         }}
-        onCloseTab={closeTab}
+        onCloseTab={(id) => {
+          closeTab(id)
+          award('tabCleaned')
+        }}
         onCloseAll={closeAllTabs}
         onSwitchSpace={switchSpace}
         onNewTab={(opts) => {

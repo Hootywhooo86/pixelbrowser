@@ -131,7 +131,7 @@ function runInPage(script, hostname) {
   const ctx = {
     location: { hostname },
     CSS: { supports: () => true },
-    JSON, Response: function () {}, setTimeout, setInterval: () => 0, isFinite,
+    JSON: { parse: JSON.parse, stringify: JSON.stringify }, Response: function () {}, setTimeout, setInterval: () => 0, isFinite,
     document: { documentElement: { appendChild() {} }, head: null, createElement: () => ({ setAttribute() {} }), querySelector: () => null, addEventListener() {} },
     ReactNativeWebView: { postMessage: (m) => posted.push(m) },
   }

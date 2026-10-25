@@ -25,7 +25,7 @@ if (/(^|\.)(youtube\.com|youtube-nocookie\.com|youtubekids\.com)$/.test(host)) (
   // Player data from the network (JSON.parse covers XHR, Response.json covers fetch).
   try {
     var parse = JSON.parse;
-    JSON.parse = function(){ var r = parse.apply(this, arguments); try { if (r && typeof r === 'object' && (r.adPlacements || r.playerAds || r.adSlots || (r.playerResponse && r.playerResponse.adPlacements))) { if (strip(r)) report(1) } } catch(e){} return r };
+    JSON.parse = function(){ var r = parse.apply(this, arguments); try { if (r && typeof r === 'object' && (r.adPlacements || r.playerAds || r.adSlots || r.playerResponse)) { if (strip(r)) report(1) } } catch(e){} return r };
     var rjson = Response.prototype.json;
     Response.prototype.json = function(){ return rjson.apply(this, arguments).then(function(r){ try { if (strip(r)) report(1) } catch(e){} return r }) };
   } catch(e){}
