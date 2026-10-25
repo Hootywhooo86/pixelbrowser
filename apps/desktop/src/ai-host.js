@@ -89,30 +89,11 @@ function applyRemoteSettings() {
 }
 
 // ---------- memory, kept per Space ----------
-// Records in the synced 'memory' collection are { text, space }. Older ones
-// are plain strings and belong to Personal. Same format as the phone.
+// Lives in store.memory (synced 'memory' collection, same format as the
+// phone: plain-string data, Space in the record id).
 
 const currentSpace = () => store.settings.data.activeSpace || 'personal'
-const memSpace = (r) => (typeof r.data === 'string' ? 'personal' : r.data?.space || 'personal')
-const memText = (r) => (typeof r.data === 'string' ? r.data : r.data?.text || '')
-
-function spaceMemory(space = currentSpace()) {
-  const mine = () => store.liveRecords('memory').filter((r) => memSpace(r) === space)
-  return {
-    items: () => mine().sort((a, b) => a.updatedAt - b.updatedAt).map(memText).filter(Boolean),
-    add(text) {
-      const clean = String(text || '').trim().slice(0, 500)
-      if (!clean || this.items().includes(clean)) return
-      store.putRecord('memory', crypto.randomUUID(), { text: clean, space })
-    },
-    remove(text) {
-      const hit = mine().find((r) => memText(r) === text)
-      if (!hit) return false
-      store.putRecord('memory', hit.id, null, { deleted: true })
-      return true
-    },
-  }
-}
+const spaceMemory = (space = currentSpace()) => store.memory.forSpace(space)
 
 const memoryApi = (space) => {
   const m = spaceMemory(space)

@@ -124,21 +124,38 @@ function liveRecords(collection) {
 
 // ---------- memory (what the assistant remembers) ----------
 
+// Kept per Space. Record data stays a plain string (older versions read
+// it); the Space is in the id: '<space>:<uuid>', or a bare uuid = Personal.
+const memSpace = (r) => (String(r.id).includes(':') ? String(r.id).split(':')[0] : 'personal')
+const activeSpace = () => settings.data.activeSpace || 'personal'
+
+function memoryFor(space) {
+  const mine = () => liveRecords('memory').filter((r) => typeof r.data === 'string' && memSpace(r) === (space || activeSpace()))
+  return {
+    items() {
+      return mine().sort((a, b) => a.updatedAt - b.updatedAt).map((r) => r.data)
+    },
+    add(text) {
+      const clean = String(text || '').trim().slice(0, 500)
+      if (!clean || this.items().includes(clean)) return
+      const sp = space || activeSpace()
+      putRecord('memory', sp === 'personal' ? crypto.randomUUID() : `${sp}:${crypto.randomUUID()}`, clean)
+    },
+    remove(text) {
+      const hit = mine().find((r) => r.data === text)
+      if (!hit) return false
+      putRecord('memory', hit.id, null, { deleted: true })
+      return true
+    },
+  }
+}
+
+// The active Space's memory; forSpace(id) for a specific one.
 const memory = {
-  items() {
-    return liveRecords('memory').sort((a, b) => a.updatedAt - b.updatedAt).map((r) => r.data)
-  },
-  add(text) {
-    const clean = String(text || '').trim().slice(0, 500)
-    if (!clean || memory.items().includes(clean)) return
-    putRecord('memory', crypto.randomUUID(), clean)
-  },
-  remove(text) {
-    const hit = liveRecords('memory').find((r) => r.data === text)
-    if (!hit) return false
-    putRecord('memory', hit.id, null, { deleted: true })
-    return true
-  },
+  items: () => memoryFor().items(),
+  add: (text) => memoryFor().add(text),
+  remove: (text) => memoryFor().remove(text),
+  forSpace: (space) => memoryFor(space),
 }
 
 // ---------- browsing history ----------

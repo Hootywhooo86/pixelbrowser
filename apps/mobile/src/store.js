@@ -151,10 +151,11 @@ export function liveRecords(collection) {
   return Object.values(state.records[collection] || {}).filter((r) => !r.deleted)
 }
 
-// Memory is kept per Space (Personal, Work, 128bit…). Older entries were
-// plain strings and belong to Personal. Synced as the 'memory' collection.
-const memSpace = (r) => (typeof r.data === 'string' ? 'personal' : r.data?.space || 'personal')
-const memText = (r) => (typeof r.data === 'string' ? r.data : r.data?.text || '')
+// Memory is kept per Space (Personal, Work, 128bit…). Record data stays a
+// plain string so older versions can still read it; the Space is in the id:
+// '<space>:<uuid>', or a bare uuid for Personal (and every older entry).
+const memSpace = (r) => (String(r.id).includes(':') ? String(r.id).split(':')[0] : 'personal')
+const memText = (r) => (typeof r.data === 'string' ? r.data : '')
 
 export const memory = {
   items: (space = state.activeSpace || 'personal') =>
@@ -166,7 +167,8 @@ export const memory = {
   add(text, space = state.activeSpace || 'personal') {
     const clean = String(text || '').trim().slice(0, 500)
     if (!clean || memory.items(space).includes(clean)) return
-    putRecord('memory', Crypto.randomUUID(), { text: clean, space })
+    const id = space === 'personal' ? Crypto.randomUUID() : `${space}:${Crypto.randomUUID()}`
+    putRecord('memory', id, clean)
   },
   remove(text, space = state.activeSpace || 'personal') {
     const hit = liveRecords('memory').find((r) => memText(r) === text && memSpace(r) === space)

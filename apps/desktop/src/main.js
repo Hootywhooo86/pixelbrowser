@@ -84,6 +84,7 @@ class PixelWindow {
     this.sidebar = { open: false, view: null, ready: null, appView: null, app: null }
     this.agentActive = false
     this.ai = new AISession(this)
+    this.ai.setSpace?.(this.space)
 
     this.win = new BrowserWindow({
       width: 1280,
@@ -1154,6 +1155,7 @@ ipcMain.on('ai:stop', (e) => fromSidebar(e)?.ai.stop())
 ipcMain.on('ai:new-chat', (e) => fromSidebar(e)?.ai.newChat())
 ipcMain.on('ai:confirm', (e, { id, ok }) => fromSidebar(e)?.ai.answerConfirm(id, ok))
 ipcMain.on('sidebar:close', (e) => fromSidebar(e)?.toggleSidebar(false))
+ipcMain.on('sidebar:select-tab', (e, id) => fromSidebar(e)?.selectTab(Number(id)))
 ipcMain.on('sidebar:open-url', (e, url) => {
   const pw = fromSidebar(e)
   if (pw && isAllowedUrl(url)) pw.selectTab(pw.createTab(url).id)

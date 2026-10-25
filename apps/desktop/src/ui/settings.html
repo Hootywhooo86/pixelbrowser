@@ -11,8 +11,118 @@
 <body>
   <header id="head">
     <div class="brand"><span class="mark">B</span> SETTINGS</div>
+    <input id="find" type="search" placeholder="Search settings" aria-label="Search settings" spellcheck="false">
   </header>
+  <nav id="nav" aria-label="Settings sections">
+    <a href="#shields">SHIELDS</a><a href="#security">SECURITY</a><a href="#appearance">LOOK</a><a href="#media">MEDIA</a><a href="#spaces">SPACES</a><a href="#family">128BIT</a><a href="#data">DATA</a><a href="#search">SEARCH</a><a href="#sync">SYNC</a>
+  </nav>
   <main class="view">
+    <section id="shields" data-keys="shields ads trackers block youtube filter lists cookie banners annoyances phishing malware">
+      <h2>SHIELDS &amp; PRIVACY</h2>
+      <div class="row">
+        <button id="shields-switch" class="pxswitch on" role="switch" aria-checked="true"><span class="knob"></span><span class="lbl">ON</span></button>
+        <span id="shields-state"></span>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="stat-ads">0</b><span>ADS BLOCKED</span></div>
+        <div class="stat"><b id="stat-trackers">0</b><span>TRACKERS BLOCKED</span></div>
+      </div>
+      <h3>FILTER LISTS</h3>
+      <div id="lists" class="checks"></div>
+      <h3>REGIONAL LISTS</h3>
+      <div id="regional" class="checks"></div>
+      <div class="row"><button id="lists-update" class="px">UPDATE LISTS NOW</button><span id="lists-status" class="muted"></span></div>
+      <h3>SHIELDS DOWN ON THESE SITES</h3>
+      <div id="site-off" class="muted">None. Use the shield in the toolbar to turn Shields down for a site.</div>
+      <h3>DANGEROUS SITES</h3>
+      <label class="check"><input type="checkbox" id="phishing-on"> Warn me before phishing and malware sites</label>
+      <p id="phishing-status" class="muted"></p>
+    </section>
+
+    <section id="security" data-keys="panic wipe private lock pin dns doh secure dns cloudflare quad9 nextdns">
+      <h2>SECURITY</h2>
+      <h3>PANIC BUTTON</h3>
+      <p class="muted">Closes every private window and wipes history, cache and back/forward history from the time you pick. Also in the toolbar (!) and Ctrl+Shift+X.</p>
+      <div class="row">
+        <select id="panic-range" aria-label="How far back to wipe"><option value="15m">Last 15 minutes</option><option value="1h">Last hour</option><option value="today">Today</option></select>
+        <button id="panic-go" class="px danger">PANIC</button><span id="panic-done" class="muted" hidden>Done.</span>
+      </div>
+      <h3>LOCK PRIVATE WINDOWS</h3>
+      <p class="muted">After you've been away from a private window, it asks for a PIN before showing it again.</p>
+      <div class="row"><input id="lock-pin" type="password" inputmode="numeric" placeholder="New PIN (4+ digits)" autocomplete="new-password"><button id="lock-save" class="px">SET PIN</button></div>
+      <label class="check"><input type="checkbox" id="lock-on"> Lock private windows after <input id="lock-min" type="number" min="1" max="120" class="num"> minutes away</label>
+      <p id="lock-status" class="muted"></p>
+      <h3>SECURE DNS</h3>
+      <p class="muted">Looks up websites over an encrypted connection, so your internet provider can't see which sites you visit.</p>
+      <div class="row">
+        <select id="doh" aria-label="Secure DNS provider"><option value="automatic">Automatic (default)</option><option value="cloudflare">Cloudflare</option><option value="quad9">Quad9 (blocks malware)</option><option value="nextdns">NextDNS</option><option value="custom">Custom…</option></select>
+        <input id="doh-custom" placeholder="https://dns.example/dns-query" spellcheck="false" hidden>
+        <button id="doh-save" class="px">SAVE</button>
+      </div>
+    </section>
+
+    <section id="appearance" data-keys="appearance theme themes color colours dark light game boy arcade sunset mono custom skin sounds">
+      <h2>APPEARANCE</h2>
+      <div id="themes" class="themes" role="radiogroup" aria-label="Theme"></div>
+      <div id="custom-theme" hidden>
+        <div class="colors">
+          <label>Accent <input type="color" id="c-accent"></label>
+          <label>Background <input type="color" id="c-bg"></label>
+          <label>Panels <input type="color" id="c-panel"></label>
+          <label>Text <input type="color" id="c-ink"></label>
+        </div>
+        <button id="custom-save" class="px hot">USE THESE COLORS</button>
+      </div>
+      <h3>TAB BAR SKIN</h3>
+      <div class="row"><label class="check"><input type="radio" name="skin" value="classic"> Classic</label><label class="check"><input type="radio" name="skin" value="chunky"> Chunky pixels</label></div>
+      <h3>SOUNDS</h3>
+      <label class="check"><input type="checkbox" id="sounds"> Retro sound effects (new tab, ads blocked, level up)</label>
+    </section>
+
+    <section id="media" data-keys="media video autoplay full screen">
+      <h2>MEDIA</h2>
+      <h3>AUTOPLAY</h3>
+      <div class="row wrap">
+        <label class="check"><input type="radio" name="autoplay" value="off"> Off</label>
+        <label class="check"><input type="radio" name="autoplay" value="muted"> Muted only</label>
+        <label class="check"><input type="radio" name="autoplay" value="on"> On</label>
+      </div>
+      <p id="autoplay-note" class="muted"></p>
+      <p class="muted">Full-screen videos hide the tabs, toolbar and sidebar until you exit.</p>
+    </section>
+
+    <section id="spaces" data-keys="spaces workspaces work personal 128bit tabs">
+      <h2>SPACES</h2>
+      <p class="muted">Each Space keeps its own tabs and its own Bitter memory. Switch Spaces with the button left of your tabs.</p>
+      <div id="space-list"></div>
+      <form id="space-add" class="row"><input id="space-name" placeholder="New Space name" maxlength="24"><button class="px hot">ADD</button></form>
+    </section>
+
+    <section id="family" data-keys="128bit family xp level streak badges bitcaller tracker 128bittracker">
+      <h2>128BIT FAMILY</h2>
+      <div class="xp">
+        <div class="lvl"><span>LVL</span><b id="xp-level">1</b></div>
+        <div class="xpbody">
+          <div><b id="xp-points">0</b> XP · <span id="xp-streak">0</span>-day streak</div>
+          <div class="bar"><i id="xp-bar"></i></div>
+          <small id="xp-next" class="muted"></small>
+        </div>
+      </div>
+      <h3>BADGES</h3>
+      <div id="badges" class="badges"></div>
+      <p class="muted">XP lives on your devices and syncs between them. It'll join your 128bit account when accounts arrive.</p>
+      <h3>FAMILY APPS</h3>
+      <label class="check"><input type="checkbox" id="fl-bitcaller"> Phone numbers: "Call with BitCaller"</label>
+      <label class="check"><input type="checkbox" id="fl-tracker"> Shows and movies: "Add to 128bittracker" on IMDb and TMDB pages</label>
+    </section>
+
+    <section id="data" data-keys="data dashboard storage stored synced delete cookies cache history memory">
+      <h2>YOUR DATA</h2>
+      <p class="muted">What Bit Browser keeps on this computer, and what syncs (end-to-end encrypted) to your other devices.</p>
+      <table id="data-table"><tbody></tbody></table>
+    </section>
+
+    <section id="search" data-keys="search engine duckduckgo brave google bing">
     <h2>SEARCH ENGINE</h2>
     <p class="muted">Used when you type words in the address bar. Bitter's own web lookups always use DuckDuckGo's private search.</p>
     <div id="engines" role="radiogroup" aria-label="Search engine"></div>
@@ -21,6 +131,8 @@
       <div class="row"><button class="px hot">SAVE</button><span id="custom-saved" class="muted" hidden>Saved.</span></div>
     </form>
 
+    </section>
+    <section id="ai-sec" data-keys="ai bitter slider private">
     <h2>AI</h2>
     <div class="row">
       <button id="ai-switch" class="pxswitch on" role="switch" aria-checked="true"><span class="knob"></span><span class="lbl">AI</span></button>
@@ -28,6 +140,8 @@
     </div>
     <p class="muted">Off = private mode. Nothing is sent to any AI, and searches use the engine's no-AI results where it has them (DuckDuckGo, Google). Pick the AI model in the Bitter sidebar.</p>
 
+    </section>
+    <section id="sync" data-keys="sync devices phone qr code">
     <h2>SYNC</h2>
     <p class="muted">Memory, history, open tabs and AI settings sync between your devices. They're encrypted on this device first, so the sync server can't read them.</p>
     <div id="sync-off">
@@ -60,10 +174,14 @@
     </div>
     <p id="sync-error" class="error" hidden></p>
 
+    </section>
+    <section id="default" data-keys="default browser links">
     <h2>DEFAULT BROWSER</h2>
     <p id="default-status" class="muted"></p>
     <div class="row"><button id="make-default" class="px hot">MAKE BIT BROWSER YOUR DEFAULT BROWSER</button></div>
 
+    </section>
+    <section id="updates" data-keys="updates version">
     <h2>UPDATES</h2>
     <p id="update-status"></p>
     <label class="check"><input type="checkbox" id="update-auto"> Download updates automatically</label>
@@ -73,11 +191,15 @@
     </div>
     <p class="muted">Updates come from Bit Browser's GitHub releases. The check only asks GitHub for the newest version number and sends nothing about you.</p>
 
+    </section>
+    <section id="clear" data-keys="clear browsing data history cookies cache">
     <h2>CLEAR BROWSING DATA</h2>
     <p class="muted">Clears this device only. Your other devices keep their copies.</p>
     <label class="check"><input type="checkbox" id="clear-history" checked> History</label>
     <label class="check"><input type="checkbox" id="clear-site"> Cookies, site data and cache (signs you out of websites)</label>
     <div class="row"><button id="clear-go" class="px">CLEAR</button><span id="clear-done" class="muted" hidden>Cleared.</span></div>
+    </section>
+    <p id="no-match" class="muted" hidden>No settings match.</p>
   </main>
   <script src="settings.js"></script>
 </body>

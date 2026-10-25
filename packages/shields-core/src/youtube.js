@@ -39,7 +39,7 @@ if (/(^|\.)(youtube\.com|youtube-nocookie\.com|youtubekids\.com)$/.test(host)) (
       var player = document.querySelector('.ad-showing, .ad-interrupting');
       if (!player) return;
       var v = player.querySelector('video');
-      if (v && isFinite(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.2) { v.muted = true; v.currentTime = v.duration; }
+      if (v && isFinite(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.2) { v.currentTime = v.duration; }
       var b = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytm-skip-ad-button, button[class*="skip-button"]');
       if (b) b.click();
       if (Date.now() - lastSkip > 5000) { lastSkip = Date.now(); report(1) }
