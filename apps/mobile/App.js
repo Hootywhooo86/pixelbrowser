@@ -3,7 +3,7 @@
 // the same Comet-style AI and encrypted sync as the desktop app.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { View, TextInput, Text, Pressable, StyleSheet, Platform, Linking, Alert, ToastAndroid, LayoutAnimation, UIManager, Modal } from 'react-native'
+import { View, TextInput, Text, Pressable, StyleSheet, Platform, Linking, Alert, ToastAndroid, Modal } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import { useFonts } from 'expo-font'
 import { WebView } from 'react-native-webview'
@@ -26,8 +26,6 @@ import TabsScreen from './src/TabsScreen'
 import DownloadsScreen from './src/DownloadsScreen'
 import { PButton, PSwitch } from './src/ui'
 import { C, PIXEL_FONT } from './src/theme'
-
-if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true)
 
 let nextTabId = 1
 
@@ -65,6 +63,10 @@ const FULLSCREEN_JS = `(function(){
   document.addEventListener('webkitfullscreenchange', check);
   document.addEventListener('webkitbeginfullscreen', function(){ post(true) }, true);
   document.addEventListener('webkitendfullscreen', function(){ post(false) }, true);
+  // Tell the app while a video is playing, so the bars don't move under it.
+  var playing = 0;
+  function vid(){ try{ var n=0; document.querySelectorAll('video').forEach(function(v){ if(!v.paused && !v.ended && v.readyState>2 && v.offsetHeight>80) n++ }); if((n>0)!==(playing>0)){ playing=n; window.ReactNativeWebView.postMessage(JSON.stringify({__bitVideo:n>0})) } playing=n }catch(e){} }
+  ['playing','pause','ended','emptied'].forEach(function(t){ document.addEventListener(t, vid, true) });
 })();`
 
 const INJECTED_JS = `${FULLSCREEN_JS}\n${CAPTURE_LOGIN_JS}\ntrue;`
@@ -195,11 +197,27 @@ function Browser() {
     []
   )
 
+  // Hide/show the bars only on a deliberate scroll, never while a video
+  // plays, and hold still briefly after each change so the page settles.
+  const barsHiddenRef = useRef(false)
+  const scrollRun = useRef(0)
+  const barsLockedUntil = useRef(0)
+  const videoPlaying = useRef(false)
   const showBars = (show) => {
-    if (show === !barsHidden) return
-    LayoutAnimation.configureNext(LayoutAnimation.create(160, 'easeInEaseOut', 'opacity'))
+    if (show === !barsHiddenRef.current) return
+    if (!show && videoPlaying.current) return
+    barsHiddenRef.current = !show
+    barsLockedUntil.current = Date.now() + 600
+    scrollRun.current = 0
     setBarsHidden(!show)
   }
+
+  // A different tab starts with the bars showing.
+  useEffect(() => {
+    videoPlaying.current = false
+    lastScrollY.current = 0
+    showBars(true)
+  }, [activeId])
 
   // Full-screen video: landscape, no app bars, no system bars. Restored on exit.
   const setVideoFullscreen = async (on) => {
@@ -232,6 +250,10 @@ function Browser() {
     }
     if (!msg) return
     if (msg.__bitFullscreen !== undefined) return setVideoFullscreen(!!msg.__bitFullscreen)
+    if (msg.__bitVideo !== undefined) {
+      videoPlaying.current = !!msg.__bitVideo && tab.id === activeRef.current
+      return
+    }
     if (msg.__bitLogin) return offerToSave(tab, msg.__bitLogin)
     const waiter = msg.__pixel && pending.current.get(msg.__pixel)
     if (!waiter) return
@@ -389,7 +411,10 @@ function Browser() {
                 if (r) views.current[t.id] = r
               }}
               source={{ uri: t.source }}
-              style={[st.page, t.id !== active.id && { display: 'none' }]}
+              // Hidden tabs must not take up space: the WebView's outer
+              // container is flex: 1 by default, so hide that, not just the page.
+              containerStyle={t.id === active.id ? st.pageBox : st.hidden}
+              style={st.page}
               incognito={t.private}
               thirdPartyCookiesEnabled={false}
               setSupportMultipleWindows={false}
@@ -405,9 +430,12 @@ function Browser() {
                 const y = e.nativeEvent.contentOffset?.y || 0
                 const dy = y - lastScrollY.current
                 lastScrollY.current = y
-                if (y < 24) showBars(true)
-                else if (dy > 12) showBars(false)
-                else if (dy < -12) showBars(true)
+                if (Date.now() < barsLockedUntil.current) return
+                if (y < 24) return showBars(true)
+                // Count the scroll in one direction; a change of direction starts over.
+                scrollRun.current = Math.sign(dy) === Math.sign(scrollRun.current) ? scrollRun.current + dy : dy
+                if (scrollRun.current > 140) showBars(false)
+                else if (scrollRun.current < -70) showBars(true)
               }}
               onShouldStartLoadWithRequest={(req) => {
                 if (looksLikeDownload(req.url)) {
@@ -569,6 +597,8 @@ const st = StyleSheet.create({
   update: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#2a1a05', borderBottomWidth: 3, borderBottomColor: C.orange },
   updateText: { flex: 1, fontFamily: PIXEL_FONT, fontSize: 7, color: C.orange },
   page: { flex: 1, backgroundColor: '#fff' },
+  pageBox: { flex: 1 },
+  hidden: { display: 'none' },
   agentFrame: { borderWidth: 4, borderColor: C.pink },
   agentBar: { position: 'absolute', left: 8, right: 8, top: 8, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: '#2a0b18', borderWidth: 3, borderColor: C.pink },
   agentTitle: { fontFamily: PIXEL_FONT, fontSize: 9, color: C.pink, marginBottom: 4 },
