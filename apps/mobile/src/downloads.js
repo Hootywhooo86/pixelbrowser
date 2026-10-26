@@ -138,8 +138,27 @@ async function uniquePath(filename) {
   return { name: filename, path: DIR + `${Date.now()}-${encodeURIComponent(filename)}` }
 }
 
+/** True for a PDF download item, a .pdf URL/file name, or the PDF MIME type. */
+export function isPdf(x) {
+  if (!x) return false
+  if (typeof x === 'object') return /pdf/i.test(x.mimeType || '') || /\.pdf$/i.test(x.filename || '')
+  return /^application\/pdf/i.test(x) || /\.pdf$/i.test(pathOf(x))
+}
+
+// "Open this PDF in the viewer": App.js listens and shows PdfViewer.
+const pdfListeners = new Set()
+export function onOpenPdf(fn) {
+  pdfListeners.add(fn)
+  return () => pdfListeners.delete(fn)
+}
+export function openPdf(item) {
+  if (!item || item.status !== 'done') return
+  if (pdfListeners.size) for (const fn of pdfListeners) fn(item)
+  else openDownload(item).catch(() => {})
+}
+
 /** Download a file into the app; it appears in the Downloads list. */
-export async function startDownload({ url, filename, mimeType, headers } = {}) {
+export async function startDownload({ url, filename, mimeType, headers, cookie, referer, userAgent } = {}) {
   await load()
   const { name, path } = await uniquePath(filename || guessFilename(url))
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -149,7 +168,14 @@ export async function startDownload({ url, filename, mimeType, headers } = {}) {
   persist()
 
   let lastTick = 0
-  const task = FileSystem.createDownloadResumable(url, path, { headers: headers || {} }, ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+  // Send what the page would: its cookies (for signed-in files), where the
+  // link was clicked and the browser's own user agent.
+  const sendHeaders = { ...(headers || {}) }
+  if (cookie) sendHeaders.Cookie = cookie
+  if (referer) sendHeaders.Referer = referer
+  if (userAgent) sendHeaders['User-Agent'] = userAgent
+  const wantPdf = isPdf(name) || isPdf(mimeType || '')
+  const task = FileSystem.createDownloadResumable(url, path, { headers: sendHeaders }, ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
     const now = Date.now()
     if (now - lastTick < 250) return
     lastTick = now
@@ -165,6 +191,12 @@ export async function startDownload({ url, filename, mimeType, headers } = {}) {
     const info = await FileSystem.getInfoAsync(res.uri)
     const h = res.headers || {}
     const ctype = (h['Content-Type'] || h['content-type'] || '').split(';')[0].trim()
+    // A sign-in page instead of the file: say so instead of saving junk.
+    if (/^text\/html/i.test(ctype) && !/\.html?$/i.test(name)) throw new Error('The site sent a web page instead of the file. You may need to sign in; tap the download on the page again.')
+    if (wantPdf || /pdf/i.test(ctype)) {
+      const head = await FileSystem.readAsStringAsync(res.uri, { encoding: FileSystem.EncodingType.Base64, position: 0, length: 5 }).catch(() => '')
+      if (head && !head.startsWith('JVBER')) throw new Error("The file isn't a real PDF. The link may have expired; open it from the site again.")
+    }
     patch(id, {
       status: 'done',
       progress: 1,
@@ -177,6 +209,84 @@ export async function startDownload({ url, filename, mimeType, headers } = {}) {
     patch(id, { status: 'failed', error: String(e?.message || e) })
   }
   return items.find((d) => d.id === id)
+}
+
+// ---------- files handed over by web pages (blob:, data:, signed-in links) ----------
+
+const incoming = new Map() // id -> { item, parts: [], got }
+
+/**
+ * Take one { __bitFile } chunk from download-capture.js. When the last chunk
+ * arrives the file is written and its finished Downloads item is returned
+ * (otherwise null).
+ */
+export async function receiveChunk(msg) {
+  const c = msg?.__bitFile || msg
+  if (!c || !c.id || typeof c.chunk !== 'string') return null
+  await load()
+  let entry = incoming.get(c.id)
+  if (!entry) {
+    const name = guessFilename('', `filename="${String(c.name || 'download').replace(/"/g, '')}"`)
+    const { name: unique, path } = await uniquePath(name)
+    if (incoming.has(c.id)) entry = incoming.get(c.id)
+    else {
+      const item = { id: `${Date.now()}-${c.id}`, url: '', filename: unique, size: c.size || 0, mimeType: c.mime && c.mime !== 'application/octet-stream' ? c.mime : mimeFor(unique), status: 'downloading', progress: 0, path, startedAt: Date.now(), error: '' }
+      entry = { item, parts: new Array(c.total), got: 0 }
+      incoming.set(c.id, entry)
+      items = [item, ...items]
+      emit()
+    }
+  }
+  if (entry.parts[c.index] === undefined) entry.got += 1
+  entry.parts[c.index] = c.chunk
+  if (entry.got < c.total) {
+    patch(entry.item.id, { progress: entry.got / c.total })
+    return null
+  }
+  incoming.delete(c.id)
+  try {
+    await FileSystem.writeAsStringAsync(entry.item.path, entry.parts.join(''), { encoding: FileSystem.EncodingType.Base64 })
+    const info = await FileSystem.getInfoAsync(entry.item.path)
+    patch(entry.item.id, { status: 'done', progress: 1, size: info.size || c.size || 0 })
+  } catch (e) {
+    patch(entry.item.id, { status: 'failed', error: String(e?.message || e) })
+  }
+  return items.find((d) => d.id === entry.item.id)
+}
+
+/** Print a PDF (shipping labels print at their real size). */
+export async function printDownload(item) {
+  if (!item || item.status !== 'done') return
+  const Print = require('expo-print')
+  await Print.printAsync({ uri: item.path })
+}
+
+/**
+ * Save a copy where you can find it outside the app. Android asks which
+ * folder (pick Downloads); iPhone opens the share sheet ("Save to Files").
+ * Returns true when saved.
+ */
+export async function saveDownloadCopy(item) {
+  if (!item || item.status !== 'done') return false
+  if (Platform.OS !== 'android') {
+    await shareDownload(item)
+    return true
+  }
+  const SAF = FileSystem.StorageAccessFramework
+  const perm = await SAF.requestDirectoryPermissionsAsync()
+  if (!perm.granted) return false
+  const mime = item.mimeType || mimeFor(item.filename)
+  const ext = extOf(item.filename)
+  const base = ext ? item.filename.slice(0, -(ext.length + 1)) : item.filename
+  const target = await SAF.createFileAsync(perm.directoryUri, base, mime)
+  const data = await FileSystem.readAsStringAsync(item.path, { encoding: FileSystem.EncodingType.Base64 })
+  await FileSystem.writeAsStringAsync(target, data, { encoding: FileSystem.EncodingType.Base64 })
+  return true
+}
+
+/** Read a finished download as base64 (the PDF viewer uses this). */
+export function readDownloadBase64(item) {
+  return FileSystem.readAsStringAsync(item.path, { encoding: FileSystem.EncodingType.Base64 })
 }
 
 /** Open a finished download in the app that handles it (APKs open the installer). */

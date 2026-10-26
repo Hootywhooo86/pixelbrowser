@@ -28,4 +28,8 @@ contextBridge.exposeInMainWorld('pixel', {
   unlock: (pin) => ipcRenderer.invoke('lock:unlock', pin),
   onState: (fn) => ipcRenderer.on('tabs:state', (_e, state) => fn(state)),
   onSound: (fn) => ipcRenderer.on('sound', (_e, kind) => fn(kind)),
+  // Downloads: { id, name, path, state: progressing|completed|cancelled|interrupted, received, total, mime }
+  onDownload: (fn) => ipcRenderer.on('download', (_e, d) => fn(d)),
+  openDownload: (id) => ipcRenderer.send('download:open', id),
+  showDownload: (id) => ipcRenderer.send('download:show', id),
 })

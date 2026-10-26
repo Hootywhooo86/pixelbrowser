@@ -17,7 +17,9 @@ import { loadStore, getState, putRecord, addHistory, useStore, update, liveRecor
 import { setAIEnabled, session } from './src/ai'
 import { checkForAppUpdate } from './src/updates'
 import { startSync } from './src/sync'
-import { startDownload, looksLikeDownload, guessFilename } from './src/downloads'
+import { startDownload, looksLikeDownload, guessFilename, receiveChunk, isPdf, openPdf, onOpenPdf } from './src/downloads'
+import { CAPTURE_DOWNLOADS_JS, fetchInPageJS } from './src/download-capture'
+import PdfViewer from './src/PdfViewer'
 import { CAPTURE_LOGIN_JS, autofillJS, findLogins, saveLogin, hasLogin, startPasswordSync, unlock } from './src/passwords'
 import { emit } from './src/events'
 import { initShields, useShieldsScript, siteScript, isBlocked, handleShieldsMessage, useBlockedCount, notePageLoaded, siteShieldsOn, setSiteShields } from './src/shields'
@@ -95,7 +97,7 @@ const autoplayJS = (mode) => `(function(){
   }, true);
 })();`
 
-const injectedJS = (autoplay) => `${FULLSCREEN_JS}\n${autoplay === 'on' ? '' : autoplayJS(autoplay)}\n${CAPTURE_LOGIN_JS}\ntrue;`
+const injectedJS = (autoplay) => `${FULLSCREEN_JS}\n${CAPTURE_DOWNLOADS_JS}\n${autoplay === 'on' ? '' : autoplayJS(autoplay)}\n${CAPTURE_LOGIN_JS}\ntrue;`
 
 const PAUSE_MEDIA_JS = `document.querySelectorAll('video,audio').forEach(function(m){try{m.pause()}catch(e){}});true;`
 
@@ -153,6 +155,15 @@ function Browser() {
   const [barsHidden, setBarsHidden] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [fillOffer, setFillOffer] = useState(null) // { tabId, login }
+  const [pdf, setPdf] = useState(null) // downloaded PDF open in the viewer
+  useEffect(
+    () =>
+      onOpenPdf((item) => {
+        setDownloadsOpen(false) // iPhone can't show a modal over another one
+        setPdf(item)
+      }),
+    []
+  )
 
   useEffect(() => {
     if (getState().checkUpdates) checkForAppUpdate().then(setAppUpdate)
@@ -372,6 +383,21 @@ function Browser() {
     }
     if (!msg) return
     if (handleShieldsMessage(msg, tab.url)) return
+    // Files the page hands over (labels, invoices, blob: and data: downloads).
+    if (msg.__bitFile) {
+      if (msg.__bitFile.index === 0) toast(`Downloading ${msg.__bitFile.name}`)
+      receiveChunk(msg).then((item) => {
+        if (!item) return
+        if (item.status === 'failed') return Alert.alert('Download failed', item.error)
+        isPdf(item) ? openPdf(item) : toast(`Downloaded ${item.filename}. Open it from Menu > Downloads.`)
+      })
+      return
+    }
+    if (msg.__bitDownload) {
+      const d = msg.__bitDownload
+      return download(d.url, { filename: d.filename || undefined, cookie: d.cookie, referer: d.referer, userAgent: d.userAgent })
+    }
+    if (msg.__bitDownloadError) return Alert.alert('Download failed', msg.__bitDownloadError.message)
     if (msg.__bitFullscreen !== undefined) return setVideoFullscreen(!!msg.__bitFullscreen)
     if (msg.__bitVideo !== undefined) {
       videoPlaying.current = !!msg.__bitVideo && tab.id === activeRef.current
@@ -387,10 +413,14 @@ function Browser() {
   const download = (url, extra = {}) => {
     const filename = extra.filename || guessFilename(url)
     toast(`Downloading ${filename}`)
-    startDownload({ url, filename, ...extra })
-      .then(() => toast(`Downloaded ${filename}. Open it from Menu > Downloads.`))
-      .catch((e) => Alert.alert('Download failed', String(e?.message || e)))
+    startDownload({ url, ...extra, filename }).then((item) => {
+      if (item?.status === 'failed') return Alert.alert('Download failed', item.error)
+      if (item?.status !== 'done') return
+      if (isPdf(item)) openPdf(item)
+      else toast(`Downloaded ${item.filename}. Open it from Menu > Downloads.`)
+    })
   }
+
 
   // Share open (non-private) tabs with your other devices, encrypted.
   useEffect(() => {
@@ -509,8 +539,17 @@ function Browser() {
         openTel(req.url)
         return false
       }
+      if (/^(blob|data):/i.test(req.url)) {
+        views.current[t.id]?.injectJavaScript(fetchInPageJS(req.url))
+        return false
+      }
       if (looksLikeDownload(req.url)) {
-        download(req.url)
+        // Fetch it from inside the page first so the site's sign-in comes along
+        // (e.g. Shippo labels); the page hands it back for a normal download if
+        // it isn't allowed to read it.
+        const view = views.current[t.id]
+        if (view && /^https?:/i.test(t.url || '')) view.injectJavaScript(fetchInPageJS(req.url))
+        else download(req.url)
         return false
       }
       return true
@@ -774,6 +813,7 @@ function Browser() {
         onClose={() => setTabsOpen(false)}
       />
       <SettingsScreen visible={settingsOpen} onClose={() => setSettingsOpen(false)} openUrl={openUrl} downloadsScreen={<DownloadsScreen />} />
+      <PdfViewer item={pdf} visible={!!pdf} onClose={() => setPdf(null)} />
     </View>
   )
 }
@@ -785,6 +825,7 @@ const NO_MENU = []
 // other tabs loading don't re-render every open page.
 const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEnabled, watchScroll, shieldsJS, h }) {
   const js = useMemo(() => injectedJS(autoplay), [autoplay])
+  const beforeJS = useMemo(() => `${CAPTURE_DOWNLOADS_JS}\n${shieldsJS || ''}`, [shieldsJS])
   // A tab woken from sleep reopens its last page; later navigations come in via t.source.
   const [source, setSource] = useState(() => ({ uri: t.url || t.source }))
   const firstSource = useRef(t.source)
@@ -815,7 +856,7 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
       onMessage={(e) => h.onMessage(t, e)}
       // Scroll events cross into JS on every frame, so only listen when the bars hide on scroll.
       onScroll={watchScroll ? (e) => h.onScroll(t, e) : undefined}
-      injectedJavaScriptBeforeContentLoaded={shieldsJS}
+      injectedJavaScriptBeforeContentLoaded={beforeJS}
       onShouldStartLoadWithRequest={(req) => h.shouldStart(req, t)}
       onLoadStart={(e) => h.onLoadStart(t, e)}
       onFileDownload={(e) => h.download(e.nativeEvent.downloadUrl)}

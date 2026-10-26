@@ -1,7 +1,7 @@
 // Settings → Downloads: files saved from web pages.
 
 import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native'
-import { useDownloads, openDownload, shareDownload, deleteDownload, formatSize } from './downloads'
+import { useDownloads, openDownload, shareDownload, deleteDownload, formatSize, isPdf, openPdf, printDownload } from './downloads'
 import { PButton, PText } from './ui'
 import { C } from './theme'
 
@@ -27,7 +27,7 @@ function DownloadsList() {
     return (
       <View style={st.empty}>
         <PText style={{ color: C.muted }}>NO DOWNLOADS YET</PText>
-        <Text style={[st.muted, { textAlign: 'center' }]}>Tap a file link on a web page (an APK, PDF, ZIP…) and it's saved here.</Text>
+        <Text style={[st.muted, { textAlign: 'center' }]}>Tap a file link on a web page (a shipping label PDF, an APK, a ZIP…) and it's saved here. PDFs open in the viewer.</Text>
       </View>
     )
   }
@@ -47,7 +47,9 @@ function DownloadsList() {
               </View>
             )}
             <View style={st.row}>
-              {d.status === 'done' && <PButton small hot label="OPEN" onPress={() => run(() => openDownload(d))} />}
+              {d.status === 'done' && isPdf(d) && <PButton small hot label="VIEW" onPress={() => openPdf(d)} />}
+              {d.status === 'done' && isPdf(d) && <PButton small label="PRINT" onPress={() => run(() => printDownload(d))} />}
+              {d.status === 'done' && <PButton small hot={!isPdf(d)} label={isPdf(d) ? 'OPEN WITH' : 'OPEN'} onPress={() => run(() => openDownload(d))} />}
               {d.status === 'done' && <PButton small label="SHARE" onPress={() => run(() => shareDownload(d))} />}
               <PButton small label={d.status === 'downloading' ? 'CANCEL' : 'DELETE'} onPress={() => run(() => deleteDownload(d.id))} />
             </View>

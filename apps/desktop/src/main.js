@@ -190,7 +190,8 @@ class PixelWindow {
 
   createTab(url = '', { space = this.space, select = true } = {}) {
     const view = new WebContentsView({
-      webPreferences: { session: this.ses, sandbox: true, contextIsolation: true },
+      // plugins: Chromium's built-in PDF viewer, so PDFs open in the tab.
+      webPreferences: { session: this.ses, sandbox: true, contextIsolation: true, plugins: true },
     })
     const wc = view.webContents
     const tab = { id: wc.id, view, space, lastActive: Date.now() }
@@ -533,6 +534,10 @@ async function prepareSession(ses, { isPrivate }) {
   // Bit Shields: ads, trackers and phishing warnings in every profile.
   shields.attach(ses)
 
+  // Downloads go straight to the Downloads folder (no save dialog) and the
+  // shell shows them; PDFs open in a tab from there.
+  ses.on('will-download', (_e, item, wc) => handleDownload(item, wc))
+
   // No silent permission grants. Geolocation, camera etc. are denied until
   // we ship a pixel permission prompt.
   ses.setPermissionRequestHandler((_wc, permission, callback) => {
@@ -552,6 +557,68 @@ async function prepareSession(ses, { isPrivate }) {
   }
   return extensions
 }
+
+// ---------- downloads ----------
+
+const downloads = new Map() // id -> { id, name, path, state, received, total, mime }
+let nextDownloadId = 1
+
+function uniqueDownloadPath(name) {
+  const fs = require('node:fs')
+  const dir = app.getPath('downloads')
+  fs.mkdirSync(dir, { recursive: true })
+  const clean = String(name || 'download').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').replace(/^\.+/, '').slice(0, 150) || 'download'
+  const ext = path.extname(clean)
+  const base = clean.slice(0, clean.length - ext.length)
+  for (let i = 0; i < 1000; i++) {
+    const p = path.join(dir, i ? `${base} (${i})${ext}` : clean)
+    if (!fs.existsSync(p)) return p
+  }
+  return path.join(dir, `${Date.now()}-${clean}`)
+}
+
+function windowOfContents(wc) {
+  for (const pw of windows.values()) if (pw.tabs.some((t) => t.view.webContents === wc)) return pw
+  const focused = BrowserWindow.getFocusedWindow()
+  return (focused && windows.get(focused.id)) || windows.values().next().value
+}
+
+function handleDownload(item, wc) {
+  const savePath = uniqueDownloadPath(item.getFilename())
+  item.setSavePath(savePath)
+  const d = { id: nextDownloadId++, name: path.basename(savePath), path: savePath, state: 'progressing', received: 0, total: item.getTotalBytes(), mime: item.getMimeType() }
+  downloads.set(d.id, d)
+  const pw = windowOfContents(wc)
+  const push = () => pw?.send('download', { ...d })
+  push()
+  let last = 0
+  item.on('updated', (_e, state) => {
+    d.state = state === 'interrupted' ? 'interrupted' : 'progressing'
+    d.received = item.getReceivedBytes()
+    d.total = item.getTotalBytes()
+    if (Date.now() - last > 250) (last = Date.now()), push()
+  })
+  item.once('done', (_e, state) => {
+    d.state = state // completed | cancelled | interrupted
+    d.received = item.getReceivedBytes()
+    push()
+  })
+}
+
+const isPdfDownload = (d) => /\.pdf$/i.test(d.name) || d.mime === 'application/pdf'
+
+ipcMain.on('download:show', (_e, id) => {
+  const d = downloads.get(Number(id))
+  if (d) shell.showItemInFolder(d.path)
+})
+ipcMain.on('download:open', (e, id) => {
+  const d = downloads.get(Number(id))
+  if (!d || d.state !== 'completed') return
+  const pw = windows.get(BrowserWindow.fromWebContents(e.sender)?.id)
+  // PDFs open in a tab with the built-in viewer; anything else in its own app.
+  if (isPdfDownload(d) && pw) pw.selectTab(pw.createTab(require('node:url').pathToFileURL(d.path).href).id)
+  else shell.openPath(d.path)
+})
 
 function windowForExtensionCall(windowId, ses) {
   const pw = windowId != null ? windows.get(windowId) : null
@@ -1262,7 +1329,7 @@ function broadcastSettingsSoon() {
 
 // Hooks for the end-to-end test only.
 if (process.env.PIXEL_E2E) {
-  globalThis.__bitTest = { runPanic, shields, xp, setTheme, windows, history: store.history, records: store.records }
+  globalThis.__bitTest = { runPanic, shields, xp, setTheme, windows, history: store.history, records: store.records, downloads }
 }
 
 app.whenReady().then(async () => {
