@@ -43,6 +43,7 @@ function render() {
   $('back').disabled = !active?.canGoBack
   $('forward').disabled = !active?.canGoForward
   $('reload').textContent = active?.loading ? 'X' : 'R'
+  $('reload').classList.toggle('loading', !!active?.loading)
   $('shield').textContent = state.shieldsDown ? 'OFF' : state.blockedCount > 999 ? '999+' : String(state.blockedCount || 0)
   $('shield').classList.toggle('down', !!state.shieldsDown)
   $('shield').title = state.shieldsDown
@@ -157,3 +158,34 @@ const SOUNDS = {
   levelup: [[523, 0.08], [659, 0.08], [784, 0.08], [1047, 0.16]],
 }
 window.pixel.onSound((kind) => state.sounds && SOUNDS[kind] && beep(SOUNDS[kind]))
+
+// Finished downloads: a small notice in the corner. Click to open, or show it in its folder.
+if (window.pixel.onDownload) {
+  let timer = null
+  window.pixel.onDownload((d) => {
+    if (d.state !== 'completed' && d.state !== 'interrupted') return
+    let box = document.getElementById('dl-notice')
+    if (!box) {
+      box = document.createElement('div')
+      box.id = 'dl-notice'
+      box.style.cssText = 'position:fixed;right:12px;top:52px;z-index:50;display:flex;gap:8px;align-items:center;padding:8px 10px;background:var(--panel);color:var(--ink);border:3px solid var(--edge);box-shadow:4px 4px 0 #05050f;font-size:12px;max-width:420px'
+      document.body.appendChild(box)
+    }
+    box.textContent = ''
+    const label = document.createElement('span')
+    label.textContent = d.state === 'completed' ? `Downloaded ${d.name}` : `Download failed: ${d.name}`
+    label.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1'
+    box.appendChild(label)
+    if (d.state === 'completed') {
+      for (const [text, fn] of [['OPEN', () => window.pixel.openDownload(d.id)], ['SHOW', () => window.pixel.showDownload(d.id)]]) {
+        const b = document.createElement('button')
+        b.className = 'pxbtn'
+        b.textContent = text
+        b.onclick = () => (fn(), box.remove())
+        box.appendChild(b)
+      }
+    }
+    clearTimeout(timer)
+    timer = setTimeout(() => box.remove(), 8000)
+  })
+}

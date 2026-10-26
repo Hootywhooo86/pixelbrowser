@@ -29,7 +29,8 @@ import SettingsScreen from './src/SettingsScreen'
 import TabsScreen from './src/TabsScreen'
 import DownloadsScreen from './src/DownloadsScreen'
 import { PButton, PSwitch } from './src/ui'
-import { C, PIXEL_FONT, isLightTheme } from './src/theme'
+import { C, PIXEL_FONT, isLightTheme, px } from './src/theme'
+import PixelIcon from './src/PixelIcon'
 import { award, onXpEvent } from './src/xp'
 import { play } from './src/sounds'
 
@@ -749,30 +750,30 @@ function Browser() {
       {/* bottom bar: icon + label, long-press for a hint */}
       {!fullscreen && !barsHidden && (
         <View style={[st.bottom, { borderTopColor: accent }]}>
-          <BarButton icon="<" label="Back" disabled={!active.canGoBack} onPress={() => views.current[active.id]?.goBack()} onLongPress={hint('Back: the previous page')} />
-          <BarButton icon=">" label="Forward" disabled={!active.canGoForward} onPress={() => views.current[active.id]?.goForward()} onLongPress={hint('Forward: the next page')} />
+          <BarButton icon="back" label="Back" disabled={!active.canGoBack} onPress={() => views.current[active.id]?.goBack()} onLongPress={hint('Back: the previous page')} />
+          <BarButton icon="forward" label="Forward" disabled={!active.canGoForward} onPress={() => views.current[active.id]?.goForward()} onLongPress={hint('Forward: the next page')} />
           <BarButton
-            icon={active.loading ? 'X' : 'R'}
+            icon={active.loading ? 'stop' : 'reload'}
             label={active.loading ? 'Stop' : 'Reload'}
             onPress={() => (active.loading ? views.current[active.id]?.stopLoading() : views.current[active.id]?.reload())}
             onLongPress={hint('Reload this page, or stop it loading')}
           />
-          <BarButton icon={String(spaceTabs.length)} boxed label="Tabs" onPress={openTabs} onLongPress={hint('Tabs: see, search and close your tabs')} />
-          {aiEnabled && <BarButton icon="B" label="Bitter" hot={aiOpen} onPress={() => setAiOpen(!aiOpen)} onLongPress={hint('Bitter: ask about this page or let it take over')} />}
-          <BarButton icon="..." label="Menu" onPress={() => setMenuOpen(true)} onLongPress={hint('Menu: new tab, downloads, settings')} />
+          <BarButton count={spaceTabs.length} boxed label="Tabs" onPress={openTabs} onLongPress={hint('Tabs: see, search and close your tabs')} />
+          {aiEnabled && <BarButton icon="bitter" label="Bitter" hot={aiOpen} onPress={() => setAiOpen(!aiOpen)} onLongPress={hint('Bitter: ask about this page or let it take over')} />}
+          <BarButton icon="menu" label="Menu" onPress={() => setMenuOpen(true)} onLongPress={hint('Menu: new tab, downloads, settings')} />
         </View>
       )}
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)} statusBarTranslucent navigationBarTranslucent>
         <Pressable style={st.scrim} onPress={() => setMenuOpen(false)}>
           <View style={[st.menu, { marginBottom: insets.bottom + 70 }]}>
-            <MenuItem label="+ NEW TAB" onPress={() => (setMenuOpen(false), openTab(homeUrl()))} />
-            <MenuItem label="+ NEW PRIVATE TAB" onPress={() => (setMenuOpen(false), openTab(homeUrl(), { private: true }))} />
-            {aiEnabled && <MenuItem label="LET BITTER TAKE OVER" color={C.pink} onPress={takeOver} />}
-            {familyLinks.tracker !== false && TRACKER_PAGE.test(active.url) && <MenuItem label="ADD TO 128BITTRACKER" color={C.orange} onPress={addToTracker} />}
-            <MenuItem label="DOWNLOADS" onPress={() => (setMenuOpen(false), setDownloadsOpen(true))} />
-            <MenuItem label="SETTINGS" onPress={() => (setMenuOpen(false), setSettingsOpen(true))} />
-            <MenuItem label="PANIC: WIPE PRIVATE" color={C.pink} onPress={() => (setMenuOpen(false), panic())} />
+            <MenuItem icon="plus" label="NEW TAB" onPress={() => (setMenuOpen(false), openTab(homeUrl()))} />
+            <MenuItem icon="lock" label="NEW PRIVATE TAB" onPress={() => (setMenuOpen(false), openTab(homeUrl(), { private: true }))} />
+            {aiEnabled && <MenuItem icon="bitter" label="LET BITTER TAKE OVER" color={C.pink} onPress={takeOver} />}
+            {familyLinks.tracker !== false && TRACKER_PAGE.test(active.url) && <MenuItem icon="star" label="ADD TO 128BITTRACKER" color={C.orange} onPress={addToTracker} />}
+            <MenuItem icon="download" label="DOWNLOADS" onPress={() => (setMenuOpen(false), setDownloadsOpen(true))} />
+            <MenuItem icon="settings" label="SETTINGS" onPress={() => (setMenuOpen(false), setSettingsOpen(true))} />
+            <MenuItem icon="panic" label="PANIC: WIPE PRIVATE" color={C.pink} onPress={() => (setMenuOpen(false), panic())} />
           </View>
         </Pressable>
       </Modal>
@@ -872,13 +873,13 @@ function ShieldButton({ url, on, onPress }) {
   const siteOn = on && siteShieldsOn(url)
   return (
     <Pressable onPress={onPress} hitSlop={6} accessibilityRole="button" accessibilityLabel={siteOn ? `Bit Shields: ${n} blocked on this page` : 'Bit Shields are off for this site'} style={[st.shield, !siteOn && { opacity: 0.45 }]}>
-      <Text style={st.shieldIcon}>{siteOn ? 'S' : '-'}</Text>
+      <PixelIcon name={siteOn ? 'shield' : 'shield-off'} size={14} color={C.orange} />
       <Text style={st.shieldCount} numberOfLines={1}>{siteOn ? (n > 999 ? '999+' : String(n)) : 'OFF'}</Text>
     </Pressable>
   )
 }
 
-function BarButton({ icon, label, onPress, onLongPress, disabled, hot, boxed }) {
+function BarButton({ icon, count, label, onPress, onLongPress, disabled, hot, boxed }) {
   return (
     <Pressable
       onPress={onPress}
@@ -891,16 +892,17 @@ function BarButton({ icon, label, onPress, onLongPress, disabled, hot, boxed }) 
       style={({ pressed }) => [st.barBtn, disabled && { opacity: 0.35 }, pressed && { backgroundColor: C.edge }]}
     >
       <View style={[st.barIcon, boxed && st.barBoxed, hot && { backgroundColor: C.teal, borderColor: C.tealDark }]}>
-        <Text style={[st.barIconText, hot && { color: C.bg }]}>{icon}</Text>
+        {icon ? <PixelIcon name={icon} size={20} color={hot ? C.bg : C.ink} /> : <Text style={[st.barIconText, hot && { color: C.bg }]}>{count > 99 ? '99' : String(count)}</Text>}
       </View>
       <Text style={st.barLabel}>{label}</Text>
     </Pressable>
   )
 }
 
-function MenuItem({ label, onPress, color }) {
+function MenuItem({ label, icon, onPress, color }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [st.menuItem, pressed && { backgroundColor: C.edge }]} accessibilityRole="button">
+      {icon && <PixelIcon name={icon} size={16} color={color || C.ink} />}
       <Text style={[st.menuText, color && { color }]}>{label}</Text>
     </Pressable>
   )
@@ -909,42 +911,42 @@ function MenuItem({ label, onPress, color }) {
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.panel },
   top: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: C.panel, borderBottomWidth: 3 },
-  logo: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  logoText: { fontFamily: PIXEL_FONT, fontSize: 12, color: C.bg },
+  logo: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRightWidth: 3, borderBottomWidth: 3, borderColor: 'rgba(0,0,0,0.35)' },
+  logoText: { ...px(12), color: C.bg },
   address: { flex: 1, height: 44, backgroundColor: C.bg, borderWidth: 3, borderColor: C.edge, color: C.ink, paddingHorizontal: 10, paddingVertical: 0, fontSize: 15, textAlignVertical: 'center', includeFontPadding: false },
   mini: { height: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: C.panel, borderBottomWidth: 2 },
   miniText: { color: C.muted, fontSize: 12 },
   progress: { height: 3 },
   update: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#2a1a05', borderBottomWidth: 3, borderBottomColor: C.orange },
-  updateText: { flex: 1, fontFamily: PIXEL_FONT, fontSize: 7, color: C.orange },
+  updateText: { flex: 1, ...px(7), color: C.orange },
   page: { flex: 1, backgroundColor: '#fff' },
   pageBox: { flex: 1 },
   hidden: { display: 'none' },
   agentFrame: { borderWidth: 4, borderColor: C.pink },
   agentBar: { position: 'absolute', left: 8, right: 8, top: 8, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: '#2a0b18', borderWidth: 3, borderColor: C.pink },
-  agentTitle: { fontFamily: PIXEL_FONT, fontSize: 9, color: C.pink, marginBottom: 4 },
+  agentTitle: { ...px(9), color: C.pink, marginBottom: 4 },
   agentStep: { color: C.ink, fontSize: 12 },
   stop: { backgroundColor: C.pink, borderWidth: 3, borderColor: '#a02a55', paddingHorizontal: 16, paddingVertical: 14 },
-  stopText: { fontFamily: PIXEL_FONT, fontSize: 12, color: C.bg },
+  stopText: { ...px(12), color: C.bg },
   bottom: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 4, paddingTop: 6, paddingBottom: 6, backgroundColor: C.panel, borderTopWidth: 3 },
   barBtn: { alignItems: 'center', justifyContent: 'center', minWidth: 52, paddingVertical: 2 },
-  barIcon: { height: 26, minWidth: 26, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  barIcon: { height: 28, minWidth: 28, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   barBoxed: { borderWidth: 2, borderColor: C.ink },
-  barIconText: { fontFamily: PIXEL_FONT, fontSize: 12, color: C.ink },
-  barLabel: { color: C.muted, fontSize: 10, marginTop: 2 },
+  barIconText: { ...px(12), color: C.ink },
+  barLabel: { color: C.muted, fontSize: 10, lineHeight: 13, marginTop: 3, includeFontPadding: false },
   scrim: { flex: 1, backgroundColor: 'rgba(5,5,15,0.6)', justifyContent: 'flex-end', alignItems: 'flex-end', padding: 10 },
-  menu: { width: 250, backgroundColor: C.panel, borderWidth: 3, borderColor: C.edge },
-  menuItem: { paddingHorizontal: 14, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: C.edge },
-  menuText: { fontFamily: PIXEL_FONT, fontSize: 9, color: C.ink },
+  menu: { width: 260, backgroundColor: C.panel, borderWidth: 3, borderColor: C.edge, borderRightWidth: 6, borderBottomWidth: 6, borderRightColor: '#05050f', borderBottomColor: '#05050f' },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: C.edge },
+  menuText: { ...px(9), color: C.ink, flexShrink: 1 },
   sheet: { flex: 1, backgroundColor: C.bg },
   shield: { minWidth: 34, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 3 },
-  shieldIcon: { fontFamily: PIXEL_FONT, fontSize: 10, color: C.orange, includeFontPadding: false },
-  shieldCount: { color: C.ink, fontSize: 10, marginTop: 2, includeFontPadding: false },
+  shieldIcon: { ...px(10), color: C.orange },
+  shieldCount: { color: C.ink, fontSize: 10, lineHeight: 12, marginTop: 2, includeFontPadding: false },
   strip: { flexGrow: 0, backgroundColor: C.panel, borderBottomWidth: 2, borderBottomColor: C.edge },
   stripRow: { alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6 },
   stripTab: { flexDirection: 'row', alignItems: 'center', gap: 8, width: 200, height: 34, paddingHorizontal: 10, borderWidth: 2, borderColor: C.edge },
   stripText: { flex: 1, color: C.ink, fontSize: 13, includeFontPadding: false },
-  stripX: { fontFamily: PIXEL_FONT, fontSize: 9, color: C.muted, includeFontPadding: false },
+  stripX: { ...px(9), color: C.muted },
   stripNew: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.edge },
   side: { width: 380, borderLeftWidth: 3, borderLeftColor: C.edge, backgroundColor: C.panel },
   lock: { ...StyleSheet.absoluteFillObject, backgroundColor: C.purpleDark, alignItems: 'center', justifyContent: 'center', gap: 16 },
