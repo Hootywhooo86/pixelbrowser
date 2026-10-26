@@ -706,11 +706,18 @@ function addToTracker(pw) {
   dialog.showMessageBox(pw.win, { type: 'info', message: '128bittracker isn\'t installed on this computer yet.', detail: `When it is, this button adds "${title}" to your list.` })
 }
 
+function chromeUserAgent(ua) {
+  return ua.replace(/ Electron\/\S+/, '').replace(/ (pixelbrowser|bit-browser|Bit Browser|@pixelbrowser\/desktop)\/\S+/gi, '')
+}
+
 async function openWindow({ isPrivate = false, url } = {}) {
   // Private windows get an in-memory partition: nothing touches disk.
   const ses = isPrivate
     ? session.fromPartition(`private-${Date.now()}`)
     : session.fromPartition(PROFILE_PARTITION)
+  // Look like plain Chrome to websites. The default user agent includes
+  // "Electron" and the app name, and Google then refuses or shortens sign-ins.
+  ses.setUserAgent(chromeUserAgent(ses.getUserAgent()))
   const extensions = await prepareSession(ses, { isPrivate })
   const pw = new PixelWindow({ ses, extensions, isPrivate })
   pw.win.webContents.once('did-finish-load', () => pw.createTab(url))
@@ -1380,3 +1387,10 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (windows.size === 0) openWindow()
 })
+
+// Write sign-in cookies to disk regularly and on quit, so you stay logged in
+// even if the app is closed right after signing in. (No quit interception:
+// that would get in the way of installing updates.)
+const flushCookies = () => session.fromPartition(PROFILE_PARTITION).cookies.flushStore().catch(() => {})
+app.whenReady().then(() => setInterval(flushCookies, 30000))
+app.on('before-quit', flushCookies)

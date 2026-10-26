@@ -303,11 +303,19 @@ export const CAPTURE_LOGIN_JS = `(function(){
         if ((t === 'text' || t === 'email' || t === 'tel') && inputs[i].value) { user = inputs[i].value; break; }
       }
       if (!user) { var u = root.querySelector('input[autocomplete=username],input[type=email],input[name*=user i],input[name*=email i]'); if (u) user = u.value || ''; }
+      // Two-step sign-ins (Google, Microsoft…) ask for the email on an earlier screen.
+      if (!user) { try { user = sessionStorage.getItem('__bitUser') || '' } catch (e) {} }
       var key = location.host + '|' + user + '|' + pw.value;
       if (window.__bitLastLogin === key) return; window.__bitLastLogin = key;
       window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ __bitLogin: { url: location.href, username: user, password: pw.value } }));
     } catch (e) {}
   }
+  // Remember the email/username typed on the first step of a two-step sign-in.
+  document.addEventListener('change', function(e){
+    var el = e.target; if (!el || el.tagName !== 'INPUT' || !el.value) return;
+    var t = (el.type || 'text').toLowerCase(), ac = (el.autocomplete || '').toLowerCase(), n = (el.name || el.id || '').toLowerCase();
+    if (t === 'email' || ac === 'username' || ac === 'email' || /user|email|login|identifier/.test(n)) { try { sessionStorage.setItem('__bitUser', el.value) } catch (x) {} }
+  }, true);
   document.addEventListener('submit', function(e){ grab(e.target); }, true);
   document.addEventListener('click', function(e){
     var b = e.target && e.target.closest && e.target.closest('button,input[type=submit],[role=button]');
@@ -318,6 +326,17 @@ export const CAPTURE_LOGIN_JS = `(function(){
   document.addEventListener('keydown', function(e){
     if (e.key === 'Enter' && e.target && e.target.form && e.target.form.querySelector('input[type=password]')) grab(e.target.form);
   }, true);
+  // A password box that appears without a page load (Google's second step):
+  // ask the app to offer the saved login again.
+  var asked = typeof WeakSet === 'function' ? new WeakSet() : null;
+  function check(){
+    try {
+      var pw = Array.prototype.filter.call(document.querySelectorAll('input[type=password]'), function(e){ return !e.value && visible(e); })[0];
+      if (!pw || !asked || asked.has(pw)) return; asked.add(pw);
+      window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ __bitNeedFill: { url: location.href } }));
+    } catch (e) {}
+  }
+  try { new MutationObserver(function(){ clearTimeout(window.__bitFillT); window.__bitFillT = setTimeout(check, 400) }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'style', 'class', 'hidden'] }) } catch (e) {}
 })(); true;`
 
 /** JS that fills a saved login into the page's login form. */

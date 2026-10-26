@@ -12,6 +12,7 @@ import * as ScreenOrientation from 'expo-screen-orientation'
 import * as NavigationBar from 'expo-navigation-bar'
 import { captureRef } from 'react-native-view-shot'
 import * as Crypto from 'expo-crypto'
+import { requireOptionalNativeModule } from 'expo'
 import { looksLikeQuestion, isAllowedUrl, searchUrlFor, searchHome } from '@pixelbrowser/ai-core'
 import { loadStore, getState, putRecord, addHistory, useStore, update, liveRecords } from './src/store'
 import { setAIEnabled, session } from './src/ai'
@@ -66,6 +67,37 @@ const lockForDevice = () => {
     ? ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
     : ScreenOrientation.unlockAsync()
 }
+
+// Sign-ins that stick.
+// - Android WebView marks itself "; wv" in its user agent, and Google and others
+//   then treat Bit Browser as an embedded app (shorter or refused sign-ins).
+//   Use the same engine's user agent without that marker, like other browsers do.
+// - Cookies are written to disk right after pages load and when the app goes to
+//   the background, so a fresh login survives closing the app.
+const nativeWeb = Platform.OS === 'android' ? requireOptionalNativeModule('BitShields') : null
+const BROWSER_UA = (() => {
+  try {
+    const ua = nativeWeb?.defaultUserAgent?.() || ''
+    return ua ? ua.replace('; wv)', ')').replace(/ Version\/[\d.]+/, '') : undefined
+  } catch {
+    return undefined
+  }
+})()
+let flushTimer = null
+const flushCookies = (now) => {
+  clearTimeout(flushTimer)
+  const run = () => {
+    try {
+      nativeWeb?.flushCookies?.()
+    } catch {}
+  }
+  if (now) run()
+  else flushTimer = setTimeout(run, 1500)
+}
+
+// Sign-in sites that need their sister domains' cookies (Google ↔ YouTube,
+// Microsoft, Apple, Amazon…). Elsewhere third-party cookies stay blocked.
+const SIGN_IN_HOSTS = /(^|\.)(google\.[a-z.]+|youtube\.com|gmail\.com|googleusercontent\.com|microsoftonline\.com|live\.com|microsoft\.com|office\.com|apple\.com|icloud\.com|amazon\.[a-z.]+|facebook\.com|instagram\.com|github\.com|okta\.com|auth0\.com|goshippo\.com)$/i
 
 const toast = (text) => (Platform.OS === 'android' ? ToastAndroid.show(text, ToastAndroid.SHORT) : Alert.alert(text))
 
@@ -262,6 +294,7 @@ function Browser() {
   }
   useEffect(() => {
     const sub = AppState.addEventListener('change', (st) => {
+      if (st !== 'active') flushCookies(true)
       if (st !== 'active' && getState().privateLock && tabsRef.current.some((t) => t.private)) setLocked(true)
     })
     return () => sub.remove()
@@ -405,6 +438,13 @@ function Browser() {
       return
     }
     if (msg.__bitLogin) return offerToSave(tab, msg.__bitLogin)
+    if (msg.__bitNeedFill) {
+      if (tab.private) return
+      findLogins(msg.__bitNeedFill.url)
+        .then((list) => list?.length && setFillOffer({ tabId: tab.id, login: list[0] }))
+        .catch(() => {})
+      return
+    }
     const waiter = msg.__pixel && pending.current.get(msg.__pixel)
     if (!waiter) return
     pending.current.delete(msg.__pixel)
@@ -569,6 +609,7 @@ function Browser() {
       const js = siteScript(e.nativeEvent.url)
       if (js) views.current[t.id]?.injectJavaScript(js)
       notePageLoaded(e.nativeEvent.url)
+      if (!t.private) flushCookies()
       lastScrollY.current = 0
       if (t.private) return
       findLogins(e.nativeEvent.url)
@@ -844,7 +885,10 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
       containerStyle={active ? st.pageBox : st.hidden}
       style={st.page}
       incognito={t.private}
-      thirdPartyCookiesEnabled={false}
+      thirdPartyCookiesEnabled={!t.private && SIGN_IN_HOSTS.test(hostOf(t.url))}
+      userAgent={BROWSER_UA}
+      sharedCookiesEnabled
+      cacheEnabled
       setSupportMultipleWindows={false}
       allowsBackForwardNavigationGestures
       allowsFullscreenVideo

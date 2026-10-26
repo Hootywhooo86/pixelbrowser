@@ -21,5 +21,16 @@ class BitShieldsModule : Module() {
     Function("documentStartSupported") { BitShields.documentStartSupported() }
 
     Function("isBlocked") { url: String, page: String? -> BitShields.match(url, page) != null }
+
+    // Keep sign-ins: write cookies to disk now instead of whenever WebView gets
+    // around to it, so closing the app right after logging in doesn't lose them.
+    Function("flushCookies") { android.webkit.CookieManager.getInstance().flush() }
+
+    // The system WebView's user agent, so JS can drop the "; wv" WebView marker
+    // that makes sites like Google treat Bit Browser as an embedded app.
+    Function("defaultUserAgent") {
+      val ctx = appContext.reactContext ?: return@Function ""
+      android.webkit.WebSettings.getDefaultUserAgent(ctx)
+    }
   }
 }
