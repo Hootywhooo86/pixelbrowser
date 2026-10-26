@@ -32,8 +32,9 @@ body.private {
 .pxswitch .knob {
   position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
   background: var(--muted); transition: transform .12s steps(3);
+  box-shadow: inset 3px 3px 0 rgba(255,255,255,.35);
 }
-.pxswitch .lbl { position: absolute; right: 6px; top: 8px; }
+.pxswitch .lbl { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); line-height: 1; }
 .pxswitch.on { border-color: var(--teal-dark); background: var(--teal); color: var(--bg); }
 .pxswitch.on .knob { transform: translateX(28px); background: var(--bg); }
 .pxswitch.on .lbl { right: auto; left: 6px; }

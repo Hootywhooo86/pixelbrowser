@@ -18,6 +18,21 @@ export const C = {
 
 export const PIXEL_FONT = 'PressStart2P'
 
+/**
+ * Pixel-font text style. Press Start 2P has tall ascenders and Android adds
+ * extra font padding, so letters overlap borders unless the line box is
+ * ~1.5x the size and the padding is off. Use this for every pixel label.
+ */
+export function px(fontSize, lineScale = 1.5) {
+  return {
+    fontFamily: PIXEL_FONT,
+    fontSize,
+    lineHeight: Math.round(fontSize * lineScale),
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+  }
+}
+
 let light = false
 
 /** Copy a saved theme choice { id, custom } into C. Call before styles are built. */

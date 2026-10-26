@@ -5,8 +5,8 @@
 import { View, Text, StyleSheet, Alert, Platform } from 'react-native'
 import { useStore, update, liveRecords } from './store'
 import { useDownloads, deleteDownload, formatSize } from './downloads'
-import { PButton, PText } from './ui'
-import { C, PIXEL_FONT } from './theme'
+import { PButton, PText, PHeader } from './ui'
+import { C, PIXEL_FONT, px } from './theme'
 
 const sizeOf = (v) => {
   try {
@@ -111,7 +111,7 @@ export default function DataDashboard() {
           </View>
         </View>
       ))}
-      <PText style={st.h}>NEVER STORED</PText>
+      <PHeader>NEVER STORED</PHeader>
       <Text style={st.body}>• Pages you visit in private tabs</Text>
       <Text style={st.body}>• Anything while the AI slider is off is sent to no AI</Text>
       <Text style={st.body}>• Ad and tracker counts never leave this phone</Text>
@@ -128,6 +128,6 @@ const st = StyleSheet.create({
   title: { color: C.ink, fontSize: 15 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.edge },
   tag: { borderWidth: 2, paddingHorizontal: 6, height: 22, justifyContent: 'center' },
-  tagText: { fontFamily: PIXEL_FONT, fontSize: 6, lineHeight: 9, ...noPad },
+  tagText: { ...px(6) },
   h: { color: C.teal, marginTop: 22, marginBottom: 8 },
 })

@@ -8,7 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useStore } from './store'
 import { remoteTabs } from './sync'
 import { PButton, PText } from './ui'
-import { C, PIXEL_FONT } from './theme'
+import PixelIcon from './PixelIcon'
+import { C, PIXEL_FONT, px } from './theme'
 
 const hostOf = (url) => {
   try {
@@ -196,16 +197,16 @@ export default function TabsScreen({ visible, tabs, activeId, thumbs = {}, onSel
 
         {/* bottom: menu, big +, done */}
         <View style={[st.bottom, { borderTopColor: accent }]}>
-          <PButton label="MENU" hot={menuOpen} onPress={() => setMenuOpen(!menuOpen)} />
+          <PButton icon="menu" label="MENU" hot={menuOpen} onPress={() => setMenuOpen(!menuOpen)} />
           <Pressable
             onPress={() => onNewTab({ private: privateMode })}
             accessibilityRole="button"
             accessibilityLabel={privateMode ? 'New private tab' : 'New tab'}
             style={({ pressed }) => [st.plus, { backgroundColor: accent }, pressed && { transform: [{ translateX: 2 }, { translateY: 2 }] }]}
           >
-            <Text style={st.plusText}>+</Text>
+            <PixelIcon name="plus" size={32} color={C.bg} />
           </Pressable>
-          <PButton label="DONE" onPress={onClose} />
+          <PButton icon="tabs" label="DONE" onPress={onClose} />
         </View>
       </View>
     </Modal>
@@ -256,7 +257,7 @@ const TabCard = memo(function TabCard({ tab, width, skin, active, thumb, onSelec
           )}
           <Text style={st.title} numberOfLines={1}>{tab.title || 'New tab'}</Text>
           <Pressable onPress={() => closeRef.current()} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Close ${tab.title || 'tab'}`} style={st.x}>
-            <Text style={st.xText}>X</Text>
+            <PixelIcon name="close" size={12} color={C.ink} />
           </Pressable>
         </View>
         <View style={[st.thumbBox, { height: Math.round(width * 1.15) }]}>
@@ -281,36 +282,36 @@ const st = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: C.panel, borderBottomWidth: 3 },
   segment: { flex: 1, flexDirection: 'row', borderWidth: 3, borderColor: C.edge, backgroundColor: C.bg },
   segBtn: { flex: 1, height: 34, alignItems: 'center', justifyContent: 'center' },
-  segText: { fontFamily: PIXEL_FONT, fontSize: 8, lineHeight: 11, color: C.muted, ...noPad },
+  segText: { ...px(8), color: C.muted },
   count: { minWidth: 36, height: 34, borderWidth: 3, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  countText: { fontFamily: PIXEL_FONT, fontSize: 9, lineHeight: 12, ...noPad },
+  countText: { ...px(9) },
   search: { marginHorizontal: PAD, marginTop: 10, height: 44, backgroundColor: C.panel, borderWidth: 3, borderColor: C.edge, color: C.ink, paddingHorizontal: 12, paddingVertical: 0, fontSize: 15, ...noPad },
   spaces: { flexGrow: 0, marginTop: 10 },
   spacesRow: { paddingHorizontal: PAD, gap: 8 },
   chip: { height: 32, paddingHorizontal: 10, borderWidth: 3, borderColor: C.edge, backgroundColor: C.panel, alignItems: 'center', justifyContent: 'center' },
-  chipText: { fontFamily: PIXEL_FONT, fontSize: 7, lineHeight: 10, color: C.muted, ...noPad },
+  chipText: { ...px(7), color: C.muted },
   body: { padding: PAD, paddingBottom: 30 },
   gridRow: { gap: GAP, marginBottom: GAP },
   empty: { color: C.muted, textAlign: 'center', paddingVertical: 30, paddingHorizontal: 10 },
-  card: { borderWidth: 3, borderColor: C.edge, backgroundColor: C.panel },
-  cardChunky: { borderWidth: 5, shadowColor: '#05050f', shadowOffset: { width: 4, height: 4 }, shadowOpacity: 1, shadowRadius: 0 },
+  card: { borderWidth: 3, borderRightWidth: 5, borderBottomWidth: 5, borderColor: C.edge, borderRightColor: '#05050f', borderBottomColor: '#05050f', backgroundColor: C.panel },
+  cardChunky: { borderWidth: 5, borderRightWidth: 8, borderBottomWidth: 8 },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 6, height: 32 },
   favicon: { width: 16, height: 16 },
   letterIcon: { alignItems: 'center', justifyContent: 'center' },
-  letterIconText: { fontFamily: PIXEL_FONT, fontSize: 7, lineHeight: 10, color: C.bg, ...noPad },
+  letterIconText: { ...px(7), color: C.bg },
   title: { flex: 1, color: C.ink, fontSize: 12, fontWeight: '600' },
   x: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.edge, backgroundColor: C.bg },
-  xText: { fontFamily: PIXEL_FONT, fontSize: 7, lineHeight: 10, color: C.ink, ...noPad },
+  xText: { ...px(7), color: C.ink },
   thumbBox: { backgroundColor: '#fff', overflow: 'hidden' },
   thumb: { width: '100%', height: '100%' },
   placeholder: { backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' },
-  placeholderText: { fontFamily: PIXEL_FONT, fontSize: 28, lineHeight: 34, ...noPad },
+  placeholderText: { ...px(28) },
   loading: { position: 'absolute', top: 0, left: 0, right: 0, height: 3 },
   h: { color: C.teal, marginTop: 22, marginBottom: 8 },
   menu: { position: 'absolute', left: PAD, backgroundColor: C.panel, borderWidth: 3, borderColor: C.edge, minWidth: 220 },
   menuItem: { paddingHorizontal: 14, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.edge },
   menuText: { color: C.ink, fontSize: 15 },
   bottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: PAD, paddingVertical: 10, backgroundColor: C.panel, borderTopWidth: 3 },
-  plus: { width: 58, height: 58, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: C.bg },
-  plusText: { fontFamily: PIXEL_FONT, fontSize: 24, lineHeight: 28, color: C.bg, marginLeft: 3, ...noPad },
+  plus: { width: 62, height: 62, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: C.bg, borderRightWidth: 6, borderBottomWidth: 6, borderRightColor: '#05050f', borderBottomColor: '#05050f' },
+  plusText: { ...px(24), color: C.bg, marginLeft: 3 },
 })

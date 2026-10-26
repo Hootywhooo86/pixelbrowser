@@ -5,34 +5,35 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' crx: data:; style-src 'self' 'unsafe-inline'; font-src 'self'">
 <title>Bit Browser</title>
 <link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="icons.css">
 <link rel="stylesheet" href="ui.css">
 </head>
 <body>
   <div id="tabstrip">
     <div class="logo" title="Bit Browser">B</div>
-    <button id="space" class="pxbtn space" title="Spaces: Personal, Work, 128bit… (each keeps its own tabs)">PERSONAL</button>
+    <button id="space" class="pxbtn space ico" title="Spaces: Personal, Work, 128bit… (each keeps its own tabs)">PERSONAL</button>
     <div id="tabs"></div>
-    <button id="newtab" class="pxbtn" title="New tab (Ctrl+T)">+</button>
+    <button id="newtab" class="pxbtn ico only" title="New tab (Ctrl+T)">+</button>
   </div>
   <div id="toolbar">
-    <button id="back" class="pxbtn" title="Back">&lt;</button>
-    <button id="forward" class="pxbtn" title="Forward">&gt;</button>
-    <button id="reload" class="pxbtn" title="Reload">R</button>
+    <button id="back" class="pxbtn ico only" title="Back">&lt;</button>
+    <button id="forward" class="pxbtn ico only" title="Forward">&gt;</button>
+    <button id="reload" class="pxbtn ico only" title="Reload">R</button>
     <form id="addressform">
       <span id="agentbadge" hidden title="The AI agent is using this window">AGENT</span>
-      <button type="button" id="shield" title="Bit Shields: ads and trackers blocked on this page. Click for options.">0</button>
+      <button type="button" id="shield" class="ico" title="Bit Shields: ads and trackers blocked on this page. Click for options.">0</button>
       <input id="address" spellcheck="false" autocomplete="off" placeholder="Search, type a URL, or ask AI a question">
     </form>
-    <button id="tracker" class="pxbtn" hidden title="Add this show or movie to 128bittracker">+TRK</button>
-    <button id="ask" class="pxbtn" title="Ask Bitter (Shift+Enter in the address bar)">ASK</button>
+    <button id="tracker" class="pxbtn ico" hidden title="Add this show or movie to 128bittracker">+TRK</button>
+    <button id="ask" class="pxbtn ico" title="Ask Bitter (Shift+Enter in the address bar)">ASK</button>
     <browser-action-list id="actions" alignment="bottom right"></browser-action-list>
-    <button id="ai" class="pxbtn ai" title="Bitter sidebar (Ctrl+J)">AI</button>
+    <button id="ai" class="pxbtn ai ico" title="Bitter sidebar (Ctrl+J)">AI</button>
     <button id="aitoggle" class="pxswitch on" role="switch" aria-checked="true" title="AI on/off. Off = private: nothing is sent to any AI."><span class="knob"></span><span class="lbl">AI</span></button>
-    <button id="store" class="pxbtn" title="Get extensions (Chrome Web Store)">EXT</button>
-    <button id="private" class="pxbtn" title="New private window (Ctrl+Shift+N)">PVT</button>
-    <button id="panic" class="pxbtn" title="Panic: close private windows and wipe recent activity (Ctrl+Shift+X)">!</button>
-    <button id="settings" class="pxbtn" title="Settings: search engine, AI, sync (Ctrl+,)">SET</button>
-    <button id="update" class="pxbtn" hidden title="A new version is ready. Click to restart and update.">UPDATE</button>
+    <button id="store" class="pxbtn ico only" title="Get extensions (Chrome Web Store)">EXT</button>
+    <button id="private" class="pxbtn ico only" title="New private window (Ctrl+Shift+N)">PVT</button>
+    <button id="panic" class="pxbtn ico only" title="Panic: close private windows and wipe recent activity (Ctrl+Shift+X)">!</button>
+    <button id="settings" class="pxbtn ico only" title="Settings: search engine, AI, sync (Ctrl+,)">SET</button>
+    <button id="update" class="pxbtn ico" hidden title="A new version is ready. Click to restart and update.">UPDATE</button>
   </div>
   <div id="lock" hidden>
     <form id="lockform">

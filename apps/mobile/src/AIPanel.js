@@ -12,7 +12,7 @@ import { useStore } from './store'
 import { PButton, PText } from './ui'
 import Mascot from './Mascot'
 import { Markdown } from './markdown'
-import { C, PIXEL_FONT } from './theme'
+import { C, PIXEL_FONT, px } from './theme'
 
 const TOOL_TEXT = {
   list_tabs: () => 'checking your tabs',
@@ -156,9 +156,9 @@ export default function AIPanel({ browser, visible, side = false, request, onClo
         {!side && <Pressable onPress={() => setTall(!tall)} style={st.grip} accessibilityLabel={tall ? 'Make the panel smaller' : 'Make the panel taller'} hitSlop={10} />}
         {app ? (
           <>
-            <PButton small label="< BITTER" onPress={() => setApp(null)} />
+            <PButton small icon="back" label="BITTER" onPress={() => setApp(null)} />
             <PText style={{ flex: 1 }} numberOfLines={1}>{WEB_APPS[app]?.label.toUpperCase()}</PText>
-            <PButton small hot label="SHARE PAGE" onPress={sharePage} />
+            <PButton small hot icon="share" label="SHARE PAGE" onPress={sharePage} />
           </>
         ) : (
           <>
@@ -168,10 +168,10 @@ export default function AIPanel({ browser, visible, side = false, request, onClo
               {space && space !== 'personal' && <Text style={st.space} numberOfLines={1}>{(spaceName || space).toUpperCase()}</Text>}
             </View>
             <PButton small label={view === 'apps' ? 'CHAT' : 'APPS'} onPress={() => setView(view === 'apps' ? 'chat' : 'apps')} />
-            <PButton small label="NEW" onPress={() => { session.newChat(); setItems([]) }} />
+            <PButton small icon="plus" label="NEW" onPress={() => { session.newChat(); setItems([]) }} />
           </>
         )}
-        <PButton small label="X" onPress={onClose} />
+        <PButton small icon="close" accessibilityLabel="Close Bitter" onPress={onClose} />
       </View>
 
       {app ? (
@@ -346,29 +346,29 @@ const st = StyleSheet.create({
   side: { flex: 1, backgroundColor: C.bg, borderLeftWidth: 3, borderLeftColor: C.teal },
   head: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 52, paddingHorizontal: 10, paddingTop: 14, paddingBottom: 8, backgroundColor: C.panel, borderBottomWidth: 3, borderBottomColor: C.edge },
   grip: { position: 'absolute', top: 4, left: '42%', width: '16%', height: 5, backgroundColor: C.edge },
-  space: { fontFamily: PIXEL_FONT, fontSize: 6, color: C.orange, marginTop: 3 },
+  space: { ...px(6), color: C.orange, marginTop: 3 },
   sources: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.edge },
-  sourcesLabel: { fontFamily: PIXEL_FONT, fontSize: 6, color: C.muted, marginRight: 2 },
+  sourcesLabel: { ...px(6), color: C.muted, marginRight: 2 },
   src: { borderWidth: 2, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 6, paddingVertical: 5, maxWidth: 170 },
-  srcText: { fontFamily: PIXEL_FONT, fontSize: 7, color: C.teal, includeFontPadding: false },
+  srcText: { ...px(7), color: C.teal },
   list: { padding: 12, gap: 10 },
   apps: { padding: 12, gap: 12 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   muted: { color: C.muted, fontSize: 13 },
-  suggest: { borderWidth: 3, borderColor: C.edge, backgroundColor: C.panel, padding: 10 },
-  suggestText: { color: C.ink, fontFamily: PIXEL_FONT, fontSize: 8, lineHeight: 14, includeFontPadding: false },
-  user: { alignSelf: 'flex-end', maxWidth: '88%', backgroundColor: C.teal, padding: 10 },
-  userTag: { fontFamily: PIXEL_FONT, fontSize: 7, color: C.bg, opacity: 0.7, marginBottom: 4 },
+  suggest: { borderWidth: 3, borderRightWidth: 5, borderBottomWidth: 5, borderColor: C.edge, borderRightColor: '#05050f', borderBottomColor: '#05050f', backgroundColor: C.panel, padding: 10 },
+  suggestText: { color: C.ink, ...px(8) },
+  user: { alignSelf: 'flex-end', maxWidth: '88%', backgroundColor: C.teal, padding: 10, borderRightWidth: 4, borderBottomWidth: 4, borderColor: C.tealDark },
+  userTag: { ...px(7), color: C.bg, opacity: 0.7, marginBottom: 4 },
   ai: { backgroundColor: C.panel, borderWidth: 3, borderColor: C.edge, padding: 10 },
-  tool: { fontFamily: PIXEL_FONT, fontSize: 7, lineHeight: 12, color: C.muted, borderLeftWidth: 3, paddingLeft: 8, paddingVertical: 2 },
+  tool: { ...px(7), color: C.muted, borderLeftWidth: 3, paddingLeft: 8, paddingVertical: 2 },
   confirm: { borderWidth: 3, borderColor: C.orange, backgroundColor: '#2a1a05', padding: 10 },
-  status: { fontFamily: PIXEL_FONT, fontSize: 8, color: C.orange, paddingHorizontal: 12, paddingVertical: 6 },
+  status: { ...px(8), color: C.orange, paddingHorizontal: 12, paddingVertical: 6 },
   composer: { padding: 10, gap: 8, backgroundColor: C.panel, borderTopWidth: 3, borderTopColor: C.edge, paddingBottom: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   chip: { borderWidth: 2, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 7, minHeight: 26, justifyContent: 'center', maxWidth: '60%' },
-  chipText: { fontFamily: PIXEL_FONT, fontSize: 7, color: C.muted, includeFontPadding: false, textAlignVertical: 'center' },
+  chipText: { ...px(7), color: C.muted },
   picker: { borderWidth: 2, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 8, maxHeight: 140 },
   mode: { borderWidth: 3, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 12, height: 32, justifyContent: 'center' },
-  modeText: { fontFamily: PIXEL_FONT, fontSize: 8, color: C.muted, includeFontPadding: false, textAlignVertical: 'center' },
+  modeText: { ...px(8), color: C.muted },
   input: { flex: 1, minHeight: 44, maxHeight: 110, backgroundColor: C.bg, borderWidth: 3, borderColor: C.edge, color: C.ink, paddingHorizontal: 10, paddingVertical: 10, fontSize: 15, textAlignVertical: 'top' },
 })

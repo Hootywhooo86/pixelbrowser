@@ -15,8 +15,9 @@ import { createChain, joinChain, leaveChain, showCode, syncNow, remoteTabs } fro
 import { checkForAppUpdate } from './updates'
 import * as pw from './passwords'
 import { EVENT_TYPES, FAMILY_APPS, setShare, disconnectFamily } from './events'
-import { PButton, PText, Field, PSwitch } from './ui'
-import { C, setTheme, PIXEL_FONT } from './theme'
+import { PButton, PText, Field, PSwitch, PHeader, PProgress } from './ui'
+import PixelIcon from './PixelIcon'
+import { C, setTheme, PIXEL_FONT, px } from './theme'
 import { THEMES, SWATCHES, themeColors } from './themes'
 import { BADGES, levelOf, progressOf } from './xp'
 import DataDashboard from './DataDashboard'
@@ -73,6 +74,14 @@ const SECTIONS = [
     rows: [{ id: 'about', title: 'About Bit Browser', sub: 'Version, updates, licenses', keywords: 'about version update licenses help support' }],
   },
 ]
+
+// Pixel icon for each settings row.
+const ROW_ICONS = {
+  shields: 'shield', ai: 'bitter', sync: 'reload', family: 'xp', search: 'search', homepage: 'home', report: 'star',
+  notifications: 'bookmark', sites: 'lock', downloads: 'download', default: 'star', tabs: 'tabs', media: 'forward',
+  appearance: 'settings', ntp: 'plus', a11y: 'search', languages: 'share', passwords: 'lock', autofill: 'unlock',
+  cards: 'bookmark', addresses: 'home', about: 'bitter',
+}
 
 const TITLES = {
   ...Object.fromEntries(SECTIONS.flatMap((s) => s.rows.map((r) => [r.id, r.title]))),
@@ -166,7 +175,7 @@ function SettingsList({ sections, query, setQuery, page, setPage }) {
       <Field value={query} onChangeText={setQuery} placeholder="Search settings" accessibilityLabel="Search settings" />
       {sections.map((s) => (
         <View key={s.title}>
-          <PText style={st.h}>{s.title}</PText>
+          <PHeader>{s.title}</PHeader>
           <View style={st.group}>
             {s.rows.map((r, i) => (
               <Pressable
@@ -175,11 +184,14 @@ function SettingsList({ sections, query, setQuery, page, setPage }) {
                 accessibilityRole="button"
                 style={({ pressed }) => [st.navRow, i > 0 && st.navDivider, page === r.id && { backgroundColor: C.edge }, pressed && { backgroundColor: C.edge }]}
               >
+                <View style={st.rowIcon}>
+                  <PixelIcon name={ROW_ICONS[r.id] || 'star'} size={16} color={C.teal} />
+                </View>
                 <View style={{ flex: 1 }}>
                   <Text style={st.rowTitle} numberOfLines={1}>{r.title}</Text>
                   {!!r.sub && <Text style={st.muted} numberOfLines={1}>{r.sub}</Text>}
                 </View>
-                <Text style={st.chev}>›</Text>
+                <PixelIcon name="forward" size={12} color={C.muted} />
               </Pressable>
             ))}
           </View>
@@ -260,7 +272,7 @@ function Toggle({ value, onChange, label, note, disabled }) {
         <Text style={st.rowTitle}>{label}</Text>
         {!!note && <Text style={st.muted}>{note}</Text>}
       </View>
-      <Switch value={!!value} onValueChange={onChange} disabled={disabled} accessibilityLabel={label} trackColor={{ false: C.edge, true: C.tealDark }} thumbColor={value ? C.teal : C.muted} />
+      <PSwitch value={!!value} onChange={onChange} disabled={disabled} label={value ? 'ON' : 'OFF'} accessibilityLabel={label} />
     </View>
   )
 }
@@ -320,7 +332,7 @@ function ShieldsPage({ open }) {
         <Text style={[st.muted, { marginTop: 8 }]}>Counted on this phone only. Nothing about what you browse is sent anywhere.</Text>
       </View>
 
-      <PText style={st.h}>FILTER LISTS</PText>
+      <PHeader>FILTER LISTS</PHeader>
       <Text style={st.muted}>Lists download straight from the people who make them and update on their own.</Text>
       {SHIELD_LISTS.map((l) => (
         <Toggle key={l.id} value={sh?.lists?.[l.id]} onChange={(v) => setListEnabled(l.id, v)} label={l.name} note={l.description} disabled={!sh?.enabled} />
@@ -330,7 +342,7 @@ function ShieldsPage({ open }) {
         <Text style={[st.muted, { flex: 1 }]}>{status.error ? `Couldn't update: ${status.error}` : sh?.lastUpdate ? `Updated ${new Date(sh.lastUpdate).toLocaleString()}${status.rules ? ` · ${fmt(status.rules)} rules` : ''}` : 'Not downloaded yet'}</Text>
       </View>
 
-      <PText style={st.h}>SHIELDS DOWN FOR</PText>
+      <PHeader>SHIELDS DOWN FOR</PHeader>
       {!siteOff.length && <Text style={st.muted}>No sites. Turn Shields off for one site from the shield button in the address bar.</Text>}
       {siteOff.map((host) => (
         <View key={host} style={st.itemRow}>
@@ -339,7 +351,7 @@ function ShieldsPage({ open }) {
         </View>
       ))}
 
-      <PText style={st.h}>SAFETY</PText>
+      <PHeader>SAFETY</PHeader>
       <Toggle value={phishing} onChange={(v) => update((s) => (s.phishing = { ...s.phishing, enabled: v }))} label="Warn me about phishing and malware sites" note="Checked on this phone against free blocklists. The sites you visit are never sent anywhere." />
       <Toggle value={privateLock} onChange={(v) => update((s) => (s.privateLock = v))} label="Lock private tabs with fingerprint or face" note="Asks before showing private tabs when you come back to the app" />
       <Text style={st.label}>Secure DNS (DNS over HTTPS)</Text>
@@ -350,7 +362,7 @@ function ShieldsPage({ open }) {
       </Text>
       <PButton label="OPEN NETWORK SETTINGS" style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={openPrivateDnsSettings} />
 
-      <PText style={st.h}>YOUR DATA</PText>
+      <PHeader>YOUR DATA</PHeader>
       <NavRow title="Data on this phone" sub="What's stored, what's synced, delete it" onPress={() => open('data')} />
       <Text style={[st.muted, { marginTop: 10 }]}>{history} pages in your history.</Text>
       <PButton
@@ -373,7 +385,7 @@ function ShieldsPage({ open }) {
           ])
         }
       />
-      <PText style={st.h}>ALWAYS ON</PText>
+      <PHeader>ALWAYS ON</PHeader>
       <Text style={st.body2}>• Third-party cookies blocked</Text>
       <Text style={st.body2}>• Private tabs keep no history or cookies</Text>
       <Text style={st.body2}>• Sites load over HTTPS when they support it</Text>
@@ -384,7 +396,7 @@ function ShieldsPage({ open }) {
 function Stat({ value, label, color }) {
   return (
     <View style={[st.stat, { borderColor: color }]}>
-      <PText style={{ color }} numberOfLines={1} adjustsFontSizeToFit>{value}</PText>
+      <PText style={{ color, fontSize: 16 }} numberOfLines={1} adjustsFontSizeToFit>{value}</PText>
       <Text style={st.muted} numberOfLines={1}>{label}</Text>
     </View>
   )
@@ -397,7 +409,7 @@ function NavRow({ title, sub, onPress }) {
         <Text style={st.rowTitle} numberOfLines={1}>{title}</Text>
         {!!sub && <Text style={st.muted} numberOfLines={1}>{sub}</Text>}
       </View>
-      <Text style={st.chev}>›</Text>
+      <PixelIcon name="forward" size={12} color={C.muted} />
     </Pressable>
   )
 }
@@ -436,7 +448,7 @@ function AIPage({ go, open }) {
       </View>
       <Text style={st.muted}>Turn AI off any time to browse privately. Your AI settings and memory stay saved on this phone.</Text>
 
-      <PText style={st.h}>AI MODEL</PText>
+      <PHeader>AI MODEL</PHeader>
       <Text style={st.muted}>Pick any AI for Bitter. Bring your own key, or point it at a model running on your own computer.</Text>
       <View style={st.list}>
         {Object.entries(PROVIDERS).map(([pid, info]) => (
@@ -466,7 +478,7 @@ function AIPage({ go, open }) {
         {!!p.keyUrl && <PButton label="GET A KEY" onPress={() => go(p.keyUrl)} />}
       </View>
 
-      <PText style={st.h}>MEMORY</PText>
+      <PHeader>MEMORY</PHeader>
       <Toggle value={state.memoryEnabled} onChange={(v) => update((s) => (s.memoryEnabled = v))} label="Let Bitter remember things you tell it" />
       {memory.items().map((m) => (
         <View key={m} style={st.itemRow}>
@@ -479,10 +491,10 @@ function AIPage({ go, open }) {
         <PButton label="ADD" onPress={() => { memory.add(memInput); setMemInput('') }} />
       </View>
 
-      <PText style={st.h}>SPENDING CAP</PText>
+      <PHeader>SPENDING CAP</PHeader>
       <SpendingCaps />
 
-      <PText style={st.h}>ACTIVITY</PText>
+      <PHeader>ACTIVITY</PHeader>
       <NavRow title="Bitter activity log" sub="Everything Bitter clicked, typed or opened" onPress={() => open('agentlog')} />
       <ErrorText error={error} />
     </>
@@ -549,7 +561,7 @@ function SyncPage({ go, onScan }) {
               }
             />
           </View>
-          <PText style={st.h}>TABS ON YOUR OTHER DEVICES</PText>
+          <PHeader>TABS ON YOUR OTHER DEVICES</PHeader>
           {remoteTabs().map((d) => (
             <View key={d.deviceName} style={{ marginBottom: 8 }}>
               <Text style={{ color: C.ink, fontWeight: '700' }}>{d.deviceName}</Text>
@@ -585,9 +597,7 @@ function FamilyPage() {
         <Mascot size={64} />
         <View style={{ flex: 1 }}>
           <PText style={{ color: C.teal }}>LEVEL {prog.level}</PText>
-          <View style={st.xpBar} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: prog.needed, now: prog.into }}>
-            <View style={[st.xpFill, { width: `${Math.max(3, Math.round(prog.pct * 100))}%` }]} />
-          </View>
+          <PProgress value={prog.pct} color={C.orange} style={{ marginVertical: 8 }} />
           <Text style={st.muted}>
             {fmt(xp.total)} XP · {fmt(prog.needed - prog.into)} to level {prog.level + 1}
           </Text>
@@ -599,14 +609,14 @@ function FamilyPage() {
       </View>
       <Text style={[st.muted, { marginTop: 8 }]}>XP is kept on this phone and synced (encrypted) to your other devices. It joins your 128bit account when accounts arrive.</Text>
 
-      <PText style={st.h}>BADGES</PText>
+      <PHeader>BADGES</PHeader>
       <View style={st.badges}>
         {BADGES.map((b) => {
           const got = !!xp.badges?.[b.id]
           return (
             <View key={b.id} style={[st.badge, got ? { borderColor: C.orange } : { opacity: 0.45 }]} accessibilityLabel={`${b.label}: ${got ? 'earned' : 'not earned yet'}. ${b.note}`}>
               <View style={[st.badgeIcon, { backgroundColor: got ? C.orange : C.edge }]}>
-                <Text style={st.badgeIconText}>{got ? '★' : '?'}</Text>
+                <PixelIcon name={got ? 'star' : 'lock'} size={16} color={C.bg} />
               </View>
               <Text style={st.badgeTitle} numberOfLines={2}>{b.label}</Text>
               <Text style={[st.muted, { fontSize: 11, textAlign: 'center' }]} numberOfLines={2}>{b.note}</Text>
@@ -615,7 +625,7 @@ function FamilyPage() {
         })}
       </View>
 
-      <PText style={st.h}>FAMILY APPS</PText>
+      <PHeader>FAMILY APPS</PHeader>
       <Toggle value={links.bitcaller !== false} onChange={(v) => update((s) => (s.familyLinks = { ...s.familyLinks, bitcaller: v }))} label="Open phone numbers in BitCaller" note="Tap a phone number on a page to call with BitCaller (or your phone app if BitCaller isn't installed)" />
       <Toggle value={links.tracker !== false} onChange={(v) => update((s) => (s.familyLinks = { ...s.familyLinks, tracker: v }))} label='Show "Add to 128bittracker"' note="On TV show and movie pages (IMDb, TMDB and streaming sites)" />
       {FAMILY_APPS.map((a) => (
@@ -641,7 +651,7 @@ function FamilyPage() {
           {!f.connected && <Text style={st.muted}>COMING SOON</Text>}
         </View>
       </View>
-      <PText style={st.h}>WHAT BIT BROWSER SHARES</PText>
+      <PHeader>WHAT BIT BROWSER SHARES</PHeader>
       <Text style={st.muted}>All off by default. Nothing is shared until you connect and turn an item on. Never the pages you visit.</Text>
       {Object.entries(EVENT_TYPES).map(([type, e]) => (
         <Toggle key={type} value={f.share?.[type]} onChange={(v) => setShare(type, v)} label={e.label} note={e.note} disabled={!f.connected} />
@@ -886,7 +896,7 @@ function MediaPage() {
           </Pressable>
         ))}
       </View>
-      <PText style={st.h}>FULL SCREEN</PText>
+      <PHeader>FULL SCREEN</PHeader>
       <Toggle value={s.fullscreenVideo} onChange={(v) => update((x) => (x.fullscreenVideo = v))} label="Full-screen videos" note="Let videos (YouTube and others) fill the screen" />
       <Toggle value={s.rotateFullscreen} onChange={(v) => update((x) => (x.rotateFullscreen = v))} label="Turn sideways in full screen" note="Rotate to landscape while a video is full screen" disabled={!s.fullscreenVideo} />
     </>
@@ -914,7 +924,7 @@ function AppearancePage() {
         ))}
       </View>
 
-      <PText style={st.h}>BUILD YOUR OWN</PText>
+      <PHeader>BUILD YOUR OWN</PHeader>
       <View style={st.row}>
         {[
           ['accent', 'ACCENT'],
@@ -942,7 +952,7 @@ function AppearancePage() {
       <PButton hot label="USE MY THEME" style={{ alignSelf: 'flex-start', marginTop: 10 }} onPress={() => apply({ id: 'custom', custom })} />
       {!!msg && <Text style={[st.muted, { marginTop: 6 }]}>{msg}</Text>}
 
-      <PText style={st.h}>TAB CARDS</PText>
+      <PHeader>TAB CARDS</PHeader>
       <View style={st.row}>
         {[
           ['classic', 'CLASSIC'],
@@ -951,7 +961,7 @@ function AppearancePage() {
           <PButton key={id} label={label} hot={(s.tabSkin || 'classic') === id} onPress={() => update((x) => (x.tabSkin = id))} />
         ))}
       </View>
-      <PText style={st.h}>SOUND</PText>
+      <PHeader>SOUND</PHeader>
       <Toggle value={!!s.sounds} onChange={(v) => update((x) => (x.sounds = v))} label="Retro sound effects" note="Bleeps for new tabs, blocked ads and level-ups" />
     </>
   )
@@ -1117,7 +1127,7 @@ function PasswordsPage() {
         disabled={!s.sync.enabled && !s.syncPasswords}
       />
       <Text style={st.muted}>Passwords are encrypted in your phone's secure storage (Keychain / Keystore).</Text>
-      <PText style={st.h}>SAVED LOGINS ({(s.passwordIndex || []).length})</PText>
+      <PHeader>SAVED LOGINS ({(s.passwordIndex || []).length})</PHeader>
       {!unlocked ? (
         <PButton hot label="UNLOCK" style={{ alignSelf: 'flex-start' }} onPress={doUnlock} />
       ) : edit ? (
@@ -1348,7 +1358,7 @@ function AboutPage({ go }) {
       </View>
       {Platform.OS === 'android' && (
         <>
-          <PText style={st.h}>UPDATES</PText>
+          <PHeader>UPDATES</PHeader>
           <Toggle value={checkUpdates} onChange={(v) => update((s) => (s.checkUpdates = v))} label="Tell me when a new version is out" note="For the app installed from GitHub. Google Play updates it for you." />
           <View style={st.row}>
             <PButton
@@ -1368,7 +1378,7 @@ function AboutPage({ go }) {
           {!!status && <Text style={st.muted}>{status}</Text>}
         </>
       )}
-      <PText style={st.h}>LICENSES</PText>
+      <PHeader>LICENSES</PHeader>
       {LICENSES.map(([name, lic]) => (
         <View key={name} style={st.itemRow}>
           <Text style={[st.rowTitle, { flex: 1 }]}>{name}</Text>
@@ -1420,9 +1430,10 @@ const st = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: C.panel, borderBottomWidth: 3, borderBottomColor: C.edge },
   body: { padding: 16, gap: 6 },
   h: { color: C.teal, marginTop: 24, marginBottom: 8 },
-  group: { borderWidth: 3, borderColor: C.edge, backgroundColor: C.panel },
+  group: { borderWidth: 3, borderColor: C.edge, borderRightWidth: 5, borderBottomWidth: 5, borderRightColor: '#05050f', borderBottomColor: '#05050f', backgroundColor: C.panel },
+  rowIcon: { width: 32, height: 32, marginRight: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.edge, backgroundColor: C.bg },
   navRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, minHeight: 52 },
-  navDivider: { borderTopWidth: 1, borderTopColor: C.edge },
+  navDivider: { borderTopWidth: 2, borderTopColor: C.edge, borderStyle: 'dashed' },
   rowTitle: { color: C.ink, fontSize: 15 },
   muted: { color: C.muted, fontSize: 13 },
   body2: { color: C.ink, fontSize: 14, lineHeight: 20 },
@@ -1433,8 +1444,8 @@ const st = StyleSheet.create({
   toggle: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, minHeight: 56, borderBottomWidth: 1, borderBottomColor: C.edge },
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, minHeight: 48, borderBottomWidth: 1, borderBottomColor: C.edge },
   codeBox: { marginTop: 12, padding: 10, borderWidth: 3, borderColor: C.orange },
-  card: { borderWidth: 3, borderColor: C.teal, backgroundColor: C.panel, padding: 12, marginTop: 8 },
-  stat: { flex: 1, minWidth: 120, borderWidth: 3, padding: 12, alignItems: 'center', gap: 6, backgroundColor: C.panel },
+  card: { borderWidth: 3, borderColor: C.teal, borderRightWidth: 5, borderBottomWidth: 5, borderRightColor: '#05050f', borderBottomColor: '#05050f', backgroundColor: C.panel, padding: 12, marginTop: 8 },
+  stat: { flex: 1, minWidth: 120, borderWidth: 3, borderRightWidth: 5, borderBottomWidth: 5, padding: 12, alignItems: 'center', gap: 6, backgroundColor: C.panel },
   pane: { width: 340, maxWidth: '42%', borderRightWidth: 3, borderRightColor: C.edge },
   chev: { color: C.muted, fontSize: 20, lineHeight: 22, marginLeft: 8, ...noPad },
   xpBar: { height: 12, borderWidth: 2, borderColor: C.edge, backgroundColor: C.bg, marginVertical: 8 },
@@ -1448,14 +1459,14 @@ const st = StyleSheet.create({
   themeCard: { width: '47%', flexGrow: 1, minWidth: 140, borderWidth: 3 },
   themeBar: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 6, borderBottomWidth: 3 },
   themeLogo: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
-  themeLogoText: { fontFamily: PIXEL_FONT, fontSize: 8, lineHeight: 10, ...noPad },
+  themeLogoText: { ...px(8) },
   themeUrl: { flex: 1, height: 14, borderWidth: 2 },
-  themeOn: { position: 'absolute', right: 8, bottom: 8, fontFamily: PIXEL_FONT, fontSize: 8 },
+  themeOn: { position: 'absolute', right: 8, bottom: 8, ...px(8) },
   slot: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 3, borderColor: C.edge, backgroundColor: C.panel, paddingHorizontal: 8, height: 36 },
   slotDot: { width: 16, height: 16, borderWidth: 2, borderColor: C.edge },
-  slotText: { fontFamily: PIXEL_FONT, fontSize: 7, lineHeight: 10, color: C.muted, ...noPad },
+  slotText: { ...px(7), color: C.muted },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
   swatch: { width: 30, height: 30, borderWidth: 2, borderColor: C.edge },
   logRow: { borderLeftWidth: 4, backgroundColor: C.panel, padding: 10, marginTop: 8, gap: 4 },
-  logKind: { fontFamily: PIXEL_FONT, fontSize: 7, lineHeight: 10, color: C.muted, ...noPad },
+  logKind: { ...px(7), color: C.muted },
 })
