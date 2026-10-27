@@ -75,7 +75,7 @@ class PixelWindow {
     this.ses = ses
     this.extensions = extensions
     this.isPrivate = isPrivate
-    this.tabs = [] // { id, view, space, lastActive }
+    this.tabs = [] // { id, view, space, lastActive, pinned, pendingUrl, pendingTitle } — pinned tabs first
     this.activeId = null
     this.space = defaultSpace()
     this.spaceActive = {} // space id -> last active tab id
@@ -124,12 +124,23 @@ class PixelWindow {
         if (lock.enabled && lock.pin && this.blurredAt && Date.now() - this.blurredAt > (lock.minutes || 5) * 60000) this.setLocked(true)
       })
     }
+    // Closing the last normal window keeps its tabs for next time; closing
+    // one of several drops that window from the saved session.
+    this.win.on('close', () => {
+      if (isPrivate) return
+      const others = [...windows.values()].some((w) => w !== this && !w.isPrivate && !w.win.isDestroyed())
+      if (!others) {
+        saveSessionNow()
+        sessionFrozen = true
+      }
+    })
     this.win.on('closed', () => {
       this.ai.stop()
       for (const tab of this.tabs) this.destroyTab(tab)
       for (const v of [this.sidebar.view, this.sidebar.appView]) if (v && !v.webContents.isDestroyed()) v.webContents.close()
       windows.delete(this.win.id)
       publishTabs()
+      saveSession()
     })
   }
 
@@ -141,9 +152,10 @@ class PixelWindow {
     const wc = tab.view.webContents
     return {
       id: tab.id,
-      url: wc.getURL(),
-      title: wc.getTitle() || 'New tab',
-      loading: wc.isLoading(),
+      url: tab.pendingUrl || wc.getURL(),
+      title: (tab.pendingUrl ? tab.pendingTitle : wc.getTitle()) || 'New tab',
+      pinned: !!tab.pinned,
+      loading: !tab.pendingUrl && wc.isLoading(),
       canGoBack: wc.navigationHistory.canGoBack(),
       canGoForward: wc.navigationHistory.canGoForward(),
     }
@@ -164,6 +176,7 @@ class PixelWindow {
     const active = this.activeTab()
     const url = active && !active.view.webContents.isDestroyed() ? active.view.webContents.getURL() : ''
     const site = /^https?:/.test(url) ? shields.hostOf(url) : ''
+    saveSession()
     this.send('tabs:state', {
       activeId: this.activeId,
       tabs: this.tabsInSpace().map((t) => this.tabState(t)),
@@ -188,14 +201,20 @@ class PixelWindow {
     return this.tabs.filter((t) => t.space === space)
   }
 
-  createTab(url = '', { space = this.space, select = true } = {}) {
+  /**
+   * Open a tab. lazy: remember the address but don't load it until the tab is
+   * first selected (restored tabs), so startup stays fast.
+   */
+  createTab(url = '', { space = this.space, select = true, pinned = false, lazy = false, title = '' } = {}) {
     const view = new WebContentsView({
       // plugins: Chromium's built-in PDF viewer, so PDFs open in the tab.
       webPreferences: { session: this.ses, sandbox: true, contextIsolation: true, plugins: true },
     })
     const wc = view.webContents
-    const tab = { id: wc.id, view, space, lastActive: Date.now() }
-    this.tabs.push(tab)
+    const tab = { id: wc.id, view, space, lastActive: Date.now(), pinned: !!pinned }
+    // Pinned tabs stay together at the front.
+    if (pinned) this.tabs.splice(this.tabs.filter((t) => t.pinned).length, 0, tab)
+    else this.tabs.push(tab)
     this.extensions.addTab(wc, this.win)
     this.sound('tab')
 
@@ -266,9 +285,36 @@ class PixelWindow {
       if (items.length) Menu.buildFromTemplate(items).popup({ window: this.win })
     })
 
-    wc.loadURL(normalizeInput(url))
+    if (lazy) {
+      tab.pendingUrl = normalizeInput(url)
+      tab.pendingTitle = title || tab.pendingUrl
+    } else wc.loadURL(normalizeInput(url))
     if (select) this.selectTab(tab.id)
     return tab
+  }
+
+  /** Pin or unpin a tab. Pinned tabs sit at the front and can't be closed until unpinned. */
+  pinTab(id, pinned) {
+    const tab = this.getTab(id)
+    if (!tab || this.isPrivate || !!tab.pinned === !!pinned) return
+    this.tabs.splice(this.tabs.indexOf(tab), 1)
+    tab.pinned = !!pinned
+    const at = this.tabs.filter((t) => t.pinned).length
+    this.tabs.splice(at, 0, tab)
+    publishTabs()
+    this.pushStateNow()
+  }
+
+  /** Right-click menu for a tab in the tab strip. */
+  tabMenu(id) {
+    const tab = this.getTab(id)
+    if (!tab) return
+    const others = this.tabsInSpace().filter((t) => t.id !== id && !t.pinned)
+    Menu.buildFromTemplate([
+      ...(this.isPrivate ? [] : [{ label: tab.pinned ? 'Unpin tab' : 'Pin tab', click: () => this.pinTab(id, !tab.pinned) }, { type: 'separator' }]),
+      { label: 'Close tab', enabled: !tab.pinned, click: () => this.closeTab(id) },
+      { label: 'Close other tabs', enabled: others.length > 0, click: () => others.forEach((t) => this.closeTab(t.id)) },
+    ]).popup({ window: this.win })
   }
 
   sound(kind) {
@@ -330,6 +376,11 @@ class PixelWindow {
       this.ai.setSpace?.(tab.space)
     }
     tab.lastActive = Date.now()
+    if (tab.pendingUrl) {
+      const url = tab.pendingUrl
+      tab.pendingUrl = null
+      tab.view.webContents.loadURL(url)
+    }
     const prev = this.activeTab()
     if (prev && prev !== tab) {
       prev.lastActive = Date.now()
@@ -354,6 +405,8 @@ class PixelWindow {
   closeTab(id) {
     const idx = this.tabs.findIndex((t) => t.id === id)
     if (idx === -1) return
+    // Pinned tabs stay open until you unpin them.
+    if (this.tabs[idx].pinned) return
     const [tab] = this.tabs.splice(idx, 1)
     // Closing a tab nobody looked at for days counts as tidying up (XP).
     if (id !== this.activeId && Date.now() - tab.lastActive > STALE_TAB_MS) xp.add('tabsCleaned')
@@ -479,11 +532,70 @@ function publishTabs() {
       if (pw.isPrivate) continue
       for (const t of pw.tabs) {
         const wc = t.view.webContents
-        if (!wc.isDestroyed() && /^https?:/.test(wc.getURL())) tabs.push({ title: wc.getTitle(), url: wc.getURL(), space: t.space })
+        const url = t.pendingUrl || (wc.isDestroyed() ? '' : wc.getURL())
+        if (/^https?:/.test(url)) tabs.push({ title: t.pendingUrl ? t.pendingTitle : wc.getTitle(), url, space: t.space, pinned: !!t.pinned })
       }
     }
     store.putRecord('tabs', store.settings.data.deviceId, { deviceName: store.settings.data.deviceName, tabs: tabs.slice(0, 100) })
   }, 3000)
+}
+
+// ---------- session restore ----------
+// Normal windows' tabs (per Space, pinned first) are saved as you browse and
+// reopened on the next start. Pinned tabs always come back; the rest only with
+// "On startup: Reopen my tabs" (the default).
+
+let sessionFrozen = false // set while quitting so closing windows doesn't erase the saved tabs
+let sessionTimer = null
+
+function sessionSnapshot() {
+  const out = []
+  for (const pw of windows.values()) {
+    if (pw.isPrivate || pw.win.isDestroyed()) continue
+    const activeBySpace = { ...pw.spaceActive, [pw.space]: pw.activeId }
+    const tabs = []
+    for (const t of pw.tabs) {
+      const wc = t.view.webContents
+      const url = t.pendingUrl || (wc.isDestroyed() ? '' : wc.getURL())
+      if (!/^(https?|file):/.test(url)) continue
+      tabs.push({ url, title: (t.pendingUrl ? t.pendingTitle : wc.getTitle()) || url, pinned: !!t.pinned, space: t.space, active: activeBySpace[t.space] === t.id })
+    }
+    if (tabs.length) out.push({ space: pw.space, tabs: tabs.slice(0, 200) })
+  }
+  return out
+}
+
+function saveSessionNow() {
+  clearTimeout(sessionTimer)
+  if (sessionFrozen) return
+  store.settings.data.session = { windows: sessionSnapshot(), savedAt: Date.now() }
+  store.settings.flush()
+}
+
+function saveSession() {
+  if (sessionFrozen) return
+  clearTimeout(sessionTimer)
+  sessionTimer = setTimeout(saveSessionNow, 1000)
+}
+
+/** Put a saved window's tabs back (lazily) into a fresh window. */
+function restoreInto(pw, saved, { all }) {
+  const known = new Set(spaceList().map((sp) => sp.id))
+  const spaceOf = (id) => (known.has(id) ? id : defaultSpace())
+  const active = {}
+  for (const t of saved.tabs || []) {
+    if (!all && !t.pinned) continue
+    if (!/^(https?|file):/.test(t.url || '')) continue
+    const tab = pw.createTab(t.url, { space: spaceOf(t.space), pinned: !!t.pinned, lazy: true, select: false, title: t.title })
+    if (t.active) active[tab.space] = tab.id
+  }
+  pw.space = spaceOf(saved.space)
+  pw.ai.setSpace?.(pw.space)
+  Object.assign(pw.spaceActive, active)
+  const here = pw.tabsInSpace()
+  if (!here.length) return false
+  pw.selectTab(active[pw.space] && here.some((t) => t.id === active[pw.space]) ? active[pw.space] : here[here.length - 1].id)
+  return true
 }
 
 function askFromAddressBar(pw, text) {
@@ -710,7 +822,8 @@ function chromeUserAgent(ua) {
   return ua.replace(/ Electron\/\S+/, '').replace(/ (pixelbrowser|bit-browser|Bit Browser|@pixelbrowser\/desktop)\/\S+/gi, '')
 }
 
-async function openWindow({ isPrivate = false, url } = {}) {
+async function openWindow({ isPrivate = false, url, restore = null } = {}) {
+  if (!isPrivate) sessionFrozen = false
   // Private windows get an in-memory partition: nothing touches disk.
   const ses = isPrivate
     ? session.fromPartition(`private-${Date.now()}`)
@@ -720,7 +833,11 @@ async function openWindow({ isPrivate = false, url } = {}) {
   ses.setUserAgent(chromeUserAgent(ses.getUserAgent()))
   const extensions = await prepareSession(ses, { isPrivate })
   const pw = new PixelWindow({ ses, extensions, isPrivate })
-  pw.win.webContents.once('did-finish-load', () => pw.createTab(url))
+  pw.win.webContents.once('did-finish-load', () => {
+    const restored = restore ? restoreInto(pw, restore, { all: store.settings.data.startup !== 'new' }) : false
+    // A link opened from another app still gets its own new tab on top.
+    if (url || !restored) pw.createTab(url)
+  })
   return pw
 }
 
@@ -972,6 +1089,8 @@ function fromSender(event) {
 ipcMain.on('tab:new', (e, url) => fromSender(e)?.createTab(url))
 ipcMain.on('tab:select', (e, id) => fromSender(e)?.selectTab(id))
 ipcMain.on('tab:close', (e, id) => fromSender(e)?.closeTab(id))
+ipcMain.on('tab:menu', (e, id) => fromSender(e)?.tabMenu(id))
+ipcMain.on('tab:pin', (e, id, pinned) => fromSender(e)?.pinTab(id, pinned))
 ipcMain.on('nav:go', (e, input) => {
   const pw = fromSender(e)
   if (!pw) return
@@ -1068,6 +1187,7 @@ function settingsState() {
     shields: shields.publicState(),
     autoplay: s.autoplay,
     autoplayRunning: runningAutoplay,
+    startup: s.startup || 'restore',
     theme: s.theme,
     themes: Object.fromEntries(Object.entries(THEMES).map(([id, t]) => [id, t])),
     sounds: !!s.sounds,
@@ -1139,6 +1259,7 @@ ipcMain.handle('settings:update', async (_e, patch = {}) => {
     for (const pw of windows.values()) pw.activeTab()?.view.webContents.reload()
   }
   if (patch.autoplay && AUTOPLAY[patch.autoplay]) s.autoplay = patch.autoplay
+  if (patch.startup === 'restore' || patch.startup === 'new') s.startup = patch.startup
   if (patch.theme) setTheme(patch.theme)
   if (typeof patch.sounds === 'boolean') s.sounds = patch.sounds
   if (patch.privacy) {
@@ -1373,7 +1494,11 @@ app.whenReady().then(async () => {
   applyDns()
   await shields.start()
   const startUrls = [...urlsFromArgv(process.argv.slice(1)), ...pendingUrls]
-  await openWindow({ url: startUrls[0] || process.env.PIXEL_START_URL })
+  const saved = store.settings.data.session?.windows || []
+  if (saved.length) {
+    await openWindow({ restore: saved[0], url: startUrls[0] || process.env.PIXEL_START_URL })
+    for (const w of saved.slice(1)) await openWindow({ restore: w })
+  } else await openWindow({ url: startUrls[0] || process.env.PIXEL_START_URL })
   startUrls.slice(1).forEach(openUrlInBrowser)
   syncHost.start()
   updater.start()
@@ -1385,7 +1510,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('activate', () => {
-  if (windows.size === 0) openWindow()
+  if (windows.size === 0) openWindow({ restore: store.settings.data.session?.windows?.[0] || null })
 })
 
 // Write sign-in cookies to disk regularly and on quit, so you stay logged in
@@ -1394,3 +1519,7 @@ app.on('activate', () => {
 const flushCookies = () => session.fromPartition(PROFILE_PARTITION).cookies.flushStore().catch(() => {})
 app.whenReady().then(() => setInterval(flushCookies, 30000))
 app.on('before-quit', flushCookies)
+app.on('before-quit', () => {
+  saveSessionNow()
+  sessionFrozen = true
+})

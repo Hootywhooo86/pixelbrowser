@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('pixel', {
   newTab: (url) => ipcRenderer.send('tab:new', url),
   selectTab: (id) => ipcRenderer.send('tab:select', id),
   closeTab: (id) => ipcRenderer.send('tab:close', id),
+  tabMenu: (id) => ipcRenderer.send('tab:menu', id),
+  pinTab: (id, pinned) => ipcRenderer.send('tab:pin', id, pinned),
   go: (input) => ipcRenderer.send('nav:go', input),
   ask: (input) => ipcRenderer.send('nav:ask', input),
   toggleSidebar: () => ipcRenderer.send('sidebar:toggle'),

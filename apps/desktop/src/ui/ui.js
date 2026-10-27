@@ -18,10 +18,29 @@ function render() {
   tabsEl.replaceChildren(
     ...state.tabs.map((tab) => {
       const el = document.createElement('div')
-      el.className = 'tab' + (tab.id === state.activeId ? ' active' : '') + (tab.loading ? ' loading' : '')
-      el.title = tab.title
+      el.className = 'tab' + (tab.id === state.activeId ? ' active' : '') + (tab.loading ? ' loading' : '') + (tab.pinned ? ' pinned' : '')
+      el.title = tab.pinned ? `${tab.title} (pinned)` : tab.title
+      el.dataset.id = tab.id
       el.onclick = () => window.pixel.selectTab(tab.id)
-      el.onauxclick = (e) => e.button === 1 && window.pixel.closeTab(tab.id)
+      el.onauxclick = (e) => e.button === 1 && !tab.pinned && window.pixel.closeTab(tab.id)
+      el.oncontextmenu = (e) => {
+        e.preventDefault()
+        window.pixel.tabMenu(tab.id)
+      }
+      // Pinned tabs: a small square with the site's first letter and a pin mark.
+      if (tab.pinned) {
+        const letter = document.createElement('span')
+        letter.className = 'pin-letter'
+        let host = ''
+        try {
+          host = new URL(tab.url).hostname.replace(/^www\./, '')
+        } catch {}
+        letter.textContent = (host || tab.title || '?').charAt(0).toUpperCase()
+        const mark = document.createElement('i')
+        mark.className = 'pin-mark'
+        el.append(letter, mark)
+        return el
+      }
 
       const title = document.createElement('span')
       title.className = 'title'

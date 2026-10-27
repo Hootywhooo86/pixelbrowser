@@ -73,6 +73,9 @@ const settings = new JsonFile('pixel-settings.json', {
   },
   xp: { counters: { blocked: 0, tabsCleaned: 0, streakDays: 0 }, lastDay: '', streak: 0, updatedAt: 0 },
   familyLinks: { bitcaller: true, tracker: true },
+  // v0.3.4
+  startup: 'restore', // 'restore' = reopen my tabs, 'new' = a new tab (pinned tabs always reopen)
+  session: { windows: [], savedAt: 0 }, // open tabs, saved for next start
 })
 settings.save()
 

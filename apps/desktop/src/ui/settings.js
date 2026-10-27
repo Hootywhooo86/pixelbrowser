@@ -312,6 +312,7 @@ $('sounds').onchange = () => set({ sounds: $('sounds').checked })
 // ---------- media ----------
 
 function renderMedia() {
+  for (const r of document.querySelectorAll('input[name=startup]')) r.checked = r.value === (state.startup || 'restore')
   if (!state.autoplay) return
   for (const r of document.querySelectorAll('input[name=autoplay]')) r.checked = r.value === state.autoplay
   $('autoplay-note').textContent =
@@ -320,6 +321,7 @@ function renderMedia() {
       : { off: 'Videos only play when you press play.', muted: 'Videos may start on their own only with the sound off (default).', on: 'Videos may start on their own, with sound.' }[state.autoplay]
 }
 for (const r of document.querySelectorAll('input[name=autoplay]')) r.onchange = () => set({ autoplay: r.value })
+for (const r of document.querySelectorAll('input[name=startup]')) r.onchange = () => set({ startup: r.value })
 
 // ---------- Spaces ----------
 

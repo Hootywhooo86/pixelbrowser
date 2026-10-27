@@ -91,11 +91,17 @@
       <p class="muted">Full-screen videos hide the tabs, toolbar and sidebar until you exit.</p>
     </section>
 
-    <section id="spaces" data-keys="spaces workspaces work personal 128bit tabs">
+    <section id="spaces" data-keys="spaces workspaces work personal 128bit tabs pin pinned startup reopen restore session">
       <h2>SPACES</h2>
       <p class="muted">Each Space keeps its own tabs and its own Bitter memory. Switch Spaces with the button left of your tabs.</p>
       <div id="space-list"></div>
       <form id="space-add" class="row"><input id="space-name" placeholder="New Space name" maxlength="24"><button class="px hot">ADD</button></form>
+      <h3>ON STARTUP</h3>
+      <div class="row wrap">
+        <label class="check"><input type="radio" name="startup" value="restore"> Reopen my tabs</label>
+        <label class="check"><input type="radio" name="startup" value="new"> Open a new tab</label>
+      </div>
+      <p class="muted">Pinned tabs always reopen. Right-click a tab to pin it.</p>
     </section>
 
     <section id="family" data-keys="128bit family xp level streak badges bitcaller tracker 128bittracker">
