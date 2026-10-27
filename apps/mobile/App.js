@@ -36,6 +36,7 @@ import { award, onXpEvent } from './src/xp'
 import { play } from './src/sounds'
 
 let nextTabId = 1
+let warnedPrivate = false
 
 const homeUrl = () => getState().homepage || searchHome(getState().searchEngine, getState().customSearchUrl)
 
@@ -81,6 +82,21 @@ const BROWSER_UA = (() => {
     return ua ? ua.replace('; wv)', ')').replace(/ Version\/[\d.]+/, '') : undefined
   } catch {
     return undefined
+  }
+})()
+// Private tabs keep their own cookie jar (cleared here) where the phone supports it.
+const clearPrivateData = () => {
+  try {
+    return !!nativeWeb?.clearPrivateData?.()
+  } catch {
+    return false
+  }
+}
+const privateJarSupported = (() => {
+  try {
+    return Platform.OS !== 'android' || !!nativeWeb?.privateProfileSupported?.()
+  } catch {
+    return false
   }
 })()
 let flushTimer = null
@@ -145,6 +161,7 @@ export default function App() {
       setReady(true)
       startSync()
       startPasswordSync()
+      clearPrivateData() // private tabs from last time are forgotten
       initShields().catch(() => {})
       initPhishing().catch(() => {})
     })
@@ -225,12 +242,17 @@ function Browser() {
     setTabs((list) => [...list, tab])
     setActiveId(tab.id)
     if (!tab.private) emit('tab.opened')
+    else if (!privateJarSupported && !warnedPrivate) {
+      warnedPrivate = true
+      Alert.alert('Private tab', "This phone's Android WebView is too old to give private tabs their own sign-ins, so they share sign-ins with your normal tabs. They still don't save history. Updating Android System WebView (Play Store) fixes this.")
+    }
     play('tab')
     return tab.id
   }
 
   const closeTab = (id) => {
     const list = tabsRef.current.filter((t) => t.id !== id)
+    if (tabsRef.current.find((t) => t.id === id)?.private && !list.some((t) => t.private)) setTimeout(clearPrivateData, 300)
     delete views.current[id]
     if (!list.length) {
       const t = newTab()
@@ -252,6 +274,7 @@ function Browser() {
     const closing = tabsRef.current.filter(goes)
     const keep = tabsRef.current.filter((t) => !goes(t))
     for (const t of closing) delete views.current[t.id]
+    if (priv) setTimeout(clearPrivateData, 300)
     if (!priv && closing.length) award('tabCleaned', closing.length)
     if (!keep.length) keep.push(newTab())
     setTabs(keep)

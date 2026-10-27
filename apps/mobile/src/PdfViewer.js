@@ -134,7 +134,8 @@ export default function PdfViewer({ item, visible, onClose }) {
             setSupportMultipleWindows={false}
             setBuiltInZoomControls
             setDisplayZoomControls={false}
-            incognito
+            // Not incognito: on Android that erases every site's cookies (sign-ins) app-wide.
+            cacheEnabled={false}
           />
         )}
       </View>

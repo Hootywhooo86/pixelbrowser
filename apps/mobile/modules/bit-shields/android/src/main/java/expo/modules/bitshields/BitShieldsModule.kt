@@ -22,6 +22,24 @@ class BitShieldsModule : Module() {
 
     Function("isBlocked") { url: String, page: String? -> BitShields.match(url, page) != null }
 
+    // Forget everything from private tabs (their own WebView profile): on app
+    // start, after Close all private tabs, and from the panic button.
+    Function("clearPrivateData") {
+      try {
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.MULTI_PROFILE)) {
+          val p = androidx.webkit.ProfileStore.getInstance().getProfile("bit-private")
+          p?.cookieManager?.removeAllCookies(null)
+          p?.webStorage?.deleteAllData()
+          true
+        } else false
+      } catch (e: Throwable) { false }
+    }
+
+    // Can private tabs have their own cookie jar on this phone?
+    Function("privateProfileSupported") {
+      try { androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.MULTI_PROFILE) } catch (e: Throwable) { false }
+    }
+
     // Keep sign-ins: write cookies to disk now instead of whenever WebView gets
     // around to it, so closing the app right after logging in doesn't lose them.
     Function("flushCookies") { android.webkit.CookieManager.getInstance().flush() }

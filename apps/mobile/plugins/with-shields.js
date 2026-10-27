@@ -88,6 +88,26 @@ function patchWebView(projectRoot) {
     ],
   ])
 
+  // react-native-webview's incognito mode calls CookieManager.removeAllCookies(),
+  // which on Android wipes EVERY site's cookies app-wide, signing you out of
+  // everything whenever a private tab opens. Give private tabs their own cookie
+  // jar (a WebView profile) instead, and never touch the shared one.
+  patch(path.join(dir, 'RNCWebViewManagerImpl.kt'), [
+    [
+      '        // Remove all previous cookies\n        CookieManager.getInstance().removeAllCookies(null);',
+      `        ${MARK}
+        // Never wipe the shared cookies (that signs you out everywhere). Private
+        // tabs get their own cookie jar where this phone's WebView supports it.
+        try {
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.MULTI_PROFILE)) {
+                androidx.webkit.ProfileStore.getInstance().getOrCreateProfile("bit-private")
+                androidx.webkit.WebViewCompat.setProfile(view, "bit-private")
+            }
+        } catch (e: Throwable) {}`,
+    ],
+    ['        view.clearCache(true);\n', '        // (clearCache(true) would empty the cache every tab shares.)\n'],
+  ])
+
   patch(path.join(dir, 'RNCWebViewClient.java'), [
     [
       'super.onPageStarted(webView, url, favicon);',
