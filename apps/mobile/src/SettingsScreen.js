@@ -802,6 +802,12 @@ function TabsPage({ open }) {
         label="Hide bars when scrolling"
         note="Off is smoothest. On: the address bar and buttons slide away when you scroll down."
       />
+      <Toggle
+        value={s.restoreTabs !== false}
+        onChange={(v) => update((x) => (x.restoreTabs = v))}
+        label="Reopen my tabs when Bit Browser starts"
+        note="Pinned tabs always come back, even when this is off. Private tabs never do."
+      />
       <NavRow title="Spaces" sub={`${(s.spaces || []).length} spaces: keep work, personal and 128bit tabs apart`} onPress={() => open('spaces')} />
       <Text style={st.label}>Tab switcher layout</Text>
       <View style={st.row}>

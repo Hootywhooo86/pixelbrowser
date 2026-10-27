@@ -30,7 +30,7 @@ export const columnsFor = (width) => (width >= 1000 ? 4 : width >= 700 ? 3 : 2)
 const GAP = 12
 const PAD = 14
 
-export default function TabsScreen({ visible, tabs, activeId, thumbs = {}, onSelect, onCloseTab, onCloseAll, onNewTab, onOpenUrl, onClose, onSwitchSpace }) {
+export default function TabsScreen({ visible, tabs, activeId, thumbs = {}, onSelect, onCloseTab, onCloseAll, onNewTab, onOpenUrl, onClose, onSwitchSpace, onTogglePin }) {
   useStore() // re-render when synced tabs arrive
   const spaces = useStore((s) => s.spaces || [])
   const activeSpace = useStore((s) => s.activeSpace || 'personal')
@@ -55,6 +55,9 @@ export default function TabsScreen({ visible, tabs, activeId, thumbs = {}, onSel
   selectRef.current = onSelect
   const closeTabRef = useRef(onCloseTab)
   closeTabRef.current = onCloseTab
+  const pinRef = useRef(onTogglePin)
+  pinRef.current = onTogglePin
+  const pin = useCallback((id) => pinRef.current?.(id), [])
   const select = useCallback((id) => selectRef.current(id), [])
   const close = useCallback((id) => closeTabRef.current(id), [])
 
@@ -66,7 +69,8 @@ export default function TabsScreen({ visible, tabs, activeId, thumbs = {}, onSel
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return tabs.filter((t) => inView(t) && (!q || `${t.title} ${t.url}`.toLowerCase().includes(q)))
+    // Pinned tabs first, then the rest in the order they were opened.
+    return tabs.filter((t) => inView(t) && (!q || `${t.title} ${t.url}`.toLowerCase().includes(q))).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
   }, [tabs, privateMode, query, activeSpace, spaces])
 
   const count = tabs.filter(inView).length
@@ -160,7 +164,7 @@ export default function TabsScreen({ visible, tabs, activeId, thumbs = {}, onSel
           removeClippedSubviews
           extraData={activeId}
           renderItem={({ item: t }) => (
-            <TabCard tab={t} width={cardWidth} skin={skin} active={t.id === activeId} thumb={thumbs[t.id]} onSelect={select} onCloseTab={close} />
+            <TabCard tab={t} width={cardWidth} skin={skin} active={t.id === activeId} thumb={thumbs[t.id]} onSelect={select} onCloseTab={close} onTogglePin={pin} />
           )}
           ListEmptyComponent={
             <Text style={st.empty}>{query ? 'No tabs match.' : privateMode ? 'No private tabs. Tap + to open one. Nothing you do in them is saved.' : `No tabs in ${spaceName}. Tap + to open one.`}</Text>
@@ -213,15 +217,18 @@ export default function TabsScreen({ visible, tabs, activeId, thumbs = {}, onSel
   )
 }
 
-const TabCard = memo(function TabCard({ tab, width, skin, active, thumb, onSelect, onCloseTab }) {
+const TabCard = memo(function TabCard({ tab, width, skin, active, thumb, onSelect, onCloseTab, onTogglePin }) {
   const x = useRef(new Animated.Value(0)).current
   const onPress = () => onSelect(tab.id)
+  const pinnedRef = useRef(!!tab.pinned)
+  pinnedRef.current = !!tab.pinned
   const closeRef = useRef(() => onCloseTab(tab.id))
   closeRef.current = () => onCloseTab(tab.id)
   const pan = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+        // Pinned tabs can't be swiped away; unpin them first.
+        onMoveShouldSetPanResponder: (_e, g) => !pinnedRef.current && Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
         onPanResponderMove: (_e, g) => x.setValue(g.dx),
         onPanResponderRelease: (_e, g) => {
           if (Math.abs(g.dx) > width * 0.45 || Math.abs(g.vx) > 1.2) {
@@ -242,9 +249,10 @@ const TabCard = memo(function TabCard({ tab, width, skin, active, thumb, onSelec
     <Animated.View style={{ width, transform: [{ translateX: x }], opacity }} {...pan.panHandlers}>
       <Pressable
         onPress={onPress}
+        onLongPress={tab.private ? undefined : () => onTogglePin?.(tab.id)}
         accessibilityRole="button"
-        accessibilityLabel={`${tab.title || 'New tab'}${active ? ', current tab' : ''}`}
-        accessibilityHint="Swipe left or right to close"
+        accessibilityLabel={`${tab.title || 'New tab'}${tab.pinned ? ', pinned' : ''}${active ? ', current tab' : ''}`}
+        accessibilityHint={tab.pinned ? 'Long-press to unpin' : 'Swipe left or right to close. Long-press to pin'}
         style={({ pressed }) => [st.card, skin === 'chunky' && st.cardChunky, active && { borderColor: accent }, tab.private && { backgroundColor: C.purpleDark }, pressed && { opacity: 0.85 }]}
       >
         <View style={st.cardHead}>
@@ -256,9 +264,16 @@ const TabCard = memo(function TabCard({ tab, width, skin, active, thumb, onSelec
             </View>
           )}
           <Text style={st.title} numberOfLines={1}>{tab.title || 'New tab'}</Text>
-          <Pressable onPress={() => closeRef.current()} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Close ${tab.title || 'tab'}`} style={st.x}>
-            <PixelIcon name="close" size={12} color={C.ink} />
-          </Pressable>
+          {!tab.private && (
+            <Pressable onPress={() => onTogglePin?.(tab.id)} hitSlop={8} accessibilityRole="button" accessibilityLabel={tab.pinned ? `Unpin ${tab.title || 'tab'}` : `Pin ${tab.title || 'tab'}`} style={[st.x, tab.pinned && { backgroundColor: C.orange, borderColor: C.orange }]}>
+              <PixelIcon name="bookmark" size={12} color={tab.pinned ? C.bg : C.muted} />
+            </Pressable>
+          )}
+          {!tab.pinned && (
+            <Pressable onPress={() => closeRef.current()} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Close ${tab.title || 'tab'}`} style={st.x}>
+              <PixelIcon name="close" size={12} color={C.ink} />
+            </Pressable>
+          )}
         </View>
         <View style={[st.thumbBox, { height: Math.round(width * 1.15) }]}>
           {thumb ? (

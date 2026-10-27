@@ -53,6 +53,15 @@ function normalizeInput(input, aiEnabled = true) {
 
 const newTab = (url = homeUrl(), opts = {}) => ({ id: nextTabId++, url, source: url, title: 'New tab', loading: true, canGoBack: false, canGoForward: false, private: !!opts.private, space: opts.space || getState().activeSpace || 'personal' })
 
+// Tabs from last time: everything (Settings → Tabs → Reopen my tabs, on by
+// default) or just the pinned ones. Private tabs are never saved.
+function restoredTabs() {
+  const s = getState()
+  const saved = (s.savedTabs || []).filter((t) => t?.url && (s.restoreTabs !== false || t.pinned))
+  if (!saved.length) return [newTab()]
+  return saved.map((t) => ({ ...newTab(t.url, { space: t.space }), title: t.title || t.url, pinned: !!t.pinned, loading: false }))
+}
+
 const hostOf = (url) => {
   try {
     return new URL(url).host
@@ -188,8 +197,14 @@ function Browser() {
   const { width } = useWindowDimensions()
   const wide = width >= 700 // tablets and Chromebooks
   const [locked, setLocked] = useState(false) // private tabs hidden until fingerprint/face
-  const [tabs, setTabs] = useState(() => [newTab()])
-  const [activeId, setActiveId] = useState(tabs[0].id)
+  const [tabs, setTabs] = useState(restoredTabs)
+  const [activeId, setActiveId] = useState(() => {
+    const space = getState().activeSpace || 'personal'
+    const saved = tabs[getState().savedActive]
+    if (saved && (saved.space || 'personal') === space) return saved.id
+    const mine = tabs.filter((t) => (t.space || 'personal') === space)
+    return (mine.length ? mine[mine.length - 1] : tabs[tabs.length - 1]).id
+  })
   const [address, setAddress] = useState('')
   const [editing, setEditing] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
@@ -251,6 +266,7 @@ function Browser() {
   }
 
   const closeTab = (id) => {
+    if (tabsRef.current.find((t) => t.id === id)?.pinned) return toast('Pinned tab: unpin it first to close it')
     const list = tabsRef.current.filter((t) => t.id !== id)
     if (tabsRef.current.find((t) => t.id === id)?.private && !list.some((t) => t.private)) setTimeout(clearPrivateData, 300)
     delete views.current[id]
@@ -270,7 +286,7 @@ function Browser() {
 
   // Closes every private tab, or every normal tab in one Space, from the tab grid.
   const closeAllTabs = ({ private: priv = false, space } = {}) => {
-    const goes = (t) => !!t.private === priv && (priv || !space || (t.space || 'personal') === space)
+    const goes = (t) => !t.pinned && !!t.private === priv && (priv || !space || (t.space || 'personal') === space)
     const closing = tabsRef.current.filter(goes)
     const keep = tabsRef.current.filter((t) => !goes(t))
     for (const t of closing) delete views.current[t.id]
@@ -282,6 +298,27 @@ function Browser() {
   }
 
   const navigate = (id, url) => patchTab(id, { source: url, url, loading: true })
+
+  // Pinned tabs stay put: they reopen every time and can't be closed by accident.
+  const togglePin = (id) => {
+    const t = tabsRef.current.find((x) => x.id === id)
+    if (!t || t.private) return
+    patchTab(id, { pinned: !t.pinned })
+    toast(t.pinned ? 'Unpinned' : 'Pinned: this tab stays open, even after closing the app')
+  }
+
+  // Save open tabs (not private ones) so they come back next time.
+  const saveTabs = () => {
+    const list = tabsRef.current.filter((t) => !t.private && /^https?:/i.test(t.url || ''))
+    update((s) => {
+      s.savedTabs = list.map((t) => ({ url: t.url, title: t.title, space: t.space || 'personal', pinned: !!t.pinned }))
+      s.savedActive = Math.max(0, list.findIndex((t) => t.id === activeRef.current))
+    })
+  }
+  useEffect(() => {
+    const timer = setTimeout(saveTabs, 800)
+    return () => clearTimeout(timer)
+  }, [tabs.map((t) => `${t.id}|${t.url}|${t.pinned ? 1 : 0}|${t.space}|${t.private ? 1 : 0}`).join(','), activeId])
 
   // Spaces: each Space has its own tabs (and Bitter memory). Switching shows
   // that Space's tabs, opening a fresh one if it has none.
@@ -317,7 +354,10 @@ function Browser() {
   }
   useEffect(() => {
     const sub = AppState.addEventListener('change', (st) => {
-      if (st !== 'active') flushCookies(true)
+      if (st !== 'active') {
+        flushCookies(true)
+        saveTabs()
+      }
       if (st !== 'active' && getState().privateLock && tabsRef.current.some((t) => t.private)) setLocked(true)
     })
     return () => sub.remove()
@@ -492,7 +532,7 @@ function Browser() {
       const s = getState()
       putRecord('tabs', s.deviceId, {
         deviceName: s.deviceName,
-        tabs: tabs.filter((x) => !x.private && /^https?:/.test(x.url)).map((x) => ({ title: x.title, url: x.url, space: x.space || 'personal' })),
+        tabs: tabs.filter((x) => !x.private && /^https?:/.test(x.url)).map((x) => ({ title: x.title, url: x.url, space: x.space || 'personal', pinned: !!x.pinned })),
       })
     }, 3000)
     return () => clearTimeout(t)
@@ -699,12 +739,16 @@ function Browser() {
       )}
       {!fullscreen && !barsHidden && wide && (
         <ScrollView horizontal style={st.strip} contentContainerStyle={st.stripRow} showsHorizontalScrollIndicator={false}>
-          {spaceTabs.map((t) => (
-            <Pressable key={t.id} onPress={() => setActiveId(t.id)} style={[st.stripTab, t.id === active.id && { borderColor: t.private ? C.purple : C.teal, backgroundColor: C.bg }]}>
+          {[...spaceTabs].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).map((t) => (
+            <Pressable key={t.id} onPress={() => setActiveId(t.id)} onLongPress={() => togglePin(t.id)} style={[st.stripTab, t.id === active.id && { borderColor: t.private ? C.purple : C.teal, backgroundColor: C.bg }]}>
               <Text style={st.stripText} numberOfLines={1}>{t.private ? 'PRIVATE · ' : ''}{t.title || 'New tab'}</Text>
-              <Pressable onPress={() => closeTab(t.id)} hitSlop={8} accessibilityLabel={`Close ${t.title || 'tab'}`}>
-                <Text style={st.stripX}>X</Text>
-              </Pressable>
+              {t.pinned ? (
+                <PixelIcon name="bookmark" size={12} color={C.orange} />
+              ) : (
+                <Pressable onPress={() => closeTab(t.id)} hitSlop={8} accessibilityLabel={`Close ${t.title || 'tab'}`}>
+                  <Text style={st.stripX}>X</Text>
+                </Pressable>
+              )}
             </Pressable>
           ))}
           <Pressable onPress={() => openTab(homeUrl())} style={st.stripNew} accessibilityLabel="New tab">
@@ -835,6 +879,9 @@ function Browser() {
             <MenuItem icon="lock" label="NEW PRIVATE TAB" onPress={() => (setMenuOpen(false), openTab(homeUrl(), { private: true }))} />
             {aiEnabled && <MenuItem icon="bitter" label="LET BITTER TAKE OVER" color={C.pink} onPress={takeOver} />}
             {familyLinks.tracker !== false && TRACKER_PAGE.test(active.url) && <MenuItem icon="star" label="ADD TO 128BITTRACKER" color={C.orange} onPress={addToTracker} />}
+            {!active.private && /^https?:/i.test(active.url || '') && (
+              <MenuItem icon="bookmark" label={active.pinned ? 'UNPIN THIS TAB' : 'PIN THIS TAB'} color={C.orange} onPress={() => (setMenuOpen(false), togglePin(active.id))} />
+            )}
             <MenuItem icon="download" label="DOWNLOADS" onPress={() => (setMenuOpen(false), setDownloadsOpen(true))} />
             <MenuItem icon="settings" label="SETTINGS" onPress={() => (setMenuOpen(false), setSettingsOpen(true))} />
             <MenuItem icon="panic" label="PANIC: WIPE PRIVATE" color={C.pink} onPress={() => (setMenuOpen(false), panic())} />
@@ -867,6 +914,7 @@ function Browser() {
         }}
         onCloseAll={closeAllTabs}
         onSwitchSpace={switchSpace}
+        onTogglePin={togglePin}
         onNewTab={(opts) => {
           openTab(homeUrl(), opts)
           setTabsOpen(false)
