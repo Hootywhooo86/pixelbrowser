@@ -15,7 +15,10 @@ import { base64 } from '@scure/base'
 import { generateMnemonic, mnemonicToEntropy, validateMnemonic } from '@scure/bip39'
 import { wordlist } from '@scure/bip39/wordlists/english.js'
 
-export const COLLECTIONS = ['memory', 'history', 'tabs', 'settings']
+// Older apps only ask for the collections they know, so adding one is safe.
+// passwords/addresses/cards only ever hold records when the user turns on
+// their sync (see apps/mobile/src/passwords.js).
+export const COLLECTIONS = ['memory', 'history', 'tabs', 'settings', 'bookmarks', 'passwords', 'addresses', 'cards']
 
 // ---------- sync codes ----------
 

@@ -29,7 +29,7 @@ function defaults() {
     customSearchUrl: '',
     sync: { server: '', enabled: false, cursor: 0, lastPushedAt: 0, lastSyncAt: 0, syncKeys: false, error: '' },
     updatedAt: { ai: 0, search: 0 },
-    records: { memory: {}, history: {}, tabs: {}, settings: {}, passwords: {}, addresses: {}, cards: {} },
+    records: { memory: {}, history: {}, tabs: {}, settings: {}, passwords: {}, addresses: {}, cards: {}, bookmarks: {} },
     // Settings screen (v0.2)
     homepage: '', // '' = the search engine's home page
     tabLayout: 'grid',
@@ -73,6 +73,15 @@ function defaults() {
     phishing: { enabled: true, lastUpdate: 0 },
     xp: { total: 0, streak: 0, lastDay: '', badges: {}, counters: {} },
     familyLinks: { bitcaller: true, tracker: true },
+    // v0.4
+    closedTabs: [], // [{ url, title, space, closedAt }] newest last, for "Reopen closed tab"
+    siteSettings: {}, // host -> { desktop, camera, microphone, location, notifications: 'ask'|'allow'|'block', textZoom, translate }
+    businessProfile: null, // { company, name, street, city, region, postal, country, phone, email } for form filling
+    autoPrintLabels: false, // open the print dialog right after a PDF label downloads
+    crashReports: false, // opt-in; reports stay on the phone until you share them
+    crashLog: [], // [{ at, message, stack, version }]
+    quests: { week: '', progress: {}, done: {} },
+    ntp: { shortcuts: null, showStats: true }, // new tab page; null shortcuts = defaults
   }
 }
 
