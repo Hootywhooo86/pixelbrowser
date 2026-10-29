@@ -973,6 +973,8 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
       // Scroll events cross into JS on every frame, so only listen when the bars hide on scroll.
       onScroll={watchScroll ? (e) => h.onScroll(t, e) : undefined}
       injectedJavaScriptBeforeContentLoaded={beforeJS}
+      // Also in frames: many sites build documents inside an iframe.
+      injectedJavaScriptBeforeContentLoadedForMainFrameOnly={false}
       onShouldStartLoadWithRequest={(req) => h.shouldStart(req, t)}
       onLoadStart={(e) => h.onLoadStart(t, e)}
       onFileDownload={(e) => h.download(e.nativeEvent.downloadUrl)}

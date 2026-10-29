@@ -2,14 +2,14 @@
   "expo": {
     "name": "Bit Browser",
     "slug": "pixelbrowser",
-    "version": "0.3.4",
+    "version": "0.3.5",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.pixelbrowser.app",
-      "buildNumber": "304",
+      "buildNumber": "305",
       "requireFullScreen": false
     },
     "android": {
@@ -20,7 +20,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.pixelbrowser.app",
-      "versionCode": 304,
+      "versionCode": 305,
       "permissions": [
         "android.permission.REQUEST_INSTALL_PACKAGES"
       ],

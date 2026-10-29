@@ -12,6 +12,21 @@
 const SCRIPT = String.raw`(function(){
   if (window.__bitDl) return; window.__bitDl = true;
   var CHUNK = 256 * 1024;
+
+  // Many sites (insurance documents, shipping labels…) build the file in the
+  // page, open it with a blob: link and revoke that link right away. Keep each
+  // Blob the page makes so it can still be saved after the link is revoked,
+  // and let revoked links live a minute longer.
+  var blobs = {}, made = [];
+  try {
+    var create = URL.createObjectURL, revoke = URL.revokeObjectURL;
+    URL.createObjectURL = function(obj){
+      var u = create.apply(URL, arguments);
+      try { if (obj instanceof Blob) { blobs[u] = obj; made.push(u); if (made.length > 30) delete blobs[made.shift()] } } catch (e) {}
+      return u;
+    };
+    URL.revokeObjectURL = function(u){ var args = arguments; setTimeout(function(){ try { revoke.apply(URL, args) } catch (e) {} }, 60000) };
+  } catch (e) {}
   function post(o){ try { window.ReactNativeWebView.postMessage(JSON.stringify(o)) } catch (e) {} }
   function abs(u){ try { return new URL(u, location.href).href } catch (e) { return String(u || '') } }
   function pathOf(u){ try { return new URL(u).pathname } catch (e) { return String(u || '').split(/[?#]/)[0] } }
@@ -56,6 +71,8 @@ const SCRIPT = String.raw`(function(){
   function grab(url, filename){
     url = abs(url);
     if (busy[url] && Date.now() - busy[url] < 1500) return; busy[url] = Date.now();
+    var kept = blobs[url];
+    if (kept) return send(kept, nameFor(url, filename, '', kept.type), kept.type || 'application/octet-stream');
     var cross = false;
     try { cross = /^https?:/i.test(url) && new URL(url).origin !== location.origin } catch (e) {}
     fetch(url, { credentials: cross ? 'omit' : 'include' }).then(function(r){
@@ -64,7 +81,7 @@ const SCRIPT = String.raw`(function(){
       return r.blob().then(function(b){ send(b, nameFor(url, filename, cd, mime || b.type), mime || b.type || 'application/octet-stream') });
     }).catch(function(e){
       if (/^https?:/i.test(url)) native(url, filename);
-      else post({ __bitDownloadError: { url: url.slice(0, 80), message: String(e && e.message || e) } });
+      else post({ __bitDownloadError: { url: url.slice(0, 80), message: 'The site took the file back before Bit Browser could save it. Tap the download again.' } });
     });
   }
   window.__bitGrab = grab;
