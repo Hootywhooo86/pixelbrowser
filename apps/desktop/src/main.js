@@ -290,7 +290,8 @@ class PixelWindow {
     const wc = this.activeTab()?.view.webContents
     if (!wc || !text) return
     this.findingTab = this.activeId
-    wc.findInPage(String(text).slice(0, 500), { findNext: !!findNext, forward: forward !== false })
+    // Electron's findNext means "start a new search", so it's the opposite of ours.
+    wc.findInPage(String(text).slice(0, 500), { findNext: !findNext, forward: forward !== false })
   }
 
   stopFind() {
@@ -370,7 +371,9 @@ class PixelWindow {
       if (tab.reader && !String(target).startsWith('data:')) tab.reader = null
       tab.readerable = false
       tab.filled = false
-      this.dismissPrompts((p) => p.tabId === tab.id && (p.kind === 'password' || p.kind === 'permission'))
+      // Fill offers and permission asks belong to the old page. A save offer
+      // stays: signing in usually navigates right away.
+      this.dismissPrompts((p) => p.tabId === tab.id && (p.kind === 'permission' || String(p.key).startsWith('fill:')))
     })
     // Buttons on our own pages go to made-up addresses: the warning page
     // (go back / continue), the new tab page (search, edit), reader (exit).
