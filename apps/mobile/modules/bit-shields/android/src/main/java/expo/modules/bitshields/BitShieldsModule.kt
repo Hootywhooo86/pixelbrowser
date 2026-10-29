@@ -8,6 +8,12 @@ class BitShieldsModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("BitShields")
 
+    Events("onDownload")
+
+    OnStartObserving("onDownload") { BitShields.downloadListener = { sendEvent("onDownload", it) } }
+
+    OnStopObserving("onDownload") { BitShields.downloadListener = null }
+
     AsyncFunction("load") { dir: String -> BitShields.load(dir) }
 
     Function("setEnabled") { on: Boolean -> BitShields.enabled = on }

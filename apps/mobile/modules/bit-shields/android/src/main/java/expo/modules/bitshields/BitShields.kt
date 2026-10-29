@@ -61,6 +61,30 @@ object BitShields {
 
   // ---------- called from react-native-webview ----------
 
+  // Files the web view can't show itself (PDFs, attachments). When the app
+  // is listening, it saves and opens them (PDF viewer) instead of Android's
+  // download manager, which can't show them in the app.
+  @Volatile var downloadListener: ((Map<String, Any?>) -> Unit)? = null
+
+  @JvmStatic
+  fun onDownload(view: WebView, url: String, userAgent: String?, contentDisposition: String?, mimetype: String?, contentLength: Long): Boolean {
+    val listener = downloadListener ?: return false
+    if (!url.startsWith("http://") && !url.startsWith("https://")) return false
+    val cookie = try { android.webkit.CookieManager.getInstance().getCookie(url) } catch (e: Throwable) { null }
+    listener(
+      mapOf(
+        "url" to url,
+        "userAgent" to (userAgent ?: ""),
+        "contentDisposition" to (contentDisposition ?: ""),
+        "mimetype" to (mimetype ?: ""),
+        "contentLength" to contentLength.toDouble(),
+        "cookie" to (cookie ?: ""),
+        "pageUrl" to (view.url ?: "")
+      )
+    )
+    return true
+  }
+
   @JvmStatic
   fun onWebViewCreated(view: WebView) {
     views[view] = null

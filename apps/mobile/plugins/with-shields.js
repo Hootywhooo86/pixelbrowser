@@ -31,7 +31,7 @@ import java.lang.reflect.Method;
 
 final class BitShieldsHook {
   private static boolean looked = false;
-  private static Method created, pageStarted, intercept;
+  private static Method created, pageStarted, intercept, download;
 
   private static synchronized void lookUp() {
     if (looked) return;
@@ -41,8 +41,9 @@ final class BitShieldsHook {
       created = c.getMethod("onWebViewCreated", WebView.class);
       pageStarted = c.getMethod("onPageStarted", WebView.class, String.class);
       intercept = c.getMethod("intercept", WebView.class, WebResourceRequest.class);
+      try { download = c.getMethod("onDownload", WebView.class, String.class, String.class, String.class, String.class, long.class); } catch (Throwable e) { download = null; }
     } catch (Throwable ignored) {
-      created = pageStarted = intercept = null;
+      created = pageStarted = intercept = download = null;
     }
   }
 
@@ -58,6 +59,13 @@ final class BitShieldsHook {
     try { pageStarted.invoke(null, view, url); } catch (Throwable ignored) {}
   }
 
+  /** True when the app took the download (it opens PDFs in its own viewer). */
+  static boolean download(WebView view, String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+    lookUp();
+    if (download == null) return false;
+    try { return Boolean.TRUE.equals(download.invoke(null, view, url, userAgent, contentDisposition, mimetype, contentLength)); } catch (Throwable ignored) { return false; }
+  }
+
   static WebResourceResponse intercept(WebView view, WebResourceRequest request) {
     lookUp();
     if (intercept == null) return null;
@@ -68,12 +76,13 @@ final class BitShieldsHook {
 
 function patch(file, edits) {
   let src = fs.readFileSync(file, 'utf8')
-  if (src.includes(MARK)) return
+  const before = src
   for (const [find, replace] of edits) {
+    if (src.includes(replace)) continue // already patched
     if (!src.includes(find)) throw new Error(`with-shields: couldn't find the spot to patch in ${path.basename(file)} ("${find.trim().slice(0, 60)}"). react-native-webview may have changed; update plugins/with-shields.js.`)
     src = src.replace(find, replace)
   }
-  fs.writeFileSync(file, src)
+  if (src !== before) fs.writeFileSync(file, src)
 }
 
 function patchWebView(projectRoot) {
@@ -106,6 +115,10 @@ function patchWebView(projectRoot) {
         } catch (e: Throwable) {}`,
     ],
     ['        view.clearCache(true);\n', '        // (clearCache(true) would empty the cache every tab shares.)\n'],
+    [
+      '        webView.setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->\n',
+      `        webView.setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->\n            if (BitShieldsHook.download(webView, url, userAgent, contentDisposition, mimetype, contentLength)) return@DownloadListener\n`,
+    ],
   ])
 
   patch(path.join(dir, 'RNCWebViewClient.java'), [

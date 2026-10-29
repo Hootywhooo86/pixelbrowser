@@ -124,6 +124,8 @@ const privateJarSupported = (() => {
     return false
   }
 })()
+// Does this build route Android downloads to the app (plugins/with-shields.js)?
+const nativeDownloads = !!nativeWeb?.addListener
 let flushTimer = null
 const flushCookies = (now) => {
   clearTimeout(flushTimer)
@@ -238,6 +240,22 @@ function Browser() {
   const [fullscreen, setFullscreen] = useState(false)
   const [fillOffer, setFillOffer] = useState(null) // { tabId, login }
   const [pdf, setPdf] = useState(null) // downloaded PDF open in the viewer
+  // Android hands files it can't show (PDFs, attachments) to the app here,
+  // with the page's sign-in cookies, instead of its own download manager.
+  useEffect(() => {
+    const sub = nativeWeb?.addListener?.('onDownload', (e) => {
+      let filename = guessFilename(e.url, e.contentDisposition)
+      if (/pdf/i.test(e.mimetype || '') && !/\.pdf$/i.test(filename)) filename += '.pdf'
+      toast(`Opening ${filename}`)
+      startDownload({ url: e.url, filename, mimeType: e.mimetype || undefined, cookie: e.cookie, userAgent: e.userAgent, referer: e.pageUrl }).then((item) => {
+        if (item?.status === 'failed') return Alert.alert('Download failed', item.error)
+        if (item?.status !== 'done') return
+        if (isPdf(item)) openPdf(item)
+        else toast(`Downloaded ${item.filename}. Open it from Menu > Downloads.`)
+      })
+    })
+    return () => sub?.remove?.()
+  }, [])
   const [find, setFind] = useState(null) // { index, total } while the find bar is open
   const findQuery = useRef('')
   const [siteSheet, setSiteSheet] = useState(false)
@@ -729,6 +747,9 @@ function Browser() {
         views.current[t.id]?.injectJavaScript(fetchInPageJS(req.url))
         return false
       }
+      // Android: let the page load it; the web view hands the file to the app
+      // (with the right sign-in cookies) through the onDownload event above.
+      if (nativeDownloads && /^https?:/i.test(req.url)) return true
       if (looksLikeDownload(req.url)) {
         // Fetch it from inside the page first so the site's sign-in comes along
         // (e.g. Shippo labels); the page hands it back for a normal download if
