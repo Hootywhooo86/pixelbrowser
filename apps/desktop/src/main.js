@@ -9,7 +9,9 @@
 
 const path = require('node:path')
 const crypto = require('node:crypto')
-const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, shell, dialog } = require('electron')
+const fs = require('node:fs')
+const { pathToFileURL } = require('node:url')
+const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, shell, dialog, clipboard } = require('electron')
 
 // The app was called Pixelbrowser before it became Bit Browser. Keep the
 // old profile folder so settings, keys, extensions and sync survive the rename.
@@ -26,7 +28,15 @@ const { AISession, publicState, saveSettings, applyRemoteSettings, syncedSetting
 const shields = require('./shields')
 const phishing = require('./phishing')
 const xp = require('./xp')
-const { THEMES, themeCss } = require('./ui/themes')
+const bookmarks = require('./bookmarks')
+const vault = require('./vault')
+const quests = require('./quests')
+const crashlog = require('./crashlog')
+const { READERABLE_JS, EXTRACT_ARTICLE_JS, readerPage, fillBusinessJS, pipJS } = require('./page-tools')
+const { THEMES, themeCss, paletteFor } = require('./ui/themes')
+
+// Opt-in crash log (Settings → Crash reports); nothing is sent anywhere.
+crashlog.install()
 
 const SHELL_HEIGHT = 96 // px: tab strip + toolbar
 const PROFILE_PARTITION = 'persist:pixel'
@@ -44,6 +54,20 @@ const runningAutoplay = AUTOPLAY[store.settings.data.autoplay] ? store.settings.
 app.commandLine.appendSwitch('autoplay-policy', AUTOPLAY[runningAutoplay])
 
 const WARNING_PAGE = path.join(__dirname, 'ui', 'warning.html')
+// The pixel new tab page. Its search box and EDIT link, and the reader page's
+// EXIT button, go to made-up addresses that will-navigate catches.
+const NTP_URL = pathToFileURL(path.join(__dirname, 'ui', 'newtab.html')).href
+const NTP_ACTION = 'https://newtab.bitbrowser.invalid/'
+const READER_ACTION = 'https://reader.bitbrowser.invalid/'
+const isNtp = (url) => String(url || '').split(/[?#]/)[0] === NTP_URL
+const DEFAULT_SHORTCUTS = [
+  { title: 'DuckDuckGo', url: 'https://duckduckgo.com/' },
+  { title: 'YouTube', url: 'https://www.youtube.com/' },
+  { title: 'Wikipedia', url: 'https://en.wikipedia.org/' },
+  { title: 'GitHub', url: 'https://github.com/' },
+  { title: 'Reddit', url: 'https://www.reddit.com/' },
+  { title: 'Shippo', url: 'https://apps.goshippo.com/' },
+]
 // Links on the warning page go to this made-up host; main handles them.
 const WARNING_ACTION = 'https://warning.bitbrowser.invalid/'
 const STALE_TAB_MS = 3 * 24 * 60 * 60 * 1000
@@ -62,9 +86,14 @@ function searchFor(query, aiEnabled = store.settings.data.aiEnabled) {
   return searchUrlFor(store.settings.data.searchEngine, query, { aiEnabled, customUrl: store.settings.data.customSearchUrl })
 }
 
+/** What a new tab opens: the pixel new tab page, or the search engine's home page. */
+function newTabTarget() {
+  return store.settings.data.newTabPage === 'search' ? homeUrl() : NTP_URL
+}
+
 function normalizeInput(input) {
   const text = String(input || '').trim()
-  if (!text) return homeUrl()
+  if (!text || text === 'bit://newtab') return newTabTarget()
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text) || text.startsWith('about:')) return text
   if (/^[^\s]+\.[^\s]{2,}$/.test(text) || text.startsWith('localhost')) return `https://${text}`
   return searchFor(text)
@@ -83,6 +112,9 @@ class PixelWindow {
     this.blurredAt = 0
     this.sidebar = { open: false, view: null, ready: null, appView: null, app: null }
     this.agentActive = false
+    this.shellH = SHELL_HEIGHT // grows with the bookmarks bar and info bars
+    this.prompts = [] // info bars: { id, tabId, kind, label, text, buttons, key, resolve }
+    this.closed = [] // recently closed tabs, newest last: { url, title, space }
     this.ai = new AISession(this)
     this.ai.setSpace?.(this.space)
 
@@ -150,10 +182,11 @@ class PixelWindow {
 
   tabState(tab) {
     const wc = tab.view.webContents
+    const url = realUrl(tab)
     return {
       id: tab.id,
-      url: tab.pendingUrl || wc.getURL(),
-      title: (tab.pendingUrl ? tab.pendingTitle : wc.getTitle()) || 'New tab',
+      url: isNtp(url) ? '' : url,
+      title: (tab.reader ? tab.reader.title : tab.pendingUrl ? tab.pendingTitle : isNtp(url) ? 'New tab' : wc.getTitle()) || 'New tab',
       pinned: !!tab.pinned,
       loading: !tab.pendingUrl && wc.isLoading(),
       canGoBack: wc.navigationHistory.canGoBack(),
@@ -174,9 +207,10 @@ class PixelWindow {
     clearTimeout(this.stateTimer)
     this.stateTimer = null
     const active = this.activeTab()
-    const url = active && !active.view.webContents.isDestroyed() ? active.view.webContents.getURL() : ''
+    const url = active && !active.view.webContents.isDestroyed() ? realUrl(active) : ''
     const site = /^https?:/.test(url) ? shields.hostOf(url) : ''
     saveSession()
+    const prompts = this.prompts.filter((p) => !p.tabId || p.tabId === this.activeId).map(({ id, kind, label, text, buttons }) => ({ id, kind, label, text, buttons }))
     this.send('tabs:state', {
       activeId: this.activeId,
       tabs: this.tabsInSpace().map((t) => this.tabState(t)),
@@ -194,7 +228,89 @@ class PixelWindow {
       sounds: !!store.settings.data.sounds,
       tracker: store.settings.data.familyLinks.tracker ? trackerTitle(url, active?.view.webContents.getTitle()) : null,
       locked: this.locked,
+      bookmarksBar: !!store.settings.data.bookmarksBar,
+      bar: bookmarks.bar(),
+      canBookmark: /^https?:/.test(url),
+      bookmarked: /^https?:/.test(url) && !!bookmarks.find(url),
+      readerable: !!active?.readerable && !active?.reader,
+      inReader: !!active?.reader,
+      prompts,
     })
+  }
+
+  // ---------- info bars (permission prompts, passwords, quests) ----------
+
+  /**
+   * Show a bar under the toolbar with a few buttons; resolves with the button's
+   * id, or null if it was dismissed (tab closed, page changed, replaced).
+   * tabId: only shown while that tab is active. key: replaces an older bar with the same key.
+   */
+  prompt({ tabId = null, kind = 'info', label, text, buttons, key = null, timeout = 0 }) {
+    return new Promise((resolve) => {
+      if (key) this.dismissPrompts((p) => p.key === key)
+      const id = crypto.randomUUID()
+      const p = { id, tabId, kind, label, text, buttons, key, resolve }
+      this.prompts.push(p)
+      if (this.prompts.length > 6) this.dismissPrompts((x) => x === this.prompts[0])
+      if (timeout) setTimeout(() => this.answerPrompt(id, null), timeout)
+      this.pushStateNow()
+    })
+  }
+
+  answerPrompt(id, action) {
+    const p = this.prompts.find((x) => x.id === id)
+    if (!p) return
+    this.prompts = this.prompts.filter((x) => x !== p)
+    p.resolve(action)
+    this.pushStateNow()
+  }
+
+  dismissPrompts(match) {
+    const gone = this.prompts.filter(match)
+    if (!gone.length) return
+    this.prompts = this.prompts.filter((p) => !gone.includes(p))
+    for (const p of gone) p.resolve(null)
+    this.pushState()
+  }
+
+  toast(text) {
+    this.send('toast', text)
+  }
+
+  // ---------- find in page ----------
+
+  openFind() {
+    const wc = this.activeTab()?.view.webContents
+    if (!wc) return
+    this.send('find', { open: true })
+    this.win.webContents.focus()
+  }
+
+  find(text, { findNext = false, forward = true } = {}) {
+    const wc = this.activeTab()?.view.webContents
+    if (!wc || !text) return
+    this.findingTab = this.activeId
+    wc.findInPage(String(text).slice(0, 500), { findNext: !!findNext, forward: forward !== false })
+  }
+
+  stopFind() {
+    const tab = this.getTab(this.findingTab)
+    if (tab && !tab.view.webContents.isDestroyed()) tab.view.webContents.stopFindInPage('clearSelection')
+    this.findingTab = null
+  }
+
+  // ---------- recently closed tabs ----------
+
+  reopenClosed() {
+    if (!this.closed.length) return
+    let i = -1
+    for (let k = this.closed.length - 1; k >= 0; k--) if (this.closed[k].space === this.space) {
+      i = k
+      break
+    }
+    if (i === -1) i = this.closed.length - 1
+    const [t] = this.closed.splice(i, 1)
+    this.selectTab(this.createTab(t.url, { space: spaceList().some((x) => x.id === t.space) ? t.space : this.space }).id)
   }
 
   tabsInSpace(space = this.space) {
@@ -208,7 +324,8 @@ class PixelWindow {
   createTab(url = '', { space = this.space, select = true, pinned = false, lazy = false, title = '' } = {}) {
     const view = new WebContentsView({
       // plugins: Chromium's built-in PDF viewer, so PDFs open in the tab.
-      webPreferences: { session: this.ses, sandbox: true, contextIsolation: true, plugins: true },
+      // backgroundThrottling off: videos and music keep playing when the window is minimized.
+      webPreferences: { session: this.ses, sandbox: true, contextIsolation: true, plugins: true, backgroundThrottling: false },
     })
     const wc = view.webContents
     const tab = { id: wc.id, view, space, lastActive: Date.now(), pinned: !!pinned }
@@ -225,11 +342,52 @@ class PixelWindow {
       if (!this.isPrivate) {
         store.history.add(wc.getURL(), wc.getTitle())
         publishTabs()
-        if (/^https?:/.test(wc.getURL())) xp.touchDay()
+        if (/^https?:/.test(wc.getURL())) {
+          xp.touchDay()
+          quests.progress('streakDay')
+        }
       }
     })
-    // The warning page's buttons: go back, or continue to the site once.
+    wc.on('did-finish-load', () => this.pageLoaded(tab))
+    wc.on('dom-ready', () => {
+      // Password capture (main frame, normal windows, real sites only).
+      if (!this.isPrivate && vaultable(wc.getURL())) wc.executeJavaScript(vault.CAPTURE_LOGIN_JS).catch(() => {})
+    })
+    wc.on('console-message', (e, _level, message) => {
+      const text = typeof e?.message === 'string' ? e.message : message
+      if (typeof text !== 'string' || !text.startsWith('__bit')) return
+      if (text.startsWith('__bitLogin:')) {
+        try {
+          const { username, password } = JSON.parse(text.slice(11))
+          this.offerToSave(tab, wc.getURL(), String(username || ''), String(password || ''))
+        } catch {}
+      } else if (text === '__bitNeedFill') this.offerFill(tab)
+    })
+    wc.on('found-in-page', (_e, result) => {
+      if (tab.id === this.activeId && result.matches !== undefined) this.send('find', { result: { matches: result.matches, activeMatchOrdinal: result.activeMatchOrdinal } })
+    })
+    wc.on('did-navigate', (_e, target) => {
+      if (tab.reader && !String(target).startsWith('data:')) tab.reader = null
+      tab.readerable = false
+      tab.filled = false
+      this.dismissPrompts((p) => p.tabId === tab.id && (p.kind === 'password' || p.kind === 'permission'))
+    })
+    // Buttons on our own pages go to made-up addresses: the warning page
+    // (go back / continue), the new tab page (search, edit), reader (exit).
     wc.on('will-navigate', (e, target) => {
+      if (target.startsWith(NTP_ACTION) && isNtp(wc.getURL())) {
+        e.preventDefault()
+        const u = new URL(target)
+        if (u.pathname === '/edit') return openSettings('newtab')
+        const q = (u.searchParams.get('q') || '').trim()
+        if (!q) return
+        if (!this.isPrivate && store.settings.data.aiEnabled && (q.startsWith('?') || looksLikeQuestion(q))) return askFromAddressBar(this, q)
+        return this.load(wc, q)
+      }
+      if (target.startsWith(READER_ACTION) && tab.reader) {
+        e.preventDefault()
+        return this.exitReader(tab)
+      }
       if (!target.startsWith(WARNING_ACTION)) return
       e.preventDefault()
       const u = new URL(target)
@@ -282,15 +440,176 @@ class PixelWindow {
           { type: 'separator' }
         )
       }
+      if (params.mediaType === 'video') {
+        items.unshift({ label: 'Picture in picture', click: () => wc.executeJavaScript(pipJS(params.x, params.y), true).catch(() => {}) }, { type: 'separator' })
+      }
+      if (params.isEditable && !params.selectionText) {
+        items.push({ type: 'separator' }, { label: store.settings.data.business ? 'Fill business details' : 'Fill business details… (set them up)', click: () => this.fillBusiness() })
+      }
+      if (!params.linkURL && !params.isEditable && /^https?:/.test(realUrl(tab))) {
+        items.push(
+          { type: 'separator' },
+          { label: 'Translate this page', submenu: this.translateItems() },
+          { label: 'Save page as PDF', click: () => this.savePdf() },
+          { label: 'Print…', click: () => wc.print({}) }
+        )
+      }
       if (items.length) Menu.buildFromTemplate(items).popup({ window: this.win })
     })
 
     if (lazy) {
       tab.pendingUrl = normalizeInput(url)
       tab.pendingTitle = title || tab.pendingUrl
-    } else wc.loadURL(normalizeInput(url))
+    } else this.load(wc, url)
     if (select) this.selectTab(tab.id)
     return tab
+  }
+
+  /** Load what someone typed (or a saved address) into a tab. */
+  load(wc, input) {
+    if (!wc || wc.isDestroyed()) return
+    wc.loadURL(normalizeInput(input)).catch(() => {})
+  }
+
+  /** After each page load: new tab page data, reader check, saved-login offer. */
+  pageLoaded(tab) {
+    const wc = tab.view.webContents
+    if (wc.isDestroyed()) return
+    const url = wc.getURL()
+    if (isNtp(url)) {
+      applyTheme(wc)
+      wc.executeJavaScript(`window.__ntp && window.__ntp(${JSON.stringify(ntpData(this))})`).catch(() => {})
+      return
+    }
+    if (tab.reader) return
+    if (/^https?:/.test(url)) {
+      wc.executeJavaScript(READERABLE_JS)
+        .then((ok) => {
+          if (wc.isDestroyed() || wc.getURL() !== url) return
+          tab.readerable = !!ok
+          if (tab.id === this.activeId) this.pushState()
+        })
+        .catch(() => {})
+      this.offerFill(tab)
+    }
+  }
+
+  // ---------- passwords ----------
+
+  async offerToSave(tab, url, username, password) {
+    if (this.isPrivate || !password || !vaultable(url)) return
+    if (!store.settings.data.vault.offerToSave || vault.isNever(url) || vault.hasLogin({ url, username, password })) return
+    const host = shields.hostOf(url)
+    const update = vault.findLogins(url).some((l) => l.username === username)
+    const answer = await this.prompt({
+      tabId: tab.id,
+      kind: 'password',
+      label: 'PASSWORDS',
+      text: update ? `Update the saved password for ${username || 'this account'} on ${host}?` : `Save the password for ${username || 'this account'} on ${host}? It's encrypted on this computer.`,
+      buttons: [
+        { id: 'save', label: update ? 'UPDATE' : 'SAVE', hot: true },
+        { id: 'never', label: 'NEVER FOR THIS SITE' },
+        { id: 'no', label: 'NOT NOW' },
+      ],
+      key: `save:${tab.id}`,
+    })
+    if (answer === 'save') {
+      vault.saveLogin({ url, username, password })
+      this.toast(`Password saved for ${host}`)
+      broadcastSettingsSoon()
+    } else if (answer === 'never') vault.neverFor(url)
+  }
+
+  async offerFill(tab) {
+    const wc = tab.view.webContents
+    if (this.isPrivate || tab.filled || wc.isDestroyed()) return
+    const url = wc.getURL()
+    if (!vaultable(url)) return
+    const logins = vault.findLogins(url)
+    if (!logins.length) return
+    const host = shields.hostOf(url)
+    const answer = await this.prompt({
+      tabId: tab.id,
+      kind: 'password',
+      label: 'PASSWORDS',
+      text: logins.length === 1 ? `Fill your saved login for ${logins[0].username || host}?` : `Fill a saved login for ${host}:`,
+      buttons: [...logins.slice(0, 3).map((l, i) => ({ id: `fill:${i}`, label: logins.length === 1 ? 'FILL' : (l.username || 'login').slice(0, 24).toUpperCase(), hot: i === 0 })), { id: 'no', label: 'NOT NOW' }],
+      key: `fill:${tab.id}`,
+    })
+    if (!answer?.startsWith('fill:') || wc.isDestroyed() || wc.getURL() !== url) return
+    const l = logins[Number(answer.slice(5))]
+    tab.filled = true
+    await wc.executeJavaScript(vault.autofillJS(l.username, l.password)).catch(() => false)
+  }
+
+  async fillBusiness() {
+    const p = store.settings.data.business
+    if (!p || !Object.values(p).some(Boolean)) return openSettings('business')
+    const wc = this.activeTab()?.view.webContents
+    if (!wc) return
+    const n = await wc.executeJavaScript(fillBusinessJS(p), true).catch(() => 0)
+    this.toast(n ? `Filled ${n} field${n === 1 ? '' : 's'} with your business details` : 'No matching form fields found on this page')
+  }
+
+  // ---------- reader mode ----------
+
+  async toggleReader() {
+    const tab = this.activeTab()
+    if (!tab) return
+    if (tab.reader) return this.exitReader(tab)
+    const wc = tab.view.webContents
+    const url = wc.getURL()
+    if (!/^https?:/.test(url)) return
+    const article = await wc.executeJavaScript(EXTRACT_ARTICLE_JS).catch(() => null)
+    if (!article || (article.words || 0) < 80) return this.toast('No article found on this page')
+    const html = readerPage(article, { url, theme: paletteFor(store.settings.data.theme) })
+    tab.reader = { url, title: article.title || wc.getTitle() }
+    await wc.loadURL(`data:text/html;charset=utf-8;base64,${Buffer.from(html).toString('base64')}`).catch(() => {})
+    quests.progress('articleRead')
+    this.pushState()
+  }
+
+  exitReader(tab) {
+    const back = tab.reader?.url
+    tab.reader = null
+    if (back) tab.view.webContents.loadURL(back).catch(() => {})
+    this.pushState()
+  }
+
+  // ---------- translate, PDF, print ----------
+
+  translateItems() {
+    const lang = app.getLocale().split('-')[0] || 'en'
+    const langName = new Intl.DisplayNames([app.getLocale() || 'en'], { type: 'language' }).of(lang) || 'English'
+    const items = []
+    if (!this.isPrivate && store.settings.data.aiEnabled) {
+      items.push({ label: `Translate to ${langName} with Bitter`, click: () => this.askAI({ input: `Translate this page into ${langName}. Keep its headings and structure, translate all of the main text, and don't add commentary.`, includePage: true }) })
+    }
+    items.push({
+      label: 'Open in Google Translate (sends the page address to Google)',
+      click: () => {
+        const url = realUrl(this.activeTab())
+        if (/^https?:/.test(url)) this.selectTab(this.createTab(`https://translate.google.com/translate?sl=auto&tl=${encodeURIComponent(lang)}&u=${encodeURIComponent(url)}`).id)
+      },
+    })
+    return items
+  }
+
+  async savePdf() {
+    const tab = this.activeTab()
+    const wc = tab?.view.webContents
+    if (!wc) return
+    try {
+      const data = await wc.printToPDF({ printBackground: true })
+      const title = (tab.reader?.title || wc.getTitle() || 'page').replace(/\s+/g, ' ').trim().slice(0, 80)
+      const savePath = uniqueDownloadPath(`${title}.pdf`)
+      fs.writeFileSync(savePath, data)
+      const d = { id: nextDownloadId++, name: path.basename(savePath), path: savePath, state: 'completed', received: data.length, total: data.length, mime: 'application/pdf' }
+      downloads.set(d.id, d)
+      this.send('download', { ...d })
+    } catch (err) {
+      this.toast(`Couldn't save as PDF: ${err.message}`)
+    }
   }
 
   /** Pin or unpin a tab. Pinned tabs sit at the front and can't be closed until unpinned. */
@@ -301,6 +620,7 @@ class PixelWindow {
     tab.pinned = !!pinned
     const at = this.tabs.filter((t) => t.pinned).length
     this.tabs.splice(at, 0, tab)
+    if (pinned) quests.progress('pinned')
     publishTabs()
     this.pushStateNow()
   }
@@ -314,6 +634,8 @@ class PixelWindow {
       ...(this.isPrivate ? [] : [{ label: tab.pinned ? 'Unpin tab' : 'Pin tab', click: () => this.pinTab(id, !tab.pinned) }, { type: 'separator' }]),
       { label: 'Close tab', enabled: !tab.pinned, click: () => this.closeTab(id) },
       { label: 'Close other tabs', enabled: others.length > 0, click: () => others.forEach((t) => this.closeTab(t.id)) },
+      { type: 'separator' },
+      { label: 'Reopen closed tab', accelerator: 'CmdOrCtrl+Shift+T', enabled: this.closed.length > 0, click: () => this.reopenClosed() },
     ]).popup({ window: this.win })
   }
 
@@ -385,6 +707,10 @@ class PixelWindow {
     if (prev && prev !== tab) {
       prev.lastActive = Date.now()
       this.win.contentView.removeChildView(prev.view)
+      if (this.findingTab) {
+        this.stopFind()
+        this.send('find', { close: true })
+      }
     }
     if (!this.locked) this.win.contentView.addChildView(tab.view)
     this.activeId = id
@@ -409,7 +735,18 @@ class PixelWindow {
     if (this.tabs[idx].pinned) return
     const [tab] = this.tabs.splice(idx, 1)
     // Closing a tab nobody looked at for days counts as tidying up (XP).
-    if (id !== this.activeId && Date.now() - tab.lastActive > STALE_TAB_MS) xp.add('tabsCleaned')
+    if (id !== this.activeId && Date.now() - tab.lastActive > STALE_TAB_MS) {
+      xp.add('tabsCleaned')
+      quests.progress('tabCleaned')
+    }
+    // Remember it for "Reopen closed tab" (Ctrl+Shift+T). Private windows forget.
+    const closedUrl = realUrl(tab)
+    if (!this.isPrivate && /^(https?|file):/.test(closedUrl) && !isNtp(closedUrl)) {
+      this.closed.push({ url: closedUrl, title: tab.view.webContents.isDestroyed() ? closedUrl : tab.view.webContents.getTitle(), space: tab.space })
+      if (this.closed.length > 25) this.closed.shift()
+    }
+    this.dismissPrompts((p) => p.tabId === id)
+    if (this.findingTab === id) this.findingTab = null
     if (!this.win.isDestroyed()) this.win.contentView.removeChildView(tab.view)
     this.destroyTab(tab)
     publishTabs()
@@ -430,12 +767,13 @@ class PixelWindow {
       for (const v of [this.sidebar.view, this.sidebar.appView]) if (v) v.setBounds({ x: width, y: 0, width: 0, height: 0 })
       return
     }
-    const bodyH = Math.max(0, height - SHELL_HEIGHT)
+    const top = this.shellH
+    const bodyH = Math.max(0, height - top)
     const sideW = this.sidebar.open ? Math.min(SIDEBAR_WIDTH, Math.floor(width * 0.6)) : 0
-    this.activeTab()?.view.setBounds({ x: 0, y: SHELL_HEIGHT, width: width - sideW, height: bodyH })
+    this.activeTab()?.view.setBounds({ x: 0, y: top, width: width - sideW, height: bodyH })
     const { view, appView, app: openApp } = this.sidebar
-    if (view) view.setBounds({ x: width - sideW, y: SHELL_HEIGHT, width: sideW, height: openApp ? SIDEBAR_HEADER : bodyH })
-    if (appView) appView.setBounds({ x: width - sideW, y: SHELL_HEIGHT + SIDEBAR_HEADER, width: sideW, height: Math.max(0, bodyH - SIDEBAR_HEADER) })
+    if (view) view.setBounds({ x: width - sideW, y: top, width: sideW, height: openApp ? SIDEBAR_HEADER : bodyH })
+    if (appView) appView.setBounds({ x: width - sideW, y: top + SIDEBAR_HEADER, width: sideW, height: Math.max(0, bodyH - SIDEBAR_HEADER) })
   }
 
   // ---------- AI sidebar ----------
@@ -522,6 +860,32 @@ class PixelWindow {
   }
 }
 
+/** Passwords are saved and filled on secure sites (and local test servers). */
+const vaultable = (url) => /^https:\/\//.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url)
+
+/** The page a tab is really on (reader mode shows a data: page for it). */
+function realUrl(tab) {
+  if (!tab) return ''
+  if (tab.reader) return tab.reader.url
+  if (tab.pendingUrl) return tab.pendingUrl
+  const wc = tab.view.webContents
+  return wc.isDestroyed() ? '' : wc.getURL()
+}
+
+/** What the new tab page shows. */
+function ntpData(pw) {
+  const s = store.settings.data
+  const totals = s.shields.totals || {}
+  return {
+    shortcuts: (Array.isArray(s.ntpShortcuts) ? s.ntpShortcuts : DEFAULT_SHORTCUTS).slice(0, 24),
+    blocked: (totals.ads || 0) + (totals.trackers || 0),
+    xp: xp.summary(),
+    quests: quests.list(),
+    pinned: pw && !pw.isPrivate ? pw.tabsInSpace().filter((t) => t.pinned).map((t) => ({ title: t.pendingUrl ? t.pendingTitle : t.view.webContents.getTitle(), url: realUrl(t) })) : [],
+    remote: pw?.isPrivate ? [] : syncHost.remoteTabs().slice(0, 3),
+  }
+}
+
 // Open tabs are shared (encrypted) with your other devices.
 let tabsTimer = null
 function publishTabs() {
@@ -532,8 +896,8 @@ function publishTabs() {
       if (pw.isPrivate) continue
       for (const t of pw.tabs) {
         const wc = t.view.webContents
-        const url = t.pendingUrl || (wc.isDestroyed() ? '' : wc.getURL())
-        if (/^https?:/.test(url)) tabs.push({ title: t.pendingUrl ? t.pendingTitle : wc.getTitle(), url, space: t.space, pinned: !!t.pinned })
+        const url = realUrl(t)
+        if (/^https?:/.test(url)) tabs.push({ title: t.reader ? t.reader.title : t.pendingUrl ? t.pendingTitle : wc.getTitle(), url, space: t.space, pinned: !!t.pinned })
       }
     }
     store.putRecord('tabs', store.settings.data.deviceId, { deviceName: store.settings.data.deviceName, tabs: tabs.slice(0, 100) })
@@ -556,9 +920,10 @@ function sessionSnapshot() {
     const tabs = []
     for (const t of pw.tabs) {
       const wc = t.view.webContents
-      const url = t.pendingUrl || (wc.isDestroyed() ? '' : wc.getURL())
-      if (!/^(https?|file):/.test(url)) continue
-      tabs.push({ url, title: (t.pendingUrl ? t.pendingTitle : wc.getTitle()) || url, pinned: !!t.pinned, space: t.space, active: activeBySpace[t.space] === t.id })
+      let url = realUrl(t)
+      if (isNtp(url)) url = 'bit://newtab' // the app's folder can move between versions
+      if (!/^(https?|file|bit):/.test(url)) continue
+      tabs.push({ url, title: (t.reader ? t.reader.title : t.pendingUrl ? t.pendingTitle : wc.getTitle()) || url, pinned: !!t.pinned, space: t.space, active: activeBySpace[t.space] === t.id })
     }
     if (tabs.length) out.push({ space: pw.space, tabs: tabs.slice(0, 200) })
   }
@@ -585,7 +950,7 @@ function restoreInto(pw, saved, { all }) {
   const active = {}
   for (const t of saved.tabs || []) {
     if (!all && !t.pinned) continue
-    if (!/^(https?|file):/.test(t.url || '')) continue
+    if (!/^(https?|file|bit):/.test(t.url || '')) continue
     const tab = pw.createTab(t.url, { space: spaceOf(t.space), pinned: !!t.pinned, lazy: true, select: false, title: t.title })
     if (t.active) active[tab.space] = tab.id
   }
@@ -650,10 +1015,19 @@ async function prepareSession(ses, { isPrivate }) {
   // shell shows them; PDFs open in a tab from there.
   ses.on('will-download', (_e, item, wc) => handleDownload(item, wc))
 
-  // No silent permission grants. Geolocation, camera etc. are denied until
-  // we ship a pixel permission prompt.
-  ses.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(['fullscreen', 'clipboard-sanitized-write'].includes(permission))
+  // Camera, microphone, location and notifications: ask with a pixel bar,
+  // remember the answer per site (Settings → Site settings). Everything else
+  // a page asks for stays denied, except full screen and copying.
+  ses.setPermissionRequestHandler((wc, permission, callback, details) => {
+    if (['fullscreen', 'clipboard-sanitized-write'].includes(permission)) return callback(true)
+    const kinds = permissionKinds(permission, details)
+    if (!kinds) return callback(false)
+    askPermission(wc, kinds, details?.requestingUrl || wc?.getURL(), isPrivate).then(callback, () => callback(false))
+  })
+  ses.setPermissionCheckHandler((_wc, permission, origin, details) => {
+    const kinds = permission === 'media' ? [details?.mediaType === 'video' ? 'camera' : 'microphone'] : permissionKinds(permission, details)
+    if (!kinds) return true
+    return kinds.every((k) => sitePermission(origin, k, isPrivate) === 'allow')
   })
 
   // Do Not Track + Global Privacy Control on every request.
@@ -675,9 +1049,17 @@ async function prepareSession(ses, { isPrivate }) {
 const downloads = new Map() // id -> { id, name, path, state, received, total, mime }
 let nextDownloadId = 1
 
+/** Where downloads go: the folder picked in Settings, else the system Downloads folder. */
+function downloadDir() {
+  const f = store.settings.data.downloads?.folder
+  try {
+    if (f && fs.statSync(f).isDirectory()) return f
+  } catch {}
+  return app.getPath('downloads')
+}
+
 function uniqueDownloadPath(name) {
-  const fs = require('node:fs')
-  const dir = app.getPath('downloads')
+  const dir = downloadDir()
   fs.mkdirSync(dir, { recursive: true })
   const clean = String(name || 'download').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').replace(/^\.+/, '').slice(0, 150) || 'download'
   const ext = path.extname(clean)
@@ -696,8 +1078,12 @@ function windowOfContents(wc) {
 }
 
 function handleDownload(item, wc) {
-  const savePath = uniqueDownloadPath(item.getFilename())
-  item.setSavePath(savePath)
+  const opts = store.settings.data.downloads || {}
+  const suggested = uniqueDownloadPath(item.getFilename())
+  // "Ask where to save each file": Electron shows its save dialog when no path is set.
+  if (opts.ask) item.setSaveDialogOptions({ defaultPath: suggested })
+  else item.setSavePath(suggested)
+  const savePath = suggested
   const d = { id: nextDownloadId++, name: path.basename(savePath), path: savePath, state: 'progressing', received: 0, total: item.getTotalBytes(), mime: item.getMimeType() }
   downloads.set(d.id, d)
   const pw = windowOfContents(wc)
@@ -713,9 +1099,28 @@ function handleDownload(item, wc) {
   item.once('done', (_e, state) => {
     d.state = state // completed | cancelled | interrupted
     d.received = item.getReceivedBytes()
+    const real = item.getSavePath()
+    if (real) {
+      d.path = real
+      d.name = path.basename(real)
+    }
     push()
+    // "Auto-print shipping labels": a finished PDF opens in a tab and the print dialog comes up.
+    if (state === 'completed' && opts.autoPrintLabels && isPdfDownload(d) && pw) autoPrint(pw, d)
   })
 }
+
+function autoPrint(pw, d) {
+  const tab = pw.createTab(pathToFileURL(d.path).href)
+  pw.selectTab(tab.id)
+  const wc = tab.view.webContents
+  wc.once('did-finish-load', () => {
+    lastAutoPrint = d.path
+    // The PDF viewer prints the document itself when the page asks.
+    setTimeout(() => !wc.isDestroyed() && wc.executeJavaScript('window.print()', true).catch(() => wc.print({})), 600)
+  })
+}
+let lastAutoPrint = ''
 
 const isPdfDownload = (d) => /\.pdf$/i.test(d.name) || d.mime === 'application/pdf'
 
@@ -728,7 +1133,7 @@ ipcMain.on('download:open', (e, id) => {
   if (!d || d.state !== 'completed') return
   const pw = windows.get(BrowserWindow.fromWebContents(e.sender)?.id)
   // PDFs open in a tab with the built-in viewer; anything else in its own app.
-  if (isPdfDownload(d) && pw) pw.selectTab(pw.createTab(require('node:url').pathToFileURL(d.path).href).id)
+  if (isPdfDownload(d) && pw) pw.selectTab(pw.createTab(pathToFileURL(d.path).href).id)
   else shell.openPath(d.path)
 })
 
@@ -750,6 +1155,7 @@ function windowForTab(wcId) {
 const countTimers = new Map()
 shields.onBlocked((wcId) => {
   xp.add('blocked')
+  quests.progress('blocked')
   if (countTimers.has(wcId)) return
   countTimers.set(
     wcId,
@@ -841,6 +1247,221 @@ async function openWindow({ isPrivate = false, url, restore = null } = {}) {
   return pw
 }
 
+// ---------- site permissions ----------
+
+const PERM_LABEL = { camera: 'camera', microphone: 'microphone', location: 'location', notifications: 'notifications' }
+const privatePerms = new Map() // host -> { kind: 'allow'|'block' } for private windows (forgotten on quit)
+
+/** Which of our four permission kinds a request is about, or null for anything else. */
+function permissionKinds(permission, details) {
+  if (permission === 'media') {
+    const types = details?.mediaTypes?.length ? details.mediaTypes : ['video', 'audio']
+    return [...new Set(types.map((t) => (t === 'video' ? 'camera' : 'microphone')))]
+  }
+  if (permission === 'geolocation') return ['location']
+  if (permission === 'notifications') return ['notifications']
+  return null
+}
+
+const permHost = (url) => {
+  try {
+    return new URL(url).host.toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+function sitePermission(url, kind, isPrivate) {
+  const host = permHost(url)
+  if (!host) return 'block'
+  const table = isPrivate ? privatePerms.get(host) : store.settings.data.sitePerms[host]
+  return table?.[kind] || 'ask'
+}
+
+function setSitePermission(host, kind, value, isPrivate = false) {
+  if (!host || !PERM_LABEL[kind]) return
+  if (isPrivate) {
+    privatePerms.set(host, { ...(privatePerms.get(host) || {}), [kind]: value })
+    return
+  }
+  const perms = store.settings.data.sitePerms
+  const cur = { ...(perms[host] || {}) }
+  if (value === 'ask') delete cur[kind]
+  else cur[kind] = value
+  if (Object.keys(cur).length) perms[host] = cur
+  else delete perms[host]
+  store.settings.data.sitePermsUpdatedAt = Date.now()
+  store.settings.save()
+  store.putRecord('settings', 'site-settings', { perms })
+}
+
+const permAsks = new Map() // "host|kinds" -> pending promise, so one bar answers repeated requests
+
+async function askPermission(wc, kinds, url, isPrivate) {
+  const host = permHost(url)
+  if (!host) return false
+  const now = kinds.map((k) => sitePermission(url, k, isPrivate))
+  if (now.every((v) => v === 'allow')) return true
+  if (now.some((v) => v === 'block')) return false
+  const pw = wc && windowForTab(wc.id)
+  if (!pw) return false
+  const key = `${isPrivate ? 'p' : ''}${host}|${kinds.join(',')}`
+  if (permAsks.has(key)) return permAsks.get(key)
+  const ask = pw
+    .prompt({
+      tabId: wc.id,
+      kind: 'permission',
+      label: 'PERMISSION',
+      text: `${host.replace(/^www\./, '')} wants to use your ${kinds.map((k) => PERM_LABEL[k]).join(' and ')}`,
+      buttons: [
+        { id: 'allow', label: 'ALLOW', hot: true },
+        { id: 'block', label: 'BLOCK' },
+      ],
+      key: `perm:${wc.id}:${kinds.join(',')}`,
+    })
+    .then((answer) => {
+      permAsks.delete(key)
+      if (answer !== 'allow' && answer !== 'block') return false
+      for (const k of kinds) setSitePermission(host, k, answer, isPrivate)
+      broadcastSettingsSoon()
+      return answer === 'allow'
+    })
+  permAsks.set(key, ask)
+  return ask
+}
+
+function applyRemoteSitePerms() {
+  const rec = store.records.data.settings['site-settings']
+  const s = store.settings.data
+  if (!rec || rec.deleted || rec.deviceId === s.deviceId || rec.updatedAt <= (s.sitePermsUpdatedAt || 0)) return
+  if (rec.data?.perms && typeof rec.data.perms === 'object') {
+    s.sitePerms = rec.data.perms
+    s.sitePermsUpdatedAt = rec.updatedAt
+    store.settings.save()
+  }
+}
+
+// ---------- library window (bookmarks manager + history) ----------
+
+let libraryWin = null
+
+function openLibrary(section = 'bookmarks') {
+  if (libraryWin && !libraryWin.isDestroyed()) {
+    libraryWin.webContents.send('library:goto', section)
+    return libraryWin.focus()
+  }
+  libraryWin = new BrowserWindow({
+    width: 860,
+    height: 720,
+    title: 'Bit Browser Library',
+    backgroundColor: '#0b0b16',
+    autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'library-preload.js'), sandbox: true, contextIsolation: true },
+  })
+  libraryWin.setMenuBarVisibility(false)
+  libraryWin.webContents.on('did-finish-load', () => applyTheme(libraryWin.webContents))
+  libraryWin.loadFile(path.join(__dirname, 'ui', 'library.html'), { hash: section })
+}
+
+function notifyLibrary() {
+  if (libraryWin && !libraryWin.isDestroyed()) libraryWin.webContents.send('library:changed')
+}
+
+// ---------- bookmarks ----------
+
+function focusedWindow() {
+  const focused = BrowserWindow.getFocusedWindow()
+  return (focused && windows.get(focused.id)) || [...windows.values()].find((w) => !w.isPrivate) || windows.values().next().value
+}
+
+function toggleBookmark(pw) {
+  const tab = pw.activeTab()
+  const url = realUrl(tab)
+  if (!/^https?:/.test(url)) return
+  const id = bookmarks.find(url)
+  if (!id) {
+    bookmarks.add({ url, title: tab.reader?.title || tab.view.webContents.getTitle() || url })
+    quests.progress('bookmarked')
+    pw.toast('Bookmarked. It\'s on the bookmarks bar.')
+    return
+  }
+  const cur = bookmarks.list().find((b) => b.id === id)
+  Menu.buildFromTemplate([
+    { label: `Bookmarked in "${cur?.folder || bookmarks.DEFAULT_FOLDER}"`, enabled: false },
+    { label: 'Move to folder', submenu: bookmarks.folders().map((f) => ({ label: f, type: 'radio', checked: f === cur?.folder, click: () => bookmarks.update(id, { folder: f }) })) },
+    { label: 'Edit in bookmarks manager…', click: () => openLibrary('bookmarks') },
+    { type: 'separator' },
+    { label: 'Remove bookmark', click: () => bookmarks.remove(id) },
+  ]).popup({ window: pw.win })
+}
+
+function bookmarkMenu(pw, id) {
+  const b = bookmarks.list().find((x) => x.id === id)
+  if (!b) return
+  Menu.buildFromTemplate([
+    { label: 'Open', click: () => pw.load(pw.activeTab()?.view.webContents, b.url) },
+    { label: 'Open in new tab', click: () => pw.createTab(b.url) },
+    { label: 'Edit in bookmarks manager…', click: () => openLibrary('bookmarks') },
+    { type: 'separator' },
+    { label: 'Delete', click: () => bookmarks.remove(id) },
+  ]).popup({ window: pw.win })
+}
+
+function folderMenu(pw, name) {
+  const items = bookmarks.list().filter((b) => b.folder === name)
+  Menu.buildFromTemplate([
+    ...(items.length
+      ? items.slice(0, 50).map((b) => ({ label: (b.title || b.url).slice(0, 60), click: () => pw.load(pw.activeTab()?.view.webContents, b.url) }))
+      : [{ label: '(empty)', enabled: false }]),
+    { type: 'separator' },
+    { label: 'Open all in new tabs', enabled: items.length > 0, click: () => items.slice(0, 20).forEach((b) => pw.createTab(b.url, { select: false })) },
+    { label: 'Bookmarks manager…', click: () => openLibrary('bookmarks') },
+  ]).popup({ window: pw.win })
+}
+
+bookmarks.onChange(() => {
+  for (const pw of windows.values()) pw.pushState()
+  notifyLibrary()
+})
+
+function toggleBookmarksBar() {
+  store.settings.data.bookmarksBar = !store.settings.data.bookmarksBar
+  store.settings.save()
+  for (const pw of windows.values()) pw.pushState()
+  broadcastSettingsSoon()
+}
+
+// ---------- the toolbar menu ----------
+
+function appMenu(pw) {
+  const tab = pw.activeTab()
+  const url = realUrl(tab)
+  const web = /^https?:/.test(url)
+  Menu.buildFromTemplate([
+    { label: 'New tab', accelerator: 'CmdOrCtrl+T', click: () => pw.createTab() },
+    { label: 'New private window', accelerator: 'CmdOrCtrl+Shift+N', click: () => openWindow({ isPrivate: true }) },
+    { label: 'Reopen closed tab', accelerator: 'CmdOrCtrl+Shift+T', enabled: pw.closed.length > 0, click: () => pw.reopenClosed() },
+    { type: 'separator' },
+    { label: bookmarks.find(url) ? 'Edit bookmark…' : 'Bookmark this page', accelerator: 'CmdOrCtrl+D', enabled: web, click: () => toggleBookmark(pw) },
+    { label: 'Bookmarks manager', accelerator: 'CmdOrCtrl+Shift+O', click: () => openLibrary('bookmarks') },
+    { label: 'Show bookmarks bar', type: 'checkbox', checked: !!store.settings.data.bookmarksBar, accelerator: 'CmdOrCtrl+Shift+B', click: () => toggleBookmarksBar() },
+    { label: 'History', accelerator: 'CmdOrCtrl+H', click: () => openLibrary('history') },
+    { label: 'Downloads folder', click: () => shell.openPath(downloadDir()) },
+    { type: 'separator' },
+    { label: 'Find in page…', accelerator: 'CmdOrCtrl+F', enabled: !!tab, click: () => pw.openFind() },
+    { label: tab?.reader ? 'Leave reader mode' : 'Reader mode', accelerator: 'CmdOrCtrl+Alt+R', enabled: !!tab?.reader || (web && !!tab?.readerable), click: () => pw.toggleReader() },
+    { label: 'Translate this page', enabled: web, submenu: pw.translateItems() },
+    { label: 'Picture in picture (video)', enabled: web, click: () => tab?.view.webContents.executeJavaScript(pipJS(0, 0), true).catch(() => {}) },
+    { label: 'Fill business details', enabled: web, click: () => pw.fillBusiness() },
+    { type: 'separator' },
+    { label: 'Save page as PDF', accelerator: 'CmdOrCtrl+Shift+S', enabled: !!tab, click: () => pw.savePdf() },
+    { label: 'Print…', accelerator: 'CmdOrCtrl+P', enabled: !!tab, click: () => tab?.view.webContents.print({}) },
+    { type: 'separator' },
+    { label: 'Passwords…', click: () => openSettings('passwords') },
+    { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
+  ]).popup({ window: pw.win })
+}
+
 // ---------- themes ----------
 
 const themeKeys = new WeakMap() // webContents -> inserted CSS key
@@ -858,9 +1479,11 @@ function applyThemeEverywhere() {
   for (const pw of windows.values()) {
     applyTheme(pw.win.webContents)
     applyTheme(pw.sidebar.view?.webContents)
+    for (const t of pw.tabs) if (!t.view.webContents.isDestroyed() && isNtp(t.view.webContents.getURL())) applyTheme(t.view.webContents)
     pw.pushState()
   }
   if (settingsWin && !settingsWin.isDestroyed()) applyTheme(settingsWin.webContents)
+  if (libraryWin && !libraryWin.isDestroyed()) applyTheme(libraryWin.webContents)
 }
 
 function setTheme({ id, custom, skin } = {}) {
@@ -1056,7 +1679,11 @@ async function dataReport() {
       { id: 'extensions', label: 'Extensions', value: `${extensions} installed`, synced: false },
       { id: 'shields', label: 'Shields stats', value: `${s.shields.totals.ads + s.shields.totals.trackers} blocked`, synced: false },
       { id: 'xp', label: '128bit XP', value: `${xp.summary().xp} XP`, synced: true },
-      { id: 'downloads', label: 'Downloads', value: 'saved in your Downloads folder', synced: false },
+      { id: 'downloads', label: 'Downloads', value: `saved in ${downloadDir()}`, synced: false },
+      { id: 'bookmarks', label: 'Bookmarks', value: `${bookmarks.list().length} bookmarks`, synced: true },
+      { id: 'passwords', label: 'Passwords, addresses and cards', value: (() => { const v = vault.summary(); return `${v.logins.length} logins, ${v.addresses.length} addresses, ${v.cards.length} cards (encrypted with your OS keychain)` })(), synced: !!s.vault.syncPasswords },
+      { id: 'sites', label: 'Site permissions', value: `${Object.keys(s.sitePerms || {}).length} sites`, synced: true },
+      { id: 'crash', label: 'Crash log', value: s.crashReports ? `${crashlog.read().length} entries` : 'off', synced: false },
     ],
   }
 }
@@ -1075,6 +1702,18 @@ async function deleteData(id) {
     shields.resetTotals()
   } else if (id === 'xp') {
     xp.reset()
+  } else if (id === 'bookmarks') {
+    for (const b of bookmarks.list()) store.putRecord('bookmarks', b.id, null, { deleted: true })
+    bookmarks.changed()
+  } else if (id === 'passwords') {
+    vault.wipe()
+  } else if (id === 'sites') {
+    store.settings.data.sitePerms = {}
+    store.settings.data.sitePermsUpdatedAt = Date.now()
+    store.settings.save()
+    store.putRecord('settings', 'site-settings', { perms: {} })
+  } else if (id === 'crash') {
+    crashlog.clear()
   }
   return dataReport()
 }
@@ -1091,6 +1730,62 @@ ipcMain.on('tab:select', (e, id) => fromSender(e)?.selectTab(id))
 ipcMain.on('tab:close', (e, id) => fromSender(e)?.closeTab(id))
 ipcMain.on('tab:menu', (e, id) => fromSender(e)?.tabMenu(id))
 ipcMain.on('tab:pin', (e, id, pinned) => fromSender(e)?.pinTab(id, pinned))
+ipcMain.on('shell:height', (e, h) => {
+  const pw = fromSender(e)
+  const n = Math.round(Number(h))
+  if (!pw || !(n >= 60 && n <= 600) || n === pw.shellH) return
+  pw.shellH = n
+  pw.layout()
+})
+ipcMain.on('bookmark:toggle', (e) => {
+  const pw = fromSender(e)
+  if (pw) toggleBookmark(pw)
+})
+ipcMain.on('bookmark:menu', (e, id) => {
+  const pw = fromSender(e)
+  if (pw) bookmarkMenu(pw, id)
+})
+ipcMain.on('bookmark:folder-menu', (e, name) => {
+  const pw = fromSender(e)
+  if (pw) folderMenu(pw, String(name || ''))
+})
+ipcMain.on('find:query', (e, text, opts) => fromSender(e)?.find(text, opts || {}))
+ipcMain.on('find:stop', (e) => fromSender(e)?.stopFind())
+ipcMain.on('prompt:answer', (e, id, action) => fromSender(e)?.answerPrompt(id, action))
+ipcMain.on('reader:toggle', (e) => fromSender(e)?.toggleReader())
+ipcMain.on('app:menu', (e) => {
+  const pw = fromSender(e)
+  if (pw) appMenu(pw)
+})
+
+// ---------- IPC from the Library window ----------
+
+ipcMain.handle('library:bookmarks', () => ({ bookmarks: bookmarks.list(), folders: bookmarks.folders() }))
+ipcMain.handle('library:bookmark-update', (_e, id, patch) => bookmarks.update(id, patch || {}))
+ipcMain.handle('library:bookmark-remove', (_e, id) => bookmarks.remove(id))
+ipcMain.handle('library:folder-add', (_e, name) => bookmarks.addFolder(name))
+ipcMain.handle('library:folder-rename', (_e, from, to) => bookmarks.renameFolder(from, to))
+ipcMain.handle('library:folder-remove', (_e, name) => bookmarks.removeFolder(name))
+ipcMain.handle('library:history', (_e, query) => store.history.search(query, 800))
+ipcMain.handle('library:history-remove', (_e, id) => store.history.remove(id))
+ipcMain.handle('library:history-clear', async (_e, range, siteData) => {
+  const since = { hour: Date.now() - 3600e3, day: Date.now() - 86400e3, week: Date.now() - 7 * 86400e3, all: 0 }[range] ?? Date.now() - 3600e3
+  const n = store.history.clearSince(since)
+  if (siteData) {
+    const ses = session.fromPartition(PROFILE_PARTITION)
+    await ses.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage', 'websql', 'filesystem'] }).catch(() => {})
+    await ses.clearCache().catch(() => {})
+  }
+  return n
+})
+ipcMain.on('library:open', (_e, url, newTab) => {
+  if (!isAllowedUrl(url)) return
+  const pw = [...windows.values()].find((w) => !w.isPrivate)
+  if (!pw) return openWindow({ url })
+  if (newTab || !pw.activeTab()) pw.selectTab(pw.createTab(url).id)
+  else pw.load(pw.activeTab().view.webContents, url)
+  pw.win.focus()
+})
 ipcMain.on('nav:go', (e, input) => {
   const pw = fromSender(e)
   if (!pw) return
@@ -1197,6 +1892,17 @@ function settingsState() {
     spaces: spaceList(),
     xp: xp.summary(),
     familyLinks: s.familyLinks,
+    quests: quests.list(),
+    bookmarksBar: !!s.bookmarksBar,
+    newTabPage: s.newTabPage || 'bit',
+    ntpShortcuts: Array.isArray(s.ntpShortcuts) ? s.ntpShortcuts : DEFAULT_SHORTCUTS,
+    sitePerms: s.sitePerms || {},
+    downloads: { folder: s.downloads.folder || '', folderShown: downloadDir(), ask: !!s.downloads.ask, autoPrintLabels: !!s.downloads.autoPrintLabels },
+    business: s.business || {},
+    crashReports: !!s.crashReports,
+    crashCount: crashlog.read().length,
+    vault: vault.summary(),
+    vaultLocked: !!s.privateLock.pin,
   }
 }
 
@@ -1284,6 +1990,42 @@ ipcMain.handle('settings:update', async (_e, patch = {}) => {
     if (op === 'delete') deleteSpace(id)
   }
   if (patch.familyLinks) for (const k of ['bitcaller', 'tracker']) if (typeof patch.familyLinks[k] === 'boolean') s.familyLinks[k] = patch.familyLinks[k]
+  if (typeof patch.bookmarksBar === 'boolean') s.bookmarksBar = patch.bookmarksBar
+  if (patch.newTabPage === 'bit' || patch.newTabPage === 'search') s.newTabPage = patch.newTabPage
+  if (patch.ntpShortcuts === null) s.ntpShortcuts = null
+  else if (Array.isArray(patch.ntpShortcuts)) {
+    s.ntpShortcuts = patch.ntpShortcuts
+      .filter((x) => x && /^https?:\/\//i.test(String(x.url || '').trim()))
+      .slice(0, 24)
+      .map((x) => ({ title: String(x.title || '').trim().slice(0, 40), url: String(x.url).trim().slice(0, 500) }))
+  }
+  if (patch.sitePerm) {
+    const { host, kind, value } = patch.sitePerm
+    if (['allow', 'block', 'ask'].includes(value)) setSitePermission(String(host || '').toLowerCase(), kind, value)
+  }
+  if (patch.siteReset) {
+    delete s.sitePerms[String(patch.siteReset)]
+    s.sitePermsUpdatedAt = Date.now()
+    store.putRecord('settings', 'site-settings', { perms: s.sitePerms })
+  }
+  if (patch.downloads) {
+    if (typeof patch.downloads.ask === 'boolean') s.downloads.ask = patch.downloads.ask
+    if (typeof patch.downloads.autoPrintLabels === 'boolean') s.downloads.autoPrintLabels = patch.downloads.autoPrintLabels
+    if (patch.downloads.folder === '') s.downloads.folder = ''
+  }
+  if (patch.business) {
+    const b = {}
+    for (const k of ['company', 'name', 'street', 'city', 'region', 'postal', 'country', 'phone', 'email']) {
+      const v = String(patch.business[k] || '').trim().slice(0, 200)
+      if (v) b[k] = v
+    }
+    s.business = Object.keys(b).length ? b : null
+  }
+  if (typeof patch.crashReports === 'boolean') {
+    s.crashReports = patch.crashReports
+    if (!patch.crashReports) crashlog.clear()
+  }
+  if (patch.vault) vault.setOptions(patch.vault)
   store.settings.save()
   for (const pw of windows.values()) pw.pushState()
   return settingsState()
@@ -1293,6 +2035,45 @@ ipcMain.handle('settings:panic', async (_e, range) => {
   return settingsState()
 })
 ipcMain.handle('settings:data', () => dataReport())
+
+// Passwords (Settings → Passwords). Showing a password needs the PIN when one
+// is set (Settings → Security), otherwise the Settings page asks you to confirm.
+ipcMain.handle('vault:reveal', (_e, kind, id, pin) => {
+  if (store.settings.data.privateLock.pin && !checkPin(String(pin || ''))) return { error: 'Wrong PIN.' }
+  if (kind === 'login') return vault.getLogin(id) || { error: 'Not found.' }
+  if (kind === 'card') return vault.listCards().find((c) => c.id === id) || { error: 'Not found.' }
+  if (kind === 'address') return vault.listAddresses().find((a) => a.id === id) || { error: 'Not found.' }
+  return { error: 'Unknown.' }
+})
+ipcMain.handle('vault:save', (_e, kind, data) => {
+  if (kind === 'login') {
+    if (data.id) vault.updateLogin(data.id, data)
+    else vault.saveLogin({ url: data.url, username: data.username, password: data.password })
+  } else if (kind === 'address') vault.saveAddress(data)
+  else if (kind === 'card') vault.saveCard(data)
+  return settingsState()
+})
+ipcMain.handle('vault:delete', (_e, kind, id) => {
+  if (kind === 'login') vault.deleteLogin(id)
+  else if (kind === 'address') vault.deleteAddress(id)
+  else if (kind === 'card') vault.deleteCard(id)
+  return settingsState()
+})
+ipcMain.handle('settings:pick-download-folder', async (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender)
+  const r = await dialog.showOpenDialog(win, { title: 'Save downloads in…', defaultPath: downloadDir(), properties: ['openDirectory', 'createDirectory'] })
+  if (!r.canceled && r.filePaths[0]) {
+    store.settings.data.downloads.folder = r.filePaths[0]
+    store.settings.save()
+  }
+  return settingsState()
+})
+ipcMain.handle('settings:crash-log', () => ({ entries: crashlog.read().slice(-30).reverse(), report: crashlog.report() }))
+ipcMain.handle('settings:crash-copy', () => {
+  const r = crashlog.report()
+  if (r) clipboard.writeText(r)
+  return !!r
+})
 ipcMain.handle('settings:delete-data', (_e, id) => deleteData(id))
 ipcMain.on('settings:open-url', (_e, url) => openUrlInBrowser(url))
 ipcMain.handle('settings:get', () => settingsState())
@@ -1400,7 +2181,11 @@ syncHost.onChange(({ status, changed }) => {
     applyRemoteTheme()
     applyRemoteSpaces()
     xp.applyRemote()
+    applyRemoteSitePerms()
   }
+  // Synced passwords move into the encrypted vault (and the record copies are stripped).
+  vault.applyRemote()
+  if (changed.includes('bookmarks')) bookmarks.changed()
   broadcastSettings()
   for (const pw of windows.values()) {
     pw.sendSidebar('sidebar:state', { ...publicState(), sync: status, remoteTabs: syncHost.remoteTabs() })
@@ -1443,6 +2228,15 @@ app.on('open-url', (event, url) => {
   else pendingUrls.push(url)
 })
 
+// A finished quest: tell every window, and play the level-up sound.
+quests.onChange((completed) => {
+  for (const q of completed || []) for (const pw of windows.values()) {
+    pw.toast(`Quest complete: ${q.title} (+${q.xp} XP)`)
+    pw.sound('levelup')
+  }
+  broadcastSettingsSoon()
+})
+
 // XP changes reach the shell (level-up sound) and Settings.
 xp.onChange((_summary, leveledUp) => {
   if (leveledUp) for (const pw of windows.values()) pw.sound('levelup')
@@ -1457,7 +2251,11 @@ function broadcastSettingsSoon() {
 
 // Hooks for the end-to-end test only.
 if (process.env.PIXEL_E2E) {
-  globalThis.__bitTest = { runPanic, shields, xp, setTheme, windows, history: store.history, records: store.records, downloads }
+  globalThis.__bitTest = {
+    runPanic, shields, xp, setTheme, windows, history: store.history, records: store.records, downloads,
+    bookmarks, vault, quests, store, openLibrary, toggleBookmark, appMenu, isNtp, NTP_URL, realUrl,
+    sitePermission, setSitePermission, lastAutoPrint: () => lastAutoPrint, crashlog,
+  }
 }
 
 app.whenReady().then(async () => {
@@ -1472,6 +2270,11 @@ app.whenReady().then(async () => {
           { label: 'New Window', accelerator: 'CmdOrCtrl+N', click: () => openWindow() },
           { label: 'New Private Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => openWindow({ isPrivate: true }) },
           { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: (_i, w) => { const pw = w && windows.get(w.id); pw?.closeTab(pw.activeId) } },
+          { label: 'Reopen Closed Tab', accelerator: 'CmdOrCtrl+Shift+T', click: (_i, w) => (w && windows.get(w.id))?.reopenClosed() },
+          { type: 'separator' },
+          { label: 'Save Page as PDF', accelerator: 'CmdOrCtrl+Shift+S', click: (_i, w) => (w && windows.get(w.id))?.savePdf() },
+          { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: (_i, w) => (w && windows.get(w.id))?.activeTab()?.view.webContents.print({}) },
+          { type: 'separator' },
           { label: 'Bitter Sidebar', accelerator: 'CmdOrCtrl+J', click: (_i, w) => w && windows.get(w.id)?.toggleSidebar() },
           { label: 'Panic: Close Private Windows and Wipe Recent Activity', accelerator: 'CmdOrCtrl+Shift+X', click: (_i, w) => panic(w) },
           { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
@@ -1479,10 +2282,34 @@ app.whenReady().then(async () => {
           { role: 'quit' },
         ],
       },
-      { role: 'editMenu' },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'selectAll' },
+          { type: 'separator' },
+          { label: 'Find in Page…', accelerator: 'CmdOrCtrl+F', click: (_i, w) => (w && windows.get(w.id))?.openFind() },
+          { label: 'Fill Business Details', click: (_i, w) => (w && windows.get(w.id))?.fillBusiness() },
+        ],
+      },
+      {
+        label: 'Bookmarks',
+        submenu: [
+          { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: (_i, w) => { const pw = w && windows.get(w.id); if (pw) toggleBookmark(pw) } },
+          { label: 'Bookmarks Manager', accelerator: 'CmdOrCtrl+Shift+O', click: () => openLibrary('bookmarks') },
+          { label: 'Show Bookmarks Bar', accelerator: 'CmdOrCtrl+Shift+B', click: () => toggleBookmarksBar() },
+          { label: 'History', accelerator: 'CmdOrCtrl+H', click: () => openLibrary('history') },
+        ],
+      },
       {
         label: 'View',
         submenu: [
+          { label: 'Reader Mode', accelerator: 'CmdOrCtrl+Alt+R', click: (_i, w) => (w && windows.get(w.id))?.toggleReader() },
           { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: (_i, w) => w && windows.get(w.id)?.activeTab()?.view.webContents.reload() },
           { label: 'Developer Tools', accelerator: 'F12', click: (_i, w) => w && windows.get(w.id)?.activeTab()?.view.webContents.toggleDevTools() },
           { role: 'togglefullscreen' },

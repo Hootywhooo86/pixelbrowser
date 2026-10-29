@@ -189,6 +189,12 @@ function applyState(next) {
   renderMedia()
   renderSpaces()
   renderFamily()
+  renderPasswords()
+  renderSites()
+  renderNewTab()
+  renderDownloads()
+  renderBusiness()
+  renderCrash()
 }
 
 const set = async (patch) => applyState(await api.set(patch))
@@ -365,6 +371,12 @@ function renderFamily() {
   $('badges').replaceChildren(...x.badges.map((b) => make('div', { className: 'badge' + (b.earned ? ' earned' : '') }, make('span', { className: 'ico', textContent: b.earned ? '*' : '?' }), make('span', { textContent: b.label }))))
   $('fl-bitcaller').checked = state.familyLinks.bitcaller
   $('fl-tracker').checked = state.familyLinks.tracker
+  $('quests').replaceChildren(
+    ...(state.quests || []).map((q) => {
+      const bar = make('div', { className: 'bar' }, Object.assign(make('i'), { style: `width:${Math.round((100 * Math.min(q.progress, q.goal)) / q.goal)}%` }))
+      return make('li', { className: q.done ? 'done' : '' }, make('span', {}, make('b', { textContent: q.done ? 'DONE ' : '' }), `${q.title} · ${fmt(q.progress)}/${fmt(q.goal)} · +${q.xp} XP`), bar)
+    })
+  )
 }
 $('fl-bitcaller').onchange = () => set({ familyLinks: { bitcaller: $('fl-bitcaller').checked } })
 $('fl-tracker').onchange = () => set({ familyLinks: { tracker: $('fl-tracker').checked } })
@@ -423,3 +435,234 @@ function renderDefault(d) {
 }
 api.defaultBrowser().then(renderDefault)
 $('make-default').onclick = async () => renderDefault(await api.makeDefault())
+
+// ---------- passwords & autofill ----------
+
+const revealed = {} // id -> secret shown until the next render of that row
+async function reveal(kind, id) {
+  let pin = ''
+  if (state.vaultLocked) {
+    pin = window.__pinInput?.value || ''
+    if (!pin) {
+      $('pw-lock-note').textContent = 'Type your PIN in the box above the list to show passwords.'
+      $('pw-pin')?.focus()
+      return null
+    }
+  } else if (!confirm('Show this saved secret on screen?')) return null
+  const r = await api.vaultReveal(kind, id, pin)
+  if (r.error) {
+    $('pw-lock-note').textContent = r.error
+    return null
+  }
+  return r
+}
+
+function renderPasswords() {
+  const v = state.vault
+  if (!v) return
+  $('pw-offer').checked = v.options.offerToSave
+  $('pw-sync').checked = v.options.syncPasswords
+  $('pw-sync-cards').checked = v.options.syncCards
+  if (state.vaultLocked && !$('pw-pin')) {
+    const pin = make('input', { id: 'pw-pin', type: 'password', placeholder: 'PIN to show passwords', inputMode: 'numeric', autocomplete: 'off' })
+    pin.setAttribute('aria-label', 'PIN')
+    window.__pinInput = pin
+    $('pw-search').parentElement.prepend(pin)
+  }
+  if (!$('pw-lock-note').textContent) $('pw-lock-note').textContent = state.vaultLocked ? 'Showing a password needs your PIN (Settings → Security).' : 'Tip: set a PIN under Security so showing passwords needs it.'
+  const q = $('pw-search').value.trim().toLowerCase()
+  const logins = v.logins.filter((l) => !q || `${l.origin} ${l.username}`.toLowerCase().includes(q))
+  if (!$('pw-list').contains(document.activeElement)) {
+    $('pw-list').replaceChildren(
+      ...(logins.length
+        ? logins.map((l) => {
+            const secret = make('span', { className: 'secret', textContent: revealed[l.id] ? revealed[l.id] : '••••••••' })
+            const show = make('button', {
+              className: 'px',
+              textContent: revealed[l.id] ? 'HIDE' : 'SHOW',
+              onclick: async () => {
+                if (revealed[l.id]) delete revealed[l.id]
+                else {
+                  const r = await reveal('login', l.id)
+                  if (r) revealed[l.id] = r.password
+                }
+                renderPasswords()
+              },
+            })
+            const edit = make('button', {
+              className: 'px',
+              textContent: 'EDIT',
+              onclick: () => {
+                const user = make('input', { value: l.username, placeholder: 'Username' })
+                const pass = make('input', { type: 'password', placeholder: 'New password (leave empty to keep)', autocomplete: 'new-password' })
+                const save = make('button', { className: 'px hot', textContent: 'SAVE', onclick: async () => applyState(await api.vaultSave('login', { id: l.id, username: user.value, password: pass.value })) })
+                row.replaceChildren(make('div', { className: 'main' }, make('b', { textContent: l.origin }), user, pass), save)
+                user.focus()
+              },
+            })
+            const del = make('button', { className: 'px', textContent: 'DELETE', onclick: async () => confirm(`Delete the saved login for ${l.username || l.origin}?`) && applyState(await api.vaultDelete('login', l.id)) })
+            const row = make('div', { className: 'vrow' }, make('div', { className: 'main' }, make('b', { textContent: l.origin.replace(/^https?:\/\//, '') }), make('span', { textContent: l.username || '(no username)' }), secret), show, edit, del)
+            return row
+          })
+        : [make('p', { className: 'muted', textContent: q ? 'No logins match.' : 'No saved logins yet.' })])
+    )
+  }
+  const never = v.options.never || []
+  if (never.length) $('pw-never').replaceChildren(...never.map((o) => make('div', { className: 'siteoff' }, make('span', { textContent: o }), make('button', { className: 'px', textContent: 'REMOVE', onclick: () => set({ vault: { unblock: o } }) }))))
+  else $('pw-never').textContent = 'No sites.'
+  $('addr-list').replaceChildren(
+    ...(v.addresses.length
+      ? v.addresses.map((a) => make('div', { className: 'vrow' }, make('div', { className: 'main' }, make('b', { textContent: a.label })), make('button', { className: 'px', textContent: 'DELETE', onclick: async () => confirm('Delete this address?') && applyState(await api.vaultDelete('address', a.id)) })))
+      : [make('p', { className: 'muted', textContent: 'No addresses yet.' })])
+  )
+  $('card-list').replaceChildren(
+    ...(v.cards.length
+      ? v.cards.map((c) => {
+          const num = make('span', { className: 'secret', textContent: revealed[c.id] || `•••• ${c.last4}` })
+          const show = make('button', {
+            className: 'px',
+            textContent: revealed[c.id] ? 'HIDE' : 'SHOW',
+            onclick: async () => {
+              if (revealed[c.id]) delete revealed[c.id]
+              else {
+                const r = await reveal('card', c.id)
+                if (r) revealed[c.id] = r.number.replace(/(\d{4})(?=\d)/g, '$1 ')
+              }
+              renderPasswords()
+            },
+          })
+          return make('div', { className: 'vrow' }, make('div', { className: 'main' }, make('b', { textContent: c.nickname || c.holder || 'Card' }), make('span', { textContent: `${c.holder} · exp ${c.exp}` }), num), show, make('button', { className: 'px', textContent: 'DELETE', onclick: async () => confirm('Delete this card?') && applyState(await api.vaultDelete('card', c.id)) }))
+        })
+      : [make('p', { className: 'muted', textContent: 'No cards yet.' })])
+  )
+}
+$('pw-search').addEventListener('input', () => renderPasswords())
+$('pw-offer').onchange = () => set({ vault: { offerToSave: $('pw-offer').checked } })
+$('pw-sync').onchange = () => set({ vault: { syncPasswords: $('pw-sync').checked } })
+$('pw-sync-cards').onchange = () => set({ vault: { syncCards: $('pw-sync-cards').checked } })
+$('pw-add').onsubmit = async (e) => {
+  e.preventDefault()
+  const url = $('pw-url').value.trim()
+  if (!/^https?:\/\//.test(url) || !$('pw-pass').value) return ($('pw-lock-note').textContent = 'Use a full https:// address and a password.')
+  applyState(await api.vaultSave('login', { url, username: $('pw-user').value.trim(), password: $('pw-pass').value }))
+  for (const id of ['pw-url', 'pw-user', 'pw-pass']) $(id).value = ''
+}
+function formData(form) {
+  const out = {}
+  for (const i of form.querySelectorAll('input[data-k]')) out[i.dataset.k] = i.value.trim()
+  return out
+}
+$('addr-add').onsubmit = async (e) => {
+  e.preventDefault()
+  const d = formData($('addr-add'))
+  if (!Object.values(d).some(Boolean)) return
+  applyState(await api.vaultSave('address', d))
+  for (const i of $('addr-add').querySelectorAll('input')) i.value = ''
+}
+$('card-add').onsubmit = async (e) => {
+  e.preventDefault()
+  const d = formData($('card-add'))
+  if (d.number.replace(/\D/g, '').length < 12) return alert('Type the full card number.')
+  applyState(await api.vaultSave('card', d))
+  for (const i of $('card-add').querySelectorAll('input')) i.value = ''
+}
+
+// ---------- site settings ----------
+
+function renderSites() {
+  const perms = state.sitePerms || {}
+  const hosts = Object.keys(perms).sort()
+  $('sites-none').hidden = hosts.length > 0
+  $('sites-table').hidden = !hosts.length
+  $('sites-table').tBodies[0].replaceChildren(
+    ...hosts.map((host) => {
+      const cell = (kind) => {
+        const sel = make('select', {}, ...['ask', 'allow', 'block'].map((v) => make('option', { value: v, textContent: v.toUpperCase(), selected: (perms[host][kind] || 'ask') === v })))
+        sel.setAttribute('aria-label', `${host} ${kind}`)
+        sel.onchange = () => set({ sitePerm: { host, kind, value: sel.value } })
+        return make('td', {}, sel)
+      }
+      return make('tr', {}, make('td', { textContent: host, title: host }), cell('camera'), cell('microphone'), cell('location'), cell('notifications'), make('td', {}, make('button', { className: 'px', textContent: 'RESET', onclick: () => set({ siteReset: host }) })))
+    })
+  )
+}
+
+// ---------- new tab page & bookmarks bar ----------
+
+function renderNewTab() {
+  for (const r of document.querySelectorAll('input[name=ntp]')) r.checked = r.value === (state.newTabPage || 'bit')
+  $('bm-bar').checked = !!state.bookmarksBar
+  const list = state.ntpShortcuts || []
+  if ($('sc-list').contains(document.activeElement)) return
+  $('sc-list').replaceChildren(
+    ...list.map((sc, i) =>
+      make(
+        'div',
+        { className: 'vrow' },
+        make('div', { className: 'main' }, make('b', { textContent: sc.title || sc.url }), make('span', { textContent: sc.url })),
+        make('button', { className: 'px', textContent: 'UP', disabled: i === 0, onclick: () => set({ ntpShortcuts: list.map((x, j) => (j === i - 1 ? list[i] : j === i ? list[i - 1] : x)) }) }),
+        make('button', { className: 'px', textContent: 'REMOVE', onclick: () => set({ ntpShortcuts: list.filter((_, j) => j !== i) }) })
+      )
+    )
+  )
+}
+for (const r of document.querySelectorAll('input[name=ntp]')) r.onchange = () => set({ newTabPage: r.value })
+$('bm-bar').onchange = () => set({ bookmarksBar: $('bm-bar').checked })
+$('sc-add').onsubmit = (e) => {
+  e.preventDefault()
+  let url = $('sc-url').value.trim()
+  if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`
+  if (!/^https?:\/\/\S+\.\S+/.test(url)) return
+  set({ ntpShortcuts: [...(state.ntpShortcuts || []), { title: $('sc-title').value.trim(), url }] })
+  $('sc-title').value = ''
+  $('sc-url').value = ''
+}
+$('sc-reset').onclick = () => set({ ntpShortcuts: null })
+
+// ---------- downloads ----------
+
+function renderDownloads() {
+  const d = state.downloads
+  if (!d) return
+  $('dl-folder').textContent = d.folderShown
+  $('dl-default').hidden = !d.folder
+  $('dl-ask').checked = d.ask
+  $('dl-print').checked = d.autoPrintLabels
+}
+$('dl-pick').onclick = async () => applyState(await api.pickDownloadFolder())
+$('dl-default').onclick = () => set({ downloads: { folder: '' } })
+$('dl-ask').onchange = () => set({ downloads: { ask: $('dl-ask').checked } })
+$('dl-print').onchange = () => set({ downloads: { autoPrintLabels: $('dl-print').checked } })
+
+// ---------- business details ----------
+
+function renderBusiness() {
+  if ($('biz').contains(document.activeElement)) return
+  const b = state.business || {}
+  for (const i of $('biz').querySelectorAll('input[data-k]')) i.value = b[i.dataset.k] || ''
+}
+$('biz').onsubmit = async (e) => {
+  e.preventDefault()
+  document.activeElement?.blur()
+  await set({ business: formData($('biz')) })
+  $('biz-saved').hidden = false
+  setTimeout(() => ($('biz-saved').hidden = true), 1500)
+}
+
+// ---------- crash reports ----------
+
+async function renderCrash() {
+  $('crash-on').checked = !!state.crashReports
+  $('crash-status').textContent = state.crashReports ? `${state.crashCount || 0} entries` : ''
+  $('crash-view').hidden = !state.crashReports || !state.crashCount
+  if (state.crashReports && state.crashCount) {
+    const log = await api.crashLog()
+    $('crash-view').textContent = log.report
+  }
+}
+$('crash-on').onchange = () => set({ crashReports: $('crash-on').checked })
+$('crash-copy').onclick = async () => ($('crash-status').textContent = (await api.crashCopy()) ? 'Copied. Paste it into an email or a GitHub issue.' : 'The log is empty.')
+$('crash-clear').onclick = async () => {
+  await api.deleteData('crash')
+  applyState(await api.get())
+}

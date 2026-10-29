@@ -14,6 +14,12 @@ contextBridge.exposeInMainWorld('pixelSettings', {
   dataReport: () => ipcRenderer.invoke('settings:data'),
   deleteData: (id) => ipcRenderer.invoke('settings:delete-data', id),
   onGoto: (fn) => ipcRenderer.on('settings:goto', (_e, section) => fn(section)),
+  vaultReveal: (kind, id, pin) => ipcRenderer.invoke('vault:reveal', kind, id, pin),
+  vaultSave: (kind, data) => ipcRenderer.invoke('vault:save', kind, data),
+  vaultDelete: (kind, id) => ipcRenderer.invoke('vault:delete', kind, id),
+  pickDownloadFolder: () => ipcRenderer.invoke('settings:pick-download-folder'),
+  crashLog: () => ipcRenderer.invoke('settings:crash-log'),
+  crashCopy: () => ipcRenderer.invoke('settings:crash-copy'),
   update: {
     check: () => ipcRenderer.invoke('update:check'),
     setAuto: (on) => ipcRenderer.invoke('update:set-auto', on),

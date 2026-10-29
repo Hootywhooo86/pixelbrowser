@@ -7,7 +7,7 @@
   "license": "GPL-3.0",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/sidebar-preload.js && node --check src/store.js && node --check src/ai-host.js && node --check src/sync-host.js && node --check src/ui/ui.js && node --check src/ui/sidebar.js && node --check src/ui/settings.js && node --check src/settings-preload.js && node --check src/updater.js && node --check src/shields.js && node --check src/phishing.js && node --check src/xp.js && node --check src/ui/themes.js && node --check src/ui/warning.js && node --check src/ui/theme-apply.js",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/sidebar-preload.js && node --check src/store.js && node --check src/ai-host.js && node --check src/sync-host.js && node --check src/ui/ui.js && node --check src/ui/sidebar.js && node --check src/ui/settings.js && node --check src/settings-preload.js && node --check src/updater.js && node --check src/shields.js && node --check src/phishing.js && node --check src/xp.js && node --check src/ui/themes.js && node --check src/ui/warning.js && node --check src/ui/theme-apply.js && node --check src/bookmarks.js && node --check src/vault.js && node --check src/quests.js && node --check src/crashlog.js && node --check src/page-tools.js && node --check src/library-preload.js && node --check src/ui/library.js && node --check src/ui/newtab.js",
     "dist": "electron-builder --publish never",
     "dist:linux": "electron-builder --linux AppImage --publish never"
   },

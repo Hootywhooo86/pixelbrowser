@@ -14,7 +14,7 @@
     <input id="find" type="search" placeholder="Search settings" aria-label="Search settings" spellcheck="false">
   </header>
   <nav id="nav" aria-label="Settings sections">
-    <a href="#shields">SHIELDS</a><a href="#security">SECURITY</a><a href="#appearance">LOOK</a><a href="#media">MEDIA</a><a href="#spaces">SPACES</a><a href="#family">128BIT</a><a href="#data">DATA</a><a href="#search">SEARCH</a><a href="#sync">SYNC</a>
+    <a href="#shields">SHIELDS</a><a href="#passwords">PASSWORDS</a><a href="#sites">SITES</a><a href="#security">SECURITY</a><a href="#newtab">NEW TAB</a><a href="#downloads">DOWNLOADS</a><a href="#business">BUSINESS</a><a href="#appearance">LOOK</a><a href="#media">MEDIA</a><a href="#spaces">SPACES</a><a href="#family">128BIT</a><a href="#data">DATA</a><a href="#search">SEARCH</a><a href="#sync">SYNC</a><a href="#crash">CRASHES</a>
   </nav>
   <main class="view">
     <section id="shields" data-keys="shields ads trackers block youtube filter lists cookie banners annoyances phishing malware">
@@ -39,6 +39,49 @@
       <p id="phishing-status" class="muted"></p>
     </section>
 
+    <section id="passwords" data-keys="passwords password manager logins autofill save addresses payment cards credit card sync">
+      <h2>PASSWORDS &amp; AUTOFILL</h2>
+      <p class="muted">Bit Password Manager keeps logins, addresses and cards encrypted with your computer's keychain. When you sign in somewhere, Bit Browser offers to save it, and offers to fill it next time.</p>
+      <label class="check"><input type="checkbox" id="pw-offer"> Offer to save passwords</label>
+      <label class="check"><input type="checkbox" id="pw-sync"> Sync passwords and addresses with my other devices (end-to-end encrypted)</label>
+      <label class="check"><input type="checkbox" id="pw-sync-cards"> Also sync full card numbers</label>
+      <p id="pw-lock-note" class="muted"></p>
+      <h3>LOGINS</h3>
+      <div class="row"><input id="pw-search" type="search" placeholder="Search logins" aria-label="Search logins"></div>
+      <div id="pw-list" class="vlist"></div>
+      <form id="pw-add" class="row wrap">
+        <input id="pw-url" placeholder="https://site.com" spellcheck="false" aria-label="Site">
+        <input id="pw-user" placeholder="Username or email" spellcheck="false" aria-label="Username">
+        <input id="pw-pass" type="password" placeholder="Password" aria-label="Password" autocomplete="new-password">
+        <button class="px">ADD LOGIN</button>
+      </form>
+      <h3>NEVER OFFER TO SAVE ON</h3>
+      <div id="pw-never" class="muted">No sites.</div>
+      <h3>ADDRESSES</h3>
+      <div id="addr-list" class="vlist"></div>
+      <form id="addr-add" class="grid2">
+        <input data-k="name" placeholder="Full name" aria-label="Full name"><input data-k="company" placeholder="Company" aria-label="Company">
+        <input data-k="street" placeholder="Street address" aria-label="Street address"><input data-k="city" placeholder="City" aria-label="City">
+        <input data-k="region" placeholder="Province / state" aria-label="Province or state"><input data-k="postal" placeholder="Postal code" aria-label="Postal code">
+        <input data-k="country" placeholder="Country" aria-label="Country"><input data-k="phone" placeholder="Phone" aria-label="Phone">
+        <input data-k="email" placeholder="Email" aria-label="Email"><button class="px">ADD ADDRESS</button>
+      </form>
+      <h3>PAYMENT CARDS</h3>
+      <div id="card-list" class="vlist"></div>
+      <form id="card-add" class="grid2">
+        <input data-k="holder" placeholder="Name on card" aria-label="Name on card"><input data-k="number" placeholder="Card number" inputmode="numeric" autocomplete="off" aria-label="Card number">
+        <input data-k="exp" placeholder="MM/YY" aria-label="Expiry"><input data-k="nickname" placeholder="Nickname (optional)" aria-label="Nickname">
+        <button class="px">ADD CARD</button>
+      </form>
+    </section>
+
+    <section id="sites" data-keys="site settings permissions camera microphone mic location notifications allow block">
+      <h2>SITE SETTINGS</h2>
+      <p class="muted">Sites ask before using your camera, microphone, location or notifications. Your answers are remembered here, and sync to your other devices.</p>
+      <table id="sites-table" class="ptable"><thead><tr><th>SITE</th><th>CAMERA</th><th>MIC</th><th>LOCATION</th><th>NOTIFY</th><th></th></tr></thead><tbody></tbody></table>
+      <p id="sites-none" class="muted">No sites yet.</p>
+    </section>
+
     <section id="security" data-keys="panic wipe private lock pin dns doh secure dns cloudflare quad9 nextdns">
       <h2>SECURITY</h2>
       <h3>PANIC BUTTON</h3>
@@ -59,6 +102,40 @@
         <input id="doh-custom" placeholder="https://dns.example/dns-query" spellcheck="false" hidden>
         <button id="doh-save" class="px">SAVE</button>
       </div>
+    </section>
+
+    <section id="newtab" data-keys="new tab page shortcuts bookmarks bar home homepage">
+      <h2>NEW TAB &amp; BOOKMARKS BAR</h2>
+      <div class="row wrap">
+        <label class="check"><input type="radio" name="ntp" value="bit"> Pixel new tab page</label>
+        <label class="check"><input type="radio" name="ntp" value="search"> Search engine home page</label>
+      </div>
+      <label class="check"><input type="checkbox" id="bm-bar"> Show the bookmarks bar (Ctrl+Shift+B)</label>
+      <h3>SHORTCUTS ON THE NEW TAB PAGE</h3>
+      <div id="sc-list" class="vlist"></div>
+      <form id="sc-add" class="row wrap"><input id="sc-title" placeholder="Name" maxlength="40" aria-label="Shortcut name"><input id="sc-url" placeholder="https://…" spellcheck="false" aria-label="Shortcut address"><button class="px">ADD</button><button type="button" id="sc-reset" class="px">RESET</button></form>
+    </section>
+
+    <section id="downloads" data-keys="downloads folder save ask print labels shipping pdf">
+      <h2>DOWNLOADS</h2>
+      <p class="muted">Saving to: <b id="dl-folder"></b></p>
+      <div class="row"><button id="dl-pick" class="px">CHANGE FOLDER…</button><button id="dl-default" class="px">USE DOWNLOADS FOLDER</button></div>
+      <label class="check"><input type="checkbox" id="dl-ask"> Ask where to save each file</label>
+      <label class="check"><input type="checkbox" id="dl-print"> Auto-print shipping labels: when a PDF finishes downloading, open it and show the print dialog</label>
+      <p class="muted">Save any page as a PDF from the menu or with Ctrl+Shift+S.</p>
+    </section>
+
+    <section id="business" data-keys="business details company autofill forms shipping address">
+      <h2>BUSINESS DETAILS</h2>
+      <p class="muted">Kept on this computer only. Fill them into any form from the menu, or right-click a form field → Fill business details.</p>
+      <form id="biz" class="grid2">
+        <input data-k="company" placeholder="Company" aria-label="Company"><input data-k="name" placeholder="Contact name" aria-label="Contact name">
+        <input data-k="street" placeholder="Street address" aria-label="Street address"><input data-k="city" placeholder="City" aria-label="City">
+        <input data-k="region" placeholder="Province / state" aria-label="Province or state"><input data-k="postal" placeholder="Postal code" aria-label="Postal code">
+        <input data-k="country" placeholder="Country" aria-label="Country"><input data-k="phone" placeholder="Phone" aria-label="Phone">
+        <input data-k="email" placeholder="Email" aria-label="Email"><button class="px hot">SAVE</button>
+      </form>
+      <span id="biz-saved" class="muted" hidden>Saved.</span>
     </section>
 
     <section id="appearance" data-keys="appearance theme themes color colours dark light game boy arcade sunset mono custom skin sounds">
@@ -114,6 +191,8 @@
           <small id="xp-next" class="muted"></small>
         </div>
       </div>
+      <h3>THIS WEEK'S QUESTS</h3>
+      <ul id="quests" class="questlist"></ul>
       <h3>BADGES</h3>
       <div id="badges" class="badges"></div>
       <p class="muted">XP lives on your devices and syncs between them. It'll join your 128bit account when accounts arrive.</p>
@@ -204,6 +283,13 @@
     <label class="check"><input type="checkbox" id="clear-history" checked> History</label>
     <label class="check"><input type="checkbox" id="clear-site"> Cookies, site data and cache (signs you out of websites)</label>
     <div class="row"><button id="clear-go" class="px">CLEAR</button><span id="clear-done" class="muted" hidden>Cleared.</span></div>
+    </section>
+    <section id="crash" data-keys="crash reports errors log problems bug">
+    <h2>CRASH REPORTS</h2>
+    <p class="muted">Off by default. When on, Bit Browser writes problems (app errors, crashed pages) to a log on this computer. It never sends it anywhere and never includes the pages you visit. Copy it to share it with us yourself.</p>
+    <label class="check"><input type="checkbox" id="crash-on"> Keep a crash log on this computer</label>
+    <div class="row"><button id="crash-copy" class="px">COPY REPORT</button><button id="crash-clear" class="px">CLEAR LOG</button><span id="crash-status" class="muted"></span></div>
+    <pre id="crash-view" class="crashlog" hidden></pre>
     </section>
     <p id="no-match" class="muted" hidden>No settings match.</p>
   </main>
