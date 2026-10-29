@@ -22,6 +22,11 @@ import { THEMES, SWATCHES, themeColors } from './themes'
 import { BADGES, levelOf, progressOf } from './xp'
 import DataDashboard from './DataDashboard'
 import Mascot from './Mascot'
+import { resetSite } from './site-settings'
+import { BusinessProfileForm } from './formfill'
+import { CrashLogView } from './crash'
+import { chooseDownloadFolder, getDownloadFolder, clearDownloadFolder } from './downloads'
+import { useQuests } from './quests'
 
 const REPO_URL = 'https://github.com/Hootywhooo86/pixelbrowser'
 
@@ -44,7 +49,7 @@ const SECTIONS = [
       { id: 'sync', title: 'Sync', sub: 'Encrypted sync with your computer', keywords: 'sync' },
       { id: 'report', title: 'Privacy report', sub: 'What stays on this phone', keywords: 'privacy report stats' },
       { id: 'notifications', title: 'Notifications', keywords: 'notifications alerts' },
-      { id: 'sites', title: 'Site settings', sub: 'Camera, mic, location', keywords: 'site permissions camera microphone location' },
+      { id: 'sites', title: 'Site settings', sub: 'Camera, mic, location, desktop site', keywords: 'site permissions camera microphone location desktop translate zoom' },
       { id: 'downloads', title: 'Downloads', keywords: 'downloads files apk' },
       { id: 'default', title: 'Default browser', sub: 'Open links in Bit Browser', keywords: 'default browser preferred links' },
     ],
@@ -67,11 +72,15 @@ const SECTIONS = [
       { id: 'autofill', title: 'Autofill services', keywords: 'autofill service android' },
       { id: 'cards', title: 'Payment methods', keywords: 'payment cards credit card' },
       { id: 'addresses', title: 'Addresses', keywords: 'addresses shipping address phone email' },
+      { id: 'business', title: 'Business details', sub: 'Fill forms with your company info', keywords: 'business company shipping form fill autofill address phone' },
     ],
   },
   {
     title: 'SUPPORT',
-    rows: [{ id: 'about', title: 'About Bit Browser', sub: 'Version, updates, licenses', keywords: 'about version update licenses help support' }],
+    rows: [
+      { id: 'about', title: 'About Bit Browser', sub: 'Version, updates, licenses', keywords: 'about version update licenses help support' },
+      { id: 'crash', title: 'Crash reports', sub: 'Off unless you turn it on', keywords: 'crash reports errors bugs log' },
+    ],
   },
 ]
 
@@ -227,9 +236,18 @@ function Page({ id, go, open, downloadsScreen, onScan }) {
     case 'notifications':
       return <Info text="Websites can't send you notifications in Bit Browser yet. When they can, you'll choose site by site, and it will be off by default." />
     case 'sites':
-      return <Info text="For your privacy, websites can't use your camera, microphone or location in Bit Browser right now. Per-site permission prompts are coming." />
+      return <SitesPage />
     case 'downloads':
-      return downloadsScreen || <Info text="Downloads will show here." />
+      return (
+        <>
+          <DownloadSettings />
+          {downloadsScreen}
+        </>
+      )
+    case 'business':
+      return <BusinessProfileForm />
+    case 'crash':
+      return <CrashPage />
     case 'default':
       return <DefaultBrowserPage />
     case 'tabs':
@@ -585,6 +603,27 @@ function SyncPage({ go, onScan }) {
   )
 }
 
+function QuestList() {
+  const quests = useQuests()
+  if (!quests.length) return null
+  return (
+    <>
+      <PText style={st.h}>THIS WEEK'S QUESTS</PText>
+      {quests.map((q) => (
+        <View key={q.id} style={[st.card, { gap: 6 }]}>
+          <View style={st.row}>
+            <PixelIcon name={q.done ? 'star' : 'xp'} size={16} color={q.done ? C.orange : C.teal} />
+            <Text style={[st.rowTitle, { flex: 1 }]} numberOfLines={2}>{q.title}</Text>
+            <PText style={{ color: C.orange }}>+{q.xp} XP</PText>
+          </View>
+          <PProgress value={Math.min(1, q.progress / q.goal)} color={q.done ? C.orange : C.teal} />
+          <Text style={st.muted}>{q.done ? 'Done!' : `${Math.min(q.progress, q.goal).toLocaleString()} / ${q.goal.toLocaleString()}`}</Text>
+        </View>
+      ))}
+    </>
+  )
+}
+
 function FamilyPage() {
   const f = useStore((s) => s.family)
   const xp = useStore((s) => s.xp) || {}
@@ -656,6 +695,7 @@ function FamilyPage() {
       {Object.entries(EVENT_TYPES).map(([type, e]) => (
         <Toggle key={type} value={f.share?.[type]} onChange={(v) => setShare(type, v)} label={e.label} note={e.note} disabled={!f.connected} />
       ))}
+      <QuestList />
     </>
   )
 }
@@ -1074,7 +1114,74 @@ function AgentLogPage() {
 
 function NtpPage() {
   const s = useStore()
-  return <Toggle value={s.ntpShowSynced} onChange={(v) => update((x) => (x.ntpShowSynced = v))} label="Show tabs from my other devices" />
+  return (
+    <>
+      <Toggle value={s.ntpShowSynced} onChange={(v) => update((x) => (x.ntpShowSynced = v))} label="Show tabs from my other devices" />
+      <Toggle value={s.ntp?.showStats !== false} onChange={(v) => update((x) => (x.ntp = { ...x.ntp, showStats: v }))} label="Show blocked count, XP and quests" />
+      <Text style={st.muted}>Shortcuts: long-press a tile on the new tab page to remove it, or tap + to add one.</Text>
+    </>
+  )
+}
+
+// Sites you've given their own settings (permissions, desktop site, text size, translate).
+function SitesPage() {
+  const sites = useStore((s) => s.siteSettings) || {}
+  const hosts = Object.keys(sites).sort()
+  const label = (v) => (v === 'allow' ? 'Allowed' : v === 'block' ? 'Blocked' : 'Ask')
+  return (
+    <>
+      <Text style={st.muted}>When a site asks for your camera, microphone or location, Bit Browser asks you first. Change one site from Menu → This site while you're on it. Websites can't send notifications in the phone app.</Text>
+      <PText style={st.h}>SITES</PText>
+      {!hosts.length && <Text style={st.muted}>No sites have their own settings yet.</Text>}
+      {hosts.map((h) => {
+        const x = sites[h] || {}
+        const bits = [`Camera ${label(x.camera)}`, `Mic ${label(x.microphone)}`, `Location ${label(x.location)}`, x.desktop && 'Desktop site', x.translate && 'Always translate', x.textZoom && `Text ${x.textZoom}%`].filter(Boolean)
+        return (
+          <View key={h} style={st.itemRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={st.rowTitle} numberOfLines={1}>{h}</Text>
+              <Text style={st.muted} numberOfLines={2}>{bits.join(' · ')}</Text>
+            </View>
+            <PButton small label="RESET" onPress={() => resetSite(h)} />
+          </View>
+        )
+      })}
+    </>
+  )
+}
+
+function DownloadSettings() {
+  const autoPrint = useStore((s) => !!s.autoPrintLabels)
+  const [folder, setFolder] = useState(null)
+  useEffect(() => {
+    Promise.resolve(getDownloadFolder()).then(setFolder).catch(() => {})
+  }, [])
+  return (
+    <>
+      <Toggle value={autoPrint} onChange={(v) => update((s) => (s.autoPrintLabels = v))} label="Print labels right away" note="PDF labels and invoices open the print screen as soon as they download." />
+      {Platform.OS === 'android' && (
+        <>
+          <Text style={st.label}>Save a copy to a folder</Text>
+          <Text style={st.muted}>{folder?.name ? `Every download is also saved to: ${folder.name}` : 'Pick a folder, like Downloads, and every download also lands there.'}</Text>
+          <View style={st.row}>
+            <PButton small hot label="CHOOSE FOLDER" onPress={() => chooseDownloadFolder().then(() => Promise.resolve(getDownloadFolder()).then(setFolder)).catch(() => {})} />
+            {folder && <PButton small label="CLEAR" onPress={() => Promise.resolve(clearDownloadFolder()).then(() => setFolder(null))} />}
+          </View>
+        </>
+      )}
+      <PText style={st.h}>YOUR DOWNLOADS</PText>
+    </>
+  )
+}
+
+function CrashPage() {
+  const on = useStore((s) => !!s.crashReports)
+  return (
+    <>
+      <Toggle value={on} onChange={(v) => update((s) => (s.crashReports = v))} label="Keep crash reports" note="Saved on this phone only. Nothing is sent anywhere. You can share a report yourself if something breaks." />
+      <CrashLogView />
+    </>
+  )
 }
 
 function A11yPage() {

@@ -34,4 +34,16 @@ contextBridge.exposeInMainWorld('pixel', {
   onDownload: (fn) => ipcRenderer.on('download', (_e, d) => fn(d)),
   openDownload: (id) => ipcRenderer.send('download:open', id),
   showDownload: (id) => ipcRenderer.send('download:show', id),
+  // 0.4: shell height, bookmarks, find, info bars, reader, menu
+  shellHeight: (h) => ipcRenderer.send('shell:height', h),
+  toggleBookmark: () => ipcRenderer.send('bookmark:toggle'),
+  bookmarkMenu: (id) => ipcRenderer.send('bookmark:menu', id),
+  folderMenu: (name) => ipcRenderer.send('bookmark:folder-menu', name),
+  find: (text, opts) => ipcRenderer.send('find:query', text, opts),
+  stopFind: (keepOpen) => ipcRenderer.send('find:stop', keepOpen),
+  onFind: (fn) => ipcRenderer.on('find', (_e, cmd) => fn(cmd)),
+  answerPrompt: (id, action) => ipcRenderer.send('prompt:answer', id, action),
+  toggleReader: () => ipcRenderer.send('reader:toggle'),
+  appMenu: () => ipcRenderer.send('app:menu'),
+  onToast: (fn) => ipcRenderer.on('toast', (_e, text) => fn(text)),
 })
