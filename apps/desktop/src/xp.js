@@ -18,9 +18,9 @@ let saveTimer = null
 
 const data = () => store.settings.data.xp
 
-/** +1 per 10 blocked, +5 per stale tab cleaned, +10 per streak day. */
+/** +1 per 10 blocked, +5 per stale tab cleaned, +10 per streak day, plus finished quests' XP. */
 function pointsFor(c) {
-  return Math.floor((c.blocked || 0) / 10) + 5 * (c.tabsCleaned || 0) + 10 * (c.streakDays || 0)
+  return Math.floor((c.blocked || 0) / 10) + 5 * (c.tabsCleaned || 0) + 10 * (c.streakDays || 0) + (c.questXp || 0)
 }
 
 const levelFor = (xp) => Math.floor(Math.sqrt(xp / 50)) + 1
