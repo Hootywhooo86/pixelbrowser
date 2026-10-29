@@ -13,7 +13,7 @@ export const BADGES = [
   { id: 'firstSync', label: 'Connected', note: 'Synced with another device', counter: 'sync', at: 1 },
 ]
 
-export const KINDS = ['blocked', 'tabCleaned', 'articleFinished', 'dailyVisit', 'sync']
+export const KINDS = ['blocked', 'tabCleaned', 'articleFinished', 'dailyVisit', 'sync', 'quest']
 
 export const emptyXp = () => ({ total: 0, streak: 0, lastDay: '', badges: {}, counters: {} })
 
@@ -52,6 +52,7 @@ function dayBefore(day) {
  *   articleFinished n  +10 XP each
  *   dailyVisit         once a day: streak +1 (or back to 1 after a missed day), +10 XP per streak day (max 70)
  *   sync               +5 XP
+ *   quest n            +n XP (a weekly quest's reward)
  */
 export function applyAward(stateXp, kind, n = 1, today = dayString()) {
   const xp = { ...emptyXp(), ...(stateXp || {}) }
@@ -86,6 +87,10 @@ export function applyAward(stateXp, kind, n = 1, today = dayString()) {
     case 'sync':
       xp.counters.sync = (xp.counters.sync || 0) + 1
       gained = 5
+      break
+    case 'quest': // n = the XP the finished quest is worth
+      xp.counters.quests = (xp.counters.quests || 0) + 1
+      gained = count
       break
     default:
       return { xp: stateXp, gained: 0, levelUp: false, newBadges: [] }

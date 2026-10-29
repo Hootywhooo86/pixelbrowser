@@ -9,6 +9,7 @@ import { WebView } from 'react-native-webview'
 import { WEB_APPS, EXTRACT_PAGE, isYouTubeWatch } from '@pixelbrowser/ai-core'
 import { ask, session, answerConfirm } from './ai'
 import { useStore } from './store'
+import { track } from './quests'
 import { PButton, PText } from './ui'
 import Mascot from './Mascot'
 import { Markdown } from './markdown'
@@ -211,8 +212,8 @@ export default function AIPanel({ browser, visible, side = false, request, onClo
           {/* composer */}
           <View style={[st.composer, side && { paddingBottom: 10 }]}>
             <View style={[st.row, { flexWrap: 'wrap' }]}>
-              <Chip label="SUMMARIZE PAGE" onPress={() => !busy && summarizePage()} bright />
-              {onVideo && <Chip label="SUMMARIZE VIDEO" onPress={() => !busy && summarizeVideo()} bright color={C.orange} />}
+              <Chip label="SUMMARIZE PAGE" onPress={() => !busy && (track('summarized'), summarizePage())} bright />
+              {onVideo && <Chip label="SUMMARIZE VIDEO" onPress={() => !busy && (track('summarized'), summarizeVideo())} bright color={C.orange} />}
             </View>
             <View style={st.row}>
               {picked.length ? (

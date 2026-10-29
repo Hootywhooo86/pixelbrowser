@@ -33,6 +33,7 @@ import { PButton, PSwitch } from './src/ui'
 import { C, PIXEL_FONT, isLightTheme, px } from './src/theme'
 import PixelIcon from './src/PixelIcon'
 import { award, onXpEvent } from './src/xp'
+import { track } from './src/quests'
 import { play } from './src/sounds'
 
 let nextTabId = 1
@@ -234,6 +235,7 @@ function Browser() {
     if (getState().checkUpdates) checkForAppUpdate().then(setAppUpdate)
     lockForDevice().catch(() => {})
     award('dailyVisit')
+    track('streakDay')
     return onXpEvent(({ levelUp, level, newBadges }) => {
       if (levelUp) toast(`Level up! You're level ${level}.`)
       else if (newBadges?.length) toast(`Badge unlocked: ${newBadges.map((b) => b.name || b.label || b.id || b).join(', ')}`)
@@ -291,7 +293,10 @@ function Browser() {
     const keep = tabsRef.current.filter((t) => !goes(t))
     for (const t of closing) delete views.current[t.id]
     if (priv) setTimeout(clearPrivateData, 300)
-    if (!priv && closing.length) award('tabCleaned', closing.length)
+    if (!priv && closing.length) {
+      award('tabCleaned', closing.length)
+      track('tabCleaned', closing.length)
+    }
     if (!keep.length) keep.push(newTab())
     setTabs(keep)
     if (!keep.some((t) => t.id === activeRef.current)) setActiveId(keep[keep.length - 1].id)
@@ -304,6 +309,7 @@ function Browser() {
     const t = tabsRef.current.find((x) => x.id === id)
     if (!t || t.private) return
     patchTab(id, { pinned: !t.pinned })
+    if (!t.pinned) track('pinned')
     toast(t.pinned ? 'Unpinned' : 'Pinned: this tab stays open, even after closing the app')
   }
 
@@ -911,6 +917,7 @@ function Browser() {
         onCloseTab={(id) => {
           closeTab(id)
           award('tabCleaned')
+          track('tabCleaned')
         }}
         onCloseAll={closeAllTabs}
         onSwitchSpace={switchSpace}

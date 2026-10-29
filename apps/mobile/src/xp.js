@@ -37,6 +37,11 @@ export function award(kind, n = 1) {
   return { levelUp: res.levelUp, newBadges: res.newBadges }
 }
 
+/** Give a fixed amount of XP (a finished weekly quest). */
+export function grantXp(amount, reason = 'quest') {
+  return award('quest', amount)
+}
+
 /** Merge XP synced from another device (call after sync pulls records). */
 export function mergeRemoteXp(remote) {
   const rec = remote || getState()?.records?.settings?.xp

@@ -57,6 +57,15 @@ function patch(id, data) {
   items = items.map((d) => (d.id === id ? { ...d, ...data } : d))
   emit()
   if (data.status !== 'downloading' || data.progress === undefined) persist()
+  if (data.status === 'done') finished(items.find((d) => d.id === id))
+}
+
+// Every finished download: copy it to your chosen folder, and print labels
+// straight away when that's turned on.
+function finished(item) {
+  if (!item) return
+  copyToFolder(item).catch(() => {})
+  maybeAutoPrint(item)
 }
 
 async function load() {
@@ -252,6 +261,73 @@ export async function receiveChunk(msg) {
     patch(entry.item.id, { status: 'failed', error: String(e?.message || e) })
   }
   return items.find((d) => d.id === entry.item.id)
+}
+
+// ---------- your own download folder (Android) ----------
+
+const FOLDER_KEY = 'bit-download-folder'
+
+/** The folder you picked for downloads ({ uri, name }), or null. */
+export async function getDownloadFolder() {
+  try {
+    return JSON.parse((await AsyncStorage.getItem(FOLDER_KEY)) || 'null')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Android: pick a folder (like Downloads) and every finished download gets a
+ * copy there too. Returns the folder, or null if you cancelled.
+ */
+export async function chooseDownloadFolder() {
+  if (Platform.OS !== 'android') return null
+  const perm = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync()
+  if (!perm.granted) return null
+  const raw = decodeURIComponent(perm.directoryUri.split('/tree/').pop() || '')
+  const folder = { uri: perm.directoryUri, name: raw.split(':').pop() || raw || 'Chosen folder' }
+  await AsyncStorage.setItem(FOLDER_KEY, JSON.stringify(folder))
+  return folder
+}
+
+export async function clearDownloadFolder() {
+  await AsyncStorage.removeItem(FOLDER_KEY)
+}
+
+async function copyToFolder(item) {
+  if (Platform.OS !== 'android' || !item?.path) return
+  const folder = await getDownloadFolder()
+  if (!folder) return
+  const SAF = FileSystem.StorageAccessFramework
+  const ext = extOf(item.filename)
+  const base = ext ? item.filename.slice(0, -(ext.length + 1)) : item.filename
+  const target = await SAF.createFileAsync(folder.uri, base, item.mimeType || mimeFor(item.filename))
+  const data = await FileSystem.readAsStringAsync(item.path, { encoding: FileSystem.EncodingType.Base64 })
+  await FileSystem.writeAsStringAsync(target, data, { encoding: FileSystem.EncodingType.Base64 })
+}
+
+/** Settings → Downloads → "Print labels right away": opens the print dialog for each new PDF. */
+export function maybeAutoPrint(item) {
+  if (!item || !isPdf(item)) return
+  try {
+    if (!require('./store').getState()?.autoPrintLabels) return
+  } catch {
+    return
+  }
+  // Give the PDF viewer a moment to open first.
+  setTimeout(() => printDownload(item).catch(() => {}), 800)
+}
+
+/** Add a file the app made itself (e.g. "Save page as PDF") to Downloads. */
+export async function addLocalFile({ path, filename, mime }) {
+  await load()
+  const { name, path: dest } = await uniquePath(filename || 'file')
+  await FileSystem.copyAsync({ from: path, to: dest })
+  const info = await FileSystem.getInfoAsync(dest)
+  const item = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, url: '', filename: name, size: info.size || 0, mimeType: mime || mimeFor(name), status: 'downloading', progress: 1, path: dest, startedAt: Date.now(), error: '' }
+  items = [item, ...items]
+  patch(item.id, { status: 'done' })
+  return items.find((d) => d.id === item.id)
 }
 
 /** Print a PDF (shipping labels print at their real size). */

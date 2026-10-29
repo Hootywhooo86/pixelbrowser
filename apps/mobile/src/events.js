@@ -12,6 +12,7 @@ export const EVENT_TYPES = {
   'readlater.cleared': { label: 'Cleared the read-later list', note: 'How many items' },
   'streak.milestone': { label: 'Hit a browsing streak milestone', note: 'Streak length' },
   'tabs.cleaned': { label: 'Closed stale tabs (tab quests)', note: 'How many tabs' },
+  'quest.completed': { label: 'Finished a weekly quest', note: 'Which quest and the XP it gave' },
 }
 
 export const FAMILY_APPS = [

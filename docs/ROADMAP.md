@@ -57,32 +57,35 @@ blobs it can't read.
 ### Must-do before anyone else uses it
 - [x] **Installers.** `electron-builder` makes .exe, .dmg, .AppImage and .deb files, and the Android build makes an .apk and .aab. A `v*` tag builds all of them (see [RELEASING.md](RELEASING.md)).
 - [x] **Auto-update.** Desktop updates itself from GitHub Releases. Android APK users get an update notice.
-- [ ] **Code signing.** The hooks are ready. Add an Apple Developer ID, a Windows certificate and an Android upload key as GitHub secrets.
-- [ ] **Host the sync server** behind HTTPS and make it the default address.
+- [ ] **Code signing.** The hooks are ready. Add an Apple Developer ID, a Windows certificate and an Android upload key as GitHub secrets. Step by step: [SIGNING.md](SIGNING.md).
+- [ ] **Host the sync server** behind HTTPS and make it the default address. Deploy files for Fly.io, Render and Docker are ready: [packages/sync-server/DEPLOY.md](../packages/sync-server/DEPLOY.md).
 - [ ] **Real-world testing.** Run the phone app on real iPhones and Android phones, and try each AI provider with real keys.
 - [x] **App icon and splash screen** (`scripts/make-icons.py`).
-- [ ] **Store screenshots and feature graphics.**
+- [ ] **Store screenshots and feature graphics.** Shot list in [store-listing.md](store-listing.md).
 - [ ] **License decision.** GPL-3.0 open source, or buy the `electron-chrome-extensions` commercial license.
-- [ ] **Privacy policy and store listings.** Say what goes to the AI the user picks, and that sync is end-to-end encrypted.
+- [x] **Privacy policy and store listings:** [PRIVACY.md](PRIVACY.md) and [store-listing.md](store-listing.md). Fill in your name and contact, then publish the policy at a public URL.
 
 ### Everyday browser basics (people expect these)
-- [ ] Bookmarks and a bookmarks bar (synced)
-- [ ] History page with search
+- [x] Bookmarks and a bookmarks bar (synced)
+- [x] History page with search
 - [x] Downloads manager (phone: Menu → Downloads)
-- [ ] Reopen tabs after restart (session restore) and reopen closed tab (Ctrl+Shift+T)
-- [ ] Find in page, zoom, print
-- [ ] Site permission prompts (camera, mic, location, notifications are currently always denied)
-- [x] Passwords: Bit Password Manager on the phone (encrypted, biometric unlock, optional E2E sync). Desktop still to do.
-- [ ] Pixel new-tab page (shortcuts, synced tabs, search box)
-- [ ] Pinned tabs and tab groups (tab search and a Brave-style tab grid are done on the phone)
-- [ ] Reader mode
+- [x] Reopen tabs after restart (session restore) and reopen closed tab (Ctrl+Shift+T)
+- [x] Find in page, zoom, print, and save page as PDF
+- [x] Site permission prompts (camera, mic, location, notifications) with per-site settings, plus a per-site desktop-site switch
+- [x] Passwords: Bit Password Manager on phone and computer (encrypted, biometric unlock on the phone, optional E2E sync)
+- [x] Pixel new-tab page (shortcuts, pinned and synced tabs, Shields count, XP)
+- [x] Pinned tabs and Spaces (tab search and a Brave-style tab grid on the phone)
+- [x] Reader mode
+- [x] Translate page (with Bitter)
+- [x] Download folder choice and auto-print for shipping labels; business details for form filling
+- [x] Picture-in-picture video (computer)
 
 ### Privacy and security
 - [ ] HTTPS-only mode, fingerprinting protection, and blocking third-party cookies by default on desktop
 - [x] Ad and tracker blocking on the phone (Android request filtering; iPhone page-level. Full iOS content rules still to do)
 - [ ] A per-site "never let AI read this site" list
 - [ ] An outside security review of the agent and the sync code before launch
-- [ ] Opt-in crash reports
+- [x] Opt-in crash reports (kept on the device; shared only when you choose)
 
 ### Phone
 - [ ] Android extensions through GeckoView (uBlock Origin, Dark Reader…)
@@ -96,7 +99,9 @@ blobs it can't read.
 - [ ] Saved agent tasks ("every morning, check these 3 sites")
 
 ### 128bit family
-- [x] XP, levels, streaks and badges on device (quests need a 128bit server)
+- [x] XP, levels, streaks and badges on device
+- [x] Weekly quests on device (sharing them across the family needs a 128bit server)
+- [ ] 128bit accounts and a family server (XP, streaks and quests across the family apps)
 - [x] Pixel themes and tab-bar skins (paid skins later)
 
 ## Things to know

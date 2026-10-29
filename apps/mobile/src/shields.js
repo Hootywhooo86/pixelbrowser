@@ -20,6 +20,7 @@ import { Platform } from 'react-native'
 import * as FileSystem from 'expo-file-system/legacy'
 import { requireOptionalNativeModule } from 'expo'
 import { award } from './xp'
+import { track } from './quests'
 import {
   LISTS, REGIONAL_LISTS, SCRIPTLETS_URL, selectedLists, compileLists, createMatcher, buildPageScript, buildSiteScript, hostOf, findIn,
 } from '@pixelbrowser/shields-core'
@@ -372,7 +373,10 @@ function flushTotals() {
   pendingJs = 0
   pagesPending = 0
   if (!ads && !trackers && !js && !pages) return
-  if (ads + trackers + js) award('blocked', ads + trackers + js)
+  if (ads + trackers + js) {
+    award('blocked', ads + trackers + js)
+    track('blocked', ads + trackers + js)
+  }
   update((st) => {
     const t = st.shields.totals || { ads: 0, trackers: 0, pages: 0 }
     st.shields = { ...st.shields, totals: { ads: (t.ads || 0) + ads + js, trackers: (t.trackers || 0) + trackers, pages: (t.pages || 0) + pages } }

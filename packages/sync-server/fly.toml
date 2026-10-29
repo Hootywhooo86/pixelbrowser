@@ -1,0 +1,33 @@
+# Fly.io config for the Bit Browser sync server. See DEPLOY.md.
+# Change "app" to a name of your own (it must be unique on Fly.io).
+app = "bit-browser-sync"
+primary_region = "yyz" # Toronto; pick the region closest to you (fly platform regions)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8787"
+  DATA_DIR = "/data"
+
+[[mounts]]
+  source = "bit_sync_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

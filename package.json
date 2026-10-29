@@ -10,7 +10,7 @@
     "desktop": "npm start -w @pixelbrowser/desktop",
     "mobile": "npm start -w @pixelbrowser/mobile",
     "sync-server": "npm start -w @pixelbrowser/sync-server",
-    "test": "npm test -w @pixelbrowser/ai-core -w @pixelbrowser/sync-core -w @pixelbrowser/sync-server -w @pixelbrowser/shields-core",
+    "test": "npm test -w @pixelbrowser/ai-core -w @pixelbrowser/sync-core -w @pixelbrowser/sync-server -w @pixelbrowser/shields-core && node --test apps/mobile/test/xp.test.mjs apps/mobile/test/quests.test.mjs",
     "check": "npm run check -w @pixelbrowser/desktop"
   }
 }

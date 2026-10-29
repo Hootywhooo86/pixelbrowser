@@ -10,6 +10,11 @@ chunkier. Part of the 128bit family.
 > with end-to-end encryption. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for
 > what's done and what's next.
 >
+> It also has built-in ad and tracker blocking (Bit Shields), a password
+> manager, pinned tabs and Spaces, bookmarks and history, reader mode, a PDF
+> viewer that prints shipping labels, pixel themes, and XP, streaks and weekly
+> quests for the 128bit family.
+>
 > ```bash
 > npm install
 > npm test              # shared AI + sync tests
@@ -18,7 +23,10 @@ chunkier. Part of the 128bit family.
 > npm run mobile        # phone app (Expo)
 > ```
 >
-> Installers and releases: [`docs/RELEASING.md`](docs/RELEASING.md).
+> - Installers and releases: [`docs/RELEASING.md`](docs/RELEASING.md)
+> - Code signing: [`docs/SIGNING.md`](docs/SIGNING.md)
+> - Hosting the sync server: [`packages/sync-server/DEPLOY.md`](packages/sync-server/DEPLOY.md)
+> - Privacy policy and store copy: [`docs/PRIVACY.md`](docs/PRIVACY.md), [`docs/store-listing.md`](docs/store-listing.md)
 
 ## Concept (starter — Daniel decides)
 

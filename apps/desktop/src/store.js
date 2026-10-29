@@ -76,11 +76,25 @@ const settings = new JsonFile('pixel-settings.json', {
   // v0.3.4
   startup: 'restore', // 'restore' = reopen my tabs, 'new' = a new tab (pinned tabs always reopen)
   session: { windows: [], savedAt: 0 }, // open tabs, saved for next start
+  // v0.4
+  bookmarksBar: true, // the bar under the toolbar (Ctrl+Shift+B)
+  bookmarkFolders: [], // empty folders made in the bookmarks manager (folders with bookmarks come from the bookmarks)
+  newTabPage: 'bit', // 'bit' = the pixel new tab page, 'search' = the search engine's home page
+  ntpShortcuts: null, // [{ title, url }]; null = the defaults
+  sitePerms: {}, // host -> { camera, microphone, location, notifications: 'allow' | 'block' } (synced as 'site-settings')
+  sitePermsUpdatedAt: 0,
+  downloads: { folder: '', ask: false, autoPrintLabels: false }, // folder '' = the system Downloads folder
+  business: null, // { company, name, street, city, region, postal, country, phone, email }; this device only
+  vault: { offerToSave: true, syncPasswords: false, syncCards: false, never: [] }, // never = origins not to offer saving for
+  crashReports: false, // opt-in: problems are written to a local log only
+  quests: { week: '', progress: {}, done: {} },
 })
 settings.save()
 
 // Synced collections, stored as { [id]: { id, updatedAt, deviceId, deleted?, data } }
-const records = new JsonFile('pixel-records.json', { memory: {}, history: {}, tabs: {}, settings: {} })
+const records = new JsonFile('pixel-records.json', { memory: {}, history: {}, tabs: {}, settings: {}, bookmarks: {}, passwords: {}, addresses: {}, cards: {} })
+// Files from older versions lack the newer collections; sync merges into them.
+for (const c of ['memory', 'history', 'tabs', 'settings', 'bookmarks', 'passwords', 'addresses', 'cards']) records.data[c] = records.data[c] || {}
 
 const secretsFile = new JsonFile('pixel-secrets.json', {})
 
@@ -179,6 +193,29 @@ const history = {
   recent(limit = 50) {
     return liveRecords('history').sort((a, b) => b.data.visitedAt - a.data.visitedAt).slice(0, limit).map((r) => r.data)
   },
+  /** History entries with ids, newest first, optionally matching words. */
+  search(query = '', limit = 500) {
+    const q = String(query || '').trim().toLowerCase()
+    return liveRecords('history')
+      .filter((r) => r.data && (!q || `${r.data.title} ${r.data.url}`.toLowerCase().includes(q)))
+      .sort((a, b) => b.data.visitedAt - a.data.visitedAt)
+      .slice(0, limit)
+      .map((r) => ({ id: r.id, ...r.data }))
+  },
+  remove(id) {
+    if (records.data.history[id]) putRecord('history', id, null, { deleted: true })
+  },
+  /** Delete visits since a time (0 = everything). Returns how many. */
+  clearSince(since = 0) {
+    let n = 0
+    for (const r of liveRecords('history')) {
+      if ((r.data?.visitedAt || r.updatedAt) >= since) {
+        putRecord('history', r.id, null, { deleted: true })
+        n += 1
+      }
+    }
+    return n
+  },
 }
 
-module.exports = { settings, records, secrets, putRecord, liveRecords, onLocalChange, memory, history }
+module.exports = { settings, records, secrets, putRecord, liveRecords, onLocalChange, memory, history, JsonFile }

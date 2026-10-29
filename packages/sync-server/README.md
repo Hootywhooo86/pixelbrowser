@@ -7,4 +7,4 @@ PORT=8787 DATA_DIR=./data npm start
 ```
 
 Put it behind HTTPS (Caddy, nginx, Fly.io, Render) before phones use it. Then enter its address
-under Settings → Sync on each device.
+under Settings → Sync on each device. Step-by-step hosting on Fly.io, Render or Docker: [DEPLOY.md](DEPLOY.md).

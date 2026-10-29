@@ -1,0 +1,17 @@
+# Render blueprint for the Bit Browser sync server. See DEPLOY.md.
+# A persistent disk needs a paid instance type (Starter); free instances lose their files.
+services:
+  - type: web
+    name: bit-browser-sync
+    runtime: docker
+    rootDir: packages/sync-server
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: DATA_DIR
+        value: /data
+    disk:
+      name: bit-sync-data
+      mountPath: /data
+      sizeGB: 1
