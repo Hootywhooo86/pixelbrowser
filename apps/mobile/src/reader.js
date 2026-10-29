@@ -34,7 +34,7 @@ export const READER_JS = `(function(){
         if (c.nodeType !== 1 || bad(c)) return;
         if (c.tagName === 'IMG') {
           var src = c.currentSrc || c.getAttribute('src') || c.getAttribute('data-src') || '';
-          if (!src || /^data:/.test(src) || (c.width && c.width < 60)) return;
+          var w = parseInt(c.getAttribute('width') || '0', 10) || c.naturalWidth || 0; if (!src || /^data:/.test(src) || (w && w < 60)) return;
           var img = document.createElement('img'); img.src = new URL(src, location.href).href; img.alt = c.alt || ''; out.appendChild(img); return;
         }
         if (!keep.test(c.tagName)) { out.appendChild(clean(c)); return; }

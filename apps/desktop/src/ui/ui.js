@@ -91,7 +91,170 @@ function render() {
   if (ready) $('update').title = `Bit Browser ${state.update.version} is ready. Click to restart and update.`
   $('agentbadge').hidden = !state.agentActive
   document.body.classList.toggle('agent', !!state.agentActive)
+  $('star').classList.toggle('on', !!state.bookmarked)
+  $('star').hidden = !state.canBookmark
+  $('star').title = state.bookmarked ? 'Bookmarked. Click to edit or remove (Ctrl+D)' : 'Bookmark this page (Ctrl+D)'
+  $('reader').hidden = !(state.readerable || state.inReader)
+  $('reader').classList.toggle('on', !!state.inReader)
+  $('reader').title = state.inReader ? 'Leave reader mode (Esc)' : 'Reader mode: just the article (Ctrl+Alt+R)'
+  renderBookbar()
+  renderPrompts()
 }
+
+// ---------- bookmarks bar ----------
+
+function letter(text) {
+  return (String(text || '?').trim().charAt(0) || '?').toUpperCase()
+}
+
+let lastBar = ''
+function renderBookbar() {
+  const bar = state.bar
+  const show = !!state.bookmarksBar && !!bar
+  $('bookbar').hidden = !show
+  if (!show) return
+  const key = JSON.stringify(bar)
+  if (key === lastBar) return
+  lastBar = key
+  const items = bar.items.map((b) => {
+    const el = document.createElement('button')
+    el.className = 'bm'
+    el.title = `${b.title}\n${b.url}`
+    const l = document.createElement('i')
+    l.className = 'l'
+    l.textContent = letter(b.title)
+    const t = document.createElement('span')
+    t.textContent = b.title || b.url
+    el.append(l, t)
+    el.onclick = () => window.pixel.go(b.url)
+    el.onauxclick = (e) => e.button === 1 && window.pixel.newTab(b.url)
+    el.oncontextmenu = (e) => {
+      e.preventDefault()
+      window.pixel.bookmarkMenu(b.id)
+    }
+    return el
+  })
+  const folders = bar.folders.map((f) => {
+    const el = document.createElement('button')
+    el.className = 'bm folder'
+    el.title = `${f} folder`
+    const l = document.createElement('i')
+    l.className = 'l'
+    l.textContent = letter(f)
+    const t = document.createElement('span')
+    t.textContent = f
+    el.append(l, t)
+    el.onclick = () => window.pixel.folderMenu(f)
+    return el
+  })
+  if (!items.length && !folders.length) {
+    const hint = document.createElement('span')
+    hint.className = 'hint'
+    hint.textContent = 'Bookmark pages with the star in the address bar (Ctrl+D) and they show up here.'
+    $('bookbar').replaceChildren(hint)
+  } else $('bookbar').replaceChildren(...items, ...folders)
+}
+
+// ---------- info bars (permission prompts, passwords, quests) ----------
+
+let lastPrompts = ''
+function renderPrompts() {
+  const list = state.prompts || []
+  const key = JSON.stringify(list)
+  if (key === lastPrompts) return
+  lastPrompts = key
+  $('prompts').replaceChildren(
+    ...list.map((p) => {
+      const el = document.createElement('div')
+      el.className = `bar kind-${p.kind}`
+      el.dataset.id = p.id
+      const label = document.createElement('span')
+      label.className = 'barlabel'
+      label.textContent = p.label || p.kind.toUpperCase()
+      const text = document.createElement('span')
+      text.className = 'text'
+      text.textContent = p.text
+      text.title = p.text
+      el.append(label, text)
+      for (const b of p.buttons) {
+        const btn = document.createElement('button')
+        btn.className = 'pxbtn' + (b.hot ? ' hot' : '')
+        btn.textContent = b.label
+        btn.dataset.action = b.id
+        btn.onclick = () => window.pixel.answerPrompt(p.id, b.id)
+        el.append(btn)
+      }
+      return el
+    })
+  )
+}
+
+// ---------- find in page ----------
+
+function openFind(text) {
+  $('findbar').hidden = false
+  if (typeof text === 'string' && text) $('findq').value = text
+  $('findq').focus()
+  $('findq').select()
+  if ($('findq').value) window.pixel.find($('findq').value, { findNext: false })
+}
+function closeFind() {
+  if ($('findbar').hidden) return
+  $('findbar').hidden = true
+  $('findcount').textContent = ''
+  $('findq').classList.remove('none')
+  window.pixel.stopFind()
+}
+$('findq').addEventListener('input', () => {
+  const q = $('findq').value
+  if (q) window.pixel.find(q, { findNext: false })
+  else {
+    window.pixel.stopFind(true)
+    $('findcount').textContent = ''
+    $('findq').classList.remove('none')
+  }
+})
+$('findbar').addEventListener('submit', (e) => e.preventDefault())
+$('findq').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    if ($('findq').value) window.pixel.find($('findq').value, { findNext: true, forward: !e.shiftKey })
+  } else if (e.key === 'Escape') closeFind()
+})
+$('findnext').onclick = () => $('findq').value && window.pixel.find($('findq').value, { findNext: true, forward: true })
+$('findprev').onclick = () => $('findq').value && window.pixel.find($('findq').value, { findNext: true, forward: false })
+$('findclose').onclick = closeFind
+window.pixel.onFind((cmd) => {
+  if (cmd.open) openFind(cmd.text)
+  if (cmd.close) closeFind()
+  if (cmd.result) {
+    const r = cmd.result
+    $('findcount').textContent = r.matches ? `${r.activeMatchOrdinal} of ${r.matches}` : 'No matches'
+    $('findq').classList.toggle('none', !r.matches)
+  }
+})
+
+// ---------- shell height (tabs sit right below the shell) ----------
+
+let reported = 0
+new ResizeObserver(() => {
+  if (document.body.classList.contains('locked')) return
+  const h = Math.ceil($('shell').getBoundingClientRect().height)
+  if (h && h !== reported) {
+    reported = h
+    window.pixel.shellHeight(h)
+  }
+}).observe($('shell'))
+
+// ---------- toast ----------
+
+let toastTimer = null
+window.pixel.onToast((text) => {
+  $('toast').textContent = text
+  $('toast').hidden = false
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => ($('toast').hidden = true), 5000)
+})
 
 window.pixel.onState((next) => {
   state = next
@@ -131,6 +294,9 @@ $('store').onclick = () => window.pixel.openExtensionStore()
 $('private').onclick = () => window.pixel.newPrivateWindow()
 
 $('shield').onclick = () => window.pixel.shieldsMenu()
+$('star').onclick = () => window.pixel.toggleBookmark()
+$('reader').onclick = () => window.pixel.toggleReader()
+$('menu').onclick = () => window.pixel.appMenu()
 $('space').onclick = () => window.pixel.spaceMenu()
 $('panic').onclick = () => window.pixel.panic()
 $('tracker').onclick = () => window.pixel.addToTracker()

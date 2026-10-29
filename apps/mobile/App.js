@@ -13,7 +13,7 @@ import * as NavigationBar from 'expo-navigation-bar'
 import { captureRef } from 'react-native-view-shot'
 import * as Crypto from 'expo-crypto'
 import { requireOptionalNativeModule } from 'expo'
-import { looksLikeQuestion, isAllowedUrl, searchUrlFor, searchHome } from '@pixelbrowser/ai-core'
+import { looksLikeQuestion, isAllowedUrl, searchUrlFor } from '@pixelbrowser/ai-core'
 import { loadStore, getState, putRecord, addHistory, useStore, update, liveRecords } from './src/store'
 import { setAIEnabled, session } from './src/ai'
 import { checkForAppUpdate } from './src/updates'
@@ -21,6 +21,20 @@ import { startSync } from './src/sync'
 import { startDownload, looksLikeDownload, guessFilename, receiveChunk, isPdf, openPdf, onOpenPdf } from './src/downloads'
 import { CAPTURE_DOWNLOADS_JS, fetchInPageJS } from './src/download-capture'
 import PdfViewer from './src/PdfViewer'
+import { addBookmark, removeBookmark, isBookmarked } from './src/bookmarks'
+import { rememberClosed, popClosed } from './src/closed-tabs'
+import BookmarksScreen from './src/BookmarksScreen'
+import HistoryScreen from './src/HistoryScreen'
+import NewTabPage, { NEW_TAB_URL } from './src/NewTabPage'
+import ReaderView from './src/ReaderView'
+import { READER_JS, isReadable } from './src/reader'
+import FindBar from './src/FindBar'
+import { findJS, clearFindJS } from './src/find'
+import SiteSettingsSheet from './src/SiteSettingsSheet'
+import { getSite, setSite, DESKTOP_UA, permissionsJS, permissionReplyJS, PULL_REFRESH_JS } from './src/site-settings'
+import { translateRequest, translateUrl, savePageAsPdf, printPage, GET_HTML_SCRIPT } from './src/page-tools'
+import { fillBusinessJS } from './src/formfill'
+import { installCrashHandler } from './src/crash'
 import { CAPTURE_LOGIN_JS, autofillJS, findLogins, saveLogin, hasLogin, startPasswordSync, unlock } from './src/passwords'
 import { emit } from './src/events'
 import { initShields, useShieldsScript, siteScript, isBlocked, handleShieldsMessage, useBlockedCount, notePageLoaded, siteShieldsOn, setSiteShields } from './src/shields'
@@ -33,13 +47,14 @@ import { PButton, PSwitch } from './src/ui'
 import { C, PIXEL_FONT, isLightTheme, px } from './src/theme'
 import PixelIcon from './src/PixelIcon'
 import { award, onXpEvent } from './src/xp'
-import { track } from './src/quests'
+import { track, useQuests } from './src/quests'
 import { play } from './src/sounds'
 
 let nextTabId = 1
 let warnedPrivate = false
 
-const homeUrl = () => getState().homepage || searchHome(getState().searchEngine, getState().customSearchUrl)
+// New tabs open the pixel new tab page unless a homepage is set.
+const homeUrl = () => getState().homepage || NEW_TAB_URL
 
 /** Search with the engine chosen in Settings (its no-AI version when the AI slider is off). */
 const searchFor = (query, aiEnabled) => searchUrlFor(getState().searchEngine, query, { aiEnabled, customUrl: getState().customSearchUrl })
@@ -172,6 +187,7 @@ export default function App() {
       startSync()
       startPasswordSync()
       clearPrivateData() // private tabs from last time are forgotten
+      installCrashHandler()
       initShields().catch(() => {})
       initPhishing().catch(() => {})
     })
@@ -195,7 +211,7 @@ function Browser() {
   const shieldsJS = useShieldsScript()
   const shieldsOn = useStore((s) => s.shields?.enabled !== false)
   const insets = useSafeAreaInsets()
-  const { width } = useWindowDimensions()
+  const { width, height: winHeight } = useWindowDimensions()
   const wide = width >= 700 // tablets and Chromebooks
   const [locked, setLocked] = useState(false) // private tabs hidden until fingerprint/face
   const [tabs, setTabs] = useState(restoredTabs)
@@ -222,6 +238,14 @@ function Browser() {
   const [fullscreen, setFullscreen] = useState(false)
   const [fillOffer, setFillOffer] = useState(null) // { tabId, login }
   const [pdf, setPdf] = useState(null) // downloaded PDF open in the viewer
+  const [find, setFind] = useState(null) // { index, total } while the find bar is open
+  const findQuery = useRef('')
+  const [siteSheet, setSiteSheet] = useState(false)
+  const [bookmarksOpen, setBookmarksOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [reader, setReader] = useState(null) // article shown in reader mode
+  const quests = useQuests()
+  useStore((s) => s.records.bookmarks) // so the menu's bookmark label updates
   useEffect(
     () =>
       onOpenPdf((item) => {
@@ -268,6 +292,7 @@ function Browser() {
   }
 
   const closeTab = (id) => {
+    if (!tabsRef.current.find((t) => t.id === id)?.pinned) rememberClosed(tabsRef.current.find((t) => t.id === id))
     if (tabsRef.current.find((t) => t.id === id)?.pinned) return toast('Pinned tab: unpin it first to close it')
     const list = tabsRef.current.filter((t) => t.id !== id)
     if (tabsRef.current.find((t) => t.id === id)?.private && !list.some((t) => t.private)) setTimeout(clearPrivateData, 300)
@@ -291,7 +316,10 @@ function Browser() {
     const goes = (t) => !t.pinned && !!t.private === priv && (priv || !space || (t.space || 'personal') === space)
     const closing = tabsRef.current.filter(goes)
     const keep = tabsRef.current.filter((t) => !goes(t))
-    for (const t of closing) delete views.current[t.id]
+    for (const t of closing) {
+      delete views.current[t.id]
+      rememberClosed(t)
+    }
     if (priv) setTimeout(clearPrivateData, 300)
     if (!priv && closing.length) {
       award('tabCleaned', closing.length)
@@ -506,6 +534,21 @@ function Browser() {
       videoPlaying.current = !!msg.__bitVideo && tab.id === activeRef.current
       return
     }
+    if (msg.__bitFind) return tab.id === activeRef.current && setFind(msg.__bitFind)
+    if (msg.__bitPullRefresh) return views.current[tab.id]?.reload()
+    if (msg.__bitFilled !== undefined) return toast(msg.__bitFilled ? `Filled ${msg.__bitFilled} fields` : 'No address fields found on this page')
+    if (msg.__bitPermission) {
+      const { id, kinds, host } = msg.__bitPermission
+      const answer = (allow, remember) => {
+        if (remember) setSite(host, Object.fromEntries(kinds.map((k) => [k, allow ? 'allow' : 'block'])))
+        views.current[tab.id]?.injectJavaScript(permissionReplyJS(id, allow))
+      }
+      return Alert.alert(`${host} wants your ${kinds.join(' and ')}`, 'You can change this later from Menu → This site.', [
+        { text: 'Block', style: 'cancel', onPress: () => answer(false, true) },
+        { text: 'Allow once', onPress: () => answer(true, false) },
+        { text: 'Always allow', onPress: () => answer(true, true) },
+      ], { cancelable: true, onDismiss: () => answer(false, false) })
+    }
     if (msg.__bitLogin) return offerToSave(tab, msg.__bitLogin)
     if (msg.__bitNeedFill) {
       if (tab.private) return
@@ -606,6 +649,34 @@ function Browser() {
     Linking.openURL(`bitcaller://call?number=${encodeURIComponent(number)}`).catch(fallback)
   }
 
+  const reopenClosed = () => {
+    const item = popClosed(getState().activeSpace || 'personal')
+    if (!item) return toast('No closed tabs to reopen')
+    openTab(item.url, { space: item.space })
+  }
+
+  const openReader = async () => {
+    setMenuOpen(false)
+    const article = await browser.run(active.id, READER_JS).catch(() => null)
+    if (!isReadable(article)) return Alert.alert('Reader mode', "This page doesn't have an article to show in reader mode.")
+    setReader(article)
+    track('articleRead')
+    award('articleFinished')
+  }
+
+  const toggleBookmark = () => {
+    setMenuOpen(false)
+    const id = isBookmarked(active.url)
+    if (id) {
+      removeBookmark(id)
+      toast('Bookmark removed')
+    } else {
+      addBookmark({ url: active.url, title: active.title })
+      track('bookmarked')
+      toast('Bookmarked')
+    }
+  }
+
   const stopAgent = () => {
     session.stop()
     setAgentActive(false)
@@ -616,6 +687,11 @@ function Browser() {
   // latest state.
   const handlers = useRef({}).current
   Object.assign(handlers, {
+    go: (id, text) => go(text),
+    navigate: (id, url) => navigate(id, url),
+    pinnedTabs: () => tabsRef.current.filter((x) => x.pinned && !x.private),
+    select: (id) => setActiveId(id),
+    quests: () => quests,
     ref: (id, r) => {
       if (r) views.current[id] = r
       else delete views.current[id]
@@ -674,6 +750,13 @@ function Browser() {
       if (js) views.current[t.id]?.injectJavaScript(js)
     },
     onLoadEnd: (t, e) => {
+      // Sites set to "always translate".
+      if (!t.private && t.id === activeRef.current && getSite(e.nativeEvent.url).translate) {
+        if (getState().aiEnabled) {
+          setAiOpen(true)
+          setAiRequest(translateRequest())
+        }
+      }
       patchTab(t.id, { loading: false })
       const js = siteScript(e.nativeEvent.url)
       if (js) views.current[t.id]?.injectJavaScript(js)
@@ -703,10 +786,10 @@ function Browser() {
           </Pressable>
           <TextInput
             style={st.address}
-            value={editing ? address : active.url}
+            value={editing ? address : active.url === NEW_TAB_URL ? '' : active.url}
             onFocus={() => {
               setEditing(true)
-              setAddress(active.url)
+              setAddress(active.url === NEW_TAB_URL ? '' : active.url)
             }}
             onBlur={() => setEditing(false)}
             onChangeText={setAddress}
@@ -721,15 +804,7 @@ function Browser() {
             placeholderTextColor={C.muted}
             accessibilityLabel="Address and search bar"
           />
-          <ShieldButton url={active.url} on={shieldsOn} onPress={() => {
-            const host = hostOf(active.url)
-            if (!host) return
-            const up = siteShieldsOn(active.url)
-            Alert.alert(`Bit Shields: ${host}`, up ? 'Ads and trackers are blocked on this site.' : 'Shields are down for this site.', [
-              { text: 'Close', style: 'cancel' },
-              { text: up ? 'Shields down for this site' : 'Shields up for this site', onPress: () => setSiteShields(active.url, !up).then(() => views.current[active.id]?.reload()) },
-            ])
-          }} />
+          <ShieldButton url={active.url} on={shieldsOn} onPress={() => /^https?:/i.test(active.url || '') && setSiteSheet(true)} />
           <PSwitch
             value={aiEnabled}
             accessibilityLabel={aiEnabled ? 'AI on. Turn off for private browsing.' : 'AI off. Nothing is sent to any AI.'}
@@ -791,13 +866,32 @@ function Browser() {
         </View>
       )}
 
+      {!fullscreen && (
+        <FindBar
+          visible={!!find}
+          index={find?.index || 0}
+          total={find?.total || 0}
+          onQuery={(q) => {
+            findQuery.current = q
+            views.current[active.id]?.injectJavaScript(findJS(q, 0))
+          }}
+          onNext={() => views.current[active.id]?.injectJavaScript(findJS(findQuery.current, 1))}
+          onPrev={() => views.current[active.id]?.injectJavaScript(findJS(findQuery.current, -1))}
+          onClose={() => {
+            views.current[active.id]?.injectJavaScript(clearFindJS)
+            findQuery.current = ''
+            setFind(null)
+          }}
+        />
+      )}
+
       {/* pages */}
       <View style={[{ flex: 1 }, wide && { flexDirection: 'row' }]}>
       <View style={[{ flex: 1 }, agentActive && !fullscreen && st.agentFrame]}>
         <View ref={pageArea} collapsable={false} style={{ flex: 1 }}>
           {tabs.map((t) => (
             (t.private || live.includes(t.id)) && (
-              <TabView key={t.id} tab={t} active={t.id === active.id} autoplay={autoplay} textZoom={textZoom} aiEnabled={aiEnabled} watchScroll={hideBarsOnScroll} shieldsJS={shieldsJS} h={handlers} />
+              <TabView key={t.id} tab={t} active={t.id === active.id} autoplay={autoplay} textZoom={textZoom} aiEnabled={aiEnabled} watchScroll={hideBarsOnScroll} shieldsJS={shieldsJS} siteKey={JSON.stringify(getSite(t.url))} h={handlers} />
             )
           ))}
         </View>
@@ -880,7 +974,7 @@ function Browser() {
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)} statusBarTranslucent navigationBarTranslucent>
         <Pressable style={st.scrim} onPress={() => setMenuOpen(false)}>
-          <View style={[st.menu, { marginBottom: insets.bottom + 70 }]}>
+          <ScrollView style={[st.menu, { marginBottom: insets.bottom + 70, maxHeight: winHeight - insets.top - insets.bottom - 110 }]} bounces={false}>
             <MenuItem icon="plus" label="NEW TAB" onPress={() => (setMenuOpen(false), openTab(homeUrl()))} />
             <MenuItem icon="lock" label="NEW PRIVATE TAB" onPress={() => (setMenuOpen(false), openTab(homeUrl(), { private: true }))} />
             {aiEnabled && <MenuItem icon="bitter" label="LET BITTER TAKE OVER" color={C.pink} onPress={takeOver} />}
@@ -888,10 +982,55 @@ function Browser() {
             {!active.private && /^https?:/i.test(active.url || '') && (
               <MenuItem icon="bookmark" label={active.pinned ? 'UNPIN THIS TAB' : 'PIN THIS TAB'} color={C.orange} onPress={() => (setMenuOpen(false), togglePin(active.id))} />
             )}
+            {/^https?:/i.test(active.url || '') && !active.private && (
+              <MenuItem icon="star" label={isBookmarked(active.url) ? 'REMOVE BOOKMARK' : 'BOOKMARK THIS PAGE'} color={C.orange} onPress={toggleBookmark} />
+            )}
+            <MenuItem icon="bookmark" label="BOOKMARKS" onPress={() => (setMenuOpen(false), setBookmarksOpen(true))} />
+            <MenuItem icon="reload" label="HISTORY" onPress={() => (setMenuOpen(false), setHistoryOpen(true))} />
+            <MenuItem icon="back" label="REOPEN CLOSED TAB" onPress={() => (setMenuOpen(false), reopenClosed())} />
+            {/^https?:/i.test(active.url || '') && <MenuItem icon="home" label="READER MODE" onPress={openReader} />}
             <MenuItem icon="download" label="DOWNLOADS" onPress={() => (setMenuOpen(false), setDownloadsOpen(true))} />
+            {/^https?:/i.test(active.url || '') && (
+              <>
+                <MenuItem icon="search" label="FIND IN PAGE" onPress={() => (setMenuOpen(false), setFind({ index: 0, total: 0 }))} />
+                <MenuItem icon="settings" label="THIS SITE" onPress={() => (setMenuOpen(false), setSiteSheet(true))} />
+                <MenuItem
+                  icon="bitter"
+                  label="TRANSLATE PAGE"
+                  onPress={() => {
+                    setMenuOpen(false)
+                    if (aiEnabled && !active.private) {
+                      setAiOpen(true)
+                      setAiRequest(translateRequest())
+                    } else navigate(active.id, translateUrl(active.url))
+                  }}
+                />
+                <MenuItem icon="pdf" label="SAVE PAGE AS PDF" onPress={() => (setMenuOpen(false), savePageAsPdf(() => browser.run(active.id, GET_HTML_SCRIPT)).catch((e) => Alert.alert('Save as PDF', e.message)))} />
+                <MenuItem icon="print" label="PRINT PAGE" onPress={() => (setMenuOpen(false), printPage(() => browser.run(active.id, GET_HTML_SCRIPT)).catch((e) => Alert.alert('Print', e.message)))} />
+                <MenuItem
+                  icon="star"
+                  label="FILL BUSINESS DETAILS"
+                  onPress={() => {
+                    setMenuOpen(false)
+                    const profile = getState().businessProfile
+                    if (profile) views.current[active.id]?.injectJavaScript(fillBusinessJS(profile))
+                    else Alert.alert('Business details', 'Add your business details first in Settings → Passwords and autofill → Business details.')
+                  }}
+                />
+                <MenuItem
+                  icon="home"
+                  label={getSite(active.url).desktop ? 'MOBILE SITE' : 'DESKTOP SITE'}
+                  onPress={() => {
+                    setMenuOpen(false)
+                    setSite(active.url, { desktop: !getSite(active.url).desktop })
+                    setTimeout(() => views.current[active.id]?.reload(), 50)
+                  }}
+                />
+              </>
+            )}
             <MenuItem icon="settings" label="SETTINGS" onPress={() => (setMenuOpen(false), setSettingsOpen(true))} />
             <MenuItem icon="panic" label="PANIC: WIPE PRIVATE" color={C.pink} onPress={() => (setMenuOpen(false), panic())} />
-          </View>
+          </ScrollView>
         </Pressable>
       </Modal>
 
@@ -934,6 +1073,15 @@ function Browser() {
       />
       <SettingsScreen visible={settingsOpen} onClose={() => setSettingsOpen(false)} openUrl={openUrl} downloadsScreen={<DownloadsScreen />} />
       <PdfViewer item={pdf} visible={!!pdf} onClose={() => setPdf(null)} />
+      <BookmarksScreen visible={bookmarksOpen} onClose={() => setBookmarksOpen(false)} onOpen={(url) => (setBookmarksOpen(false), openTab(url))} />
+      <HistoryScreen visible={historyOpen} onClose={() => setHistoryOpen(false)} onOpen={(url) => (setHistoryOpen(false), openTab(url))} />
+      <ReaderView visible={!!reader} article={reader} onClose={() => setReader(null)} onOpen={(url) => (setReader(null), openTab(url))} />
+      <SiteSettingsSheet
+        visible={siteSheet}
+        url={active.url}
+        onClose={() => setSiteSheet(false)}
+        onChanged={(what) => ['desktop', 'permissions', 'shields'].includes(what) && views.current[active.id]?.reload()}
+      />
     </View>
   )
 }
@@ -943,9 +1091,14 @@ const NO_MENU = []
 
 // One tab's page. Memoized so typing in the address bar, agent steps or
 // other tabs loading don't re-render every open page.
-const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEnabled, watchScroll, shieldsJS, h }) {
+const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEnabled, watchScroll, shieldsJS, siteKey, h }) {
+  // Per-site settings arrive as a JSON string so the memo comparison stays cheap.
+  const site = useMemo(() => JSON.parse(siteKey || '{}'), [siteKey])
   const js = useMemo(() => injectedJS(autoplay), [autoplay])
-  const beforeJS = useMemo(() => `${CAPTURE_DOWNLOADS_JS}\n${shieldsJS || ''}`, [shieldsJS])
+  const beforeJS = useMemo(
+    () => `${CAPTURE_DOWNLOADS_JS}\n${permissionsJS(site)}\n${Platform.OS === 'android' ? PULL_REFRESH_JS : ''}\n${shieldsJS || ''}`,
+    [shieldsJS, site]
+  )
   // A tab woken from sleep reopens its last page; later navigations come in via t.source.
   const [source, setSource] = useState(() => ({ uri: t.url || t.source }))
   const firstSource = useRef(t.source)
@@ -954,17 +1107,27 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
     firstSource.current = null
   }, [t.source])
   useEffect(() => () => h.ref(t.id, null), [])
+  if (t.url === NEW_TAB_URL && t.source === NEW_TAB_URL) {
+    return active ? (
+      <NewTabPage onSubmit={(text) => h.go(t.id, text)} onOpen={(url) => h.navigate(t.id, url)} pinnedTabs={h.pinnedTabs()} onSelectTab={h.select} quests={h.quests()} />
+    ) : null
+  }
   return (
     <WebView
       ref={(r) => h.ref(t.id, r)}
-      source={source}
+      // A tab that started on the new tab page loads its first real page here.
+      source={source.uri === NEW_TAB_URL ? { uri: t.source } : source}
       // Hidden tabs must not take up space: the WebView's outer
       // container is flex: 1 by default, so hide that, not just the page.
       containerStyle={active ? st.pageBox : st.hidden}
       style={st.page}
       incognito={t.private}
       thirdPartyCookiesEnabled={!t.private && SIGN_IN_HOSTS.test(hostOf(t.url))}
-      userAgent={BROWSER_UA}
+      userAgent={site.desktop ? DESKTOP_UA : BROWSER_UA}
+      contentMode={site.desktop ? 'desktop' : 'recommended'}
+      geolocationEnabled={site.location !== 'block'}
+      mediaCapturePermissionGrantType={site.camera === 'block' && site.microphone === 'block' ? 'deny' : site.camera === 'allow' && site.microphone === 'allow' ? 'grant' : 'prompt'}
+      pullToRefreshEnabled
       sharedCookiesEnabled
       cacheEnabled
       setSupportMultipleWindows={false}
@@ -972,7 +1135,7 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
       allowsFullscreenVideo
       allowsInlineMediaPlayback
       mediaPlaybackRequiresUserAction={autoplay === 'off'}
-      textZoom={textZoom}
+      textZoom={site.textZoom || textZoom}
       injectedJavaScript={js}
       menuItems={t.private || !aiEnabled ? NO_MENU : EXPLAIN_MENU}
       onCustomMenuSelection={(e) => e.nativeEvent.key === 'explain' && h.explain(e.nativeEvent.selectedText)}

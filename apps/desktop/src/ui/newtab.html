@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'">
+<title>New tab</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="icons.css">
+<link rel="stylesheet" href="newtab.css">
+</head>
+<body>
+  <main>
+    <div class="hero">
+      <div class="logo">B</div>
+      <h1>BIT BROWSER</h1>
+    </div>
+    <form id="search" action="https://newtab.bitbrowser.invalid/go" method="get">
+      <input id="q" name="q" autocomplete="off" spellcheck="false" placeholder="Search or type a web address" aria-label="Search or type a web address" autofocus>
+      <button class="px hot">GO</button>
+    </form>
+    <section>
+      <div class="head"><h2>SHORTCUTS</h2><a class="edit" href="https://newtab.bitbrowser.invalid/edit">EDIT</a></div>
+      <div id="tiles" class="tiles"></div>
+    </section>
+    <div class="cols">
+      <section id="stats-box">
+        <h2>THIS WEEK</h2>
+        <div class="stats">
+          <div class="stat"><b id="blocked">0</b><span>BLOCKED BY SHIELDS</span></div>
+          <div class="stat"><b id="level">1</b><span>LEVEL · <i id="xp">0</i> XP</span></div>
+          <div class="stat"><b id="streak">0</b><span>DAY STREAK</span></div>
+        </div>
+        <h3>QUESTS</h3>
+        <ul id="quests" class="quests"></ul>
+      </section>
+      <section id="tabs-box">
+        <h2>PINNED TABS</h2>
+        <ul id="pinned" class="links"><li class="muted">Right-click a tab to pin it.</li></ul>
+        <h2>ON YOUR OTHER DEVICES</h2>
+        <ul id="remote" class="links"><li class="muted">Turn on Sync in Settings to see tabs from your phone.</li></ul>
+      </section>
+    </div>
+  </main>
+  <script src="newtab.js"></script>
+</body>
+</html>

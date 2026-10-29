@@ -26,11 +26,3 @@ function Root() {
 }
 
 registerRootComponent(Root)
-
-import './src/find'
-import './src/FindBar'
-import './src/site-settings'
-import './src/SiteSettingsSheet'
-import './src/formfill'
-import './src/page-tools'
-import './src/crash'

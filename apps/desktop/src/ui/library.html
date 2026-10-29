@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'">
+<title>Bit Browser Library</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="sidebar.css">
+<link rel="stylesheet" href="settings.css">
+<link rel="stylesheet" href="library.css">
+</head>
+<body>
+  <header id="head">
+    <div class="brand"><span class="mark">B</span> LIBRARY</div>
+    <input id="find" type="search" placeholder="Search" aria-label="Search" spellcheck="false">
+  </header>
+  <nav id="nav" aria-label="Library sections">
+    <a href="#bookmarks" data-sec="bookmarks">BOOKMARKS</a><a href="#history" data-sec="history">HISTORY</a>
+  </nav>
+  <main class="view">
+    <section id="bookmarks">
+      <div class="lib">
+        <aside>
+          <h3>FOLDERS</h3>
+          <div id="folders"></div>
+          <form id="folder-add" class="row"><input id="folder-name" placeholder="New folder" maxlength="60"><button class="px">ADD</button></form>
+        </aside>
+        <div>
+          <div class="row"><h2 id="folder-title">BOOKMARKS</h2><span class="spacer"></span><button id="folder-rename" class="px" hidden>RENAME</button><button id="folder-delete" class="px" hidden>DELETE FOLDER</button></div>
+          <p class="muted">The Bookmarks folder shows on the bookmarks bar. Bookmark a page with the star in the address bar (Ctrl+D).</p>
+          <ul id="bm-list" class="list"></ul>
+        </div>
+      </div>
+    </section>
+    <section id="history" hidden>
+      <div class="row wrap">
+        <select id="clear-range" aria-label="Clear history from">
+          <option value="hour">Last hour</option><option value="day">Last 24 hours</option><option value="week">Last 7 days</option><option value="all">All time</option>
+        </select>
+        <label class="check"><input type="checkbox" id="clear-site"> Also cookies, site data and cache (signs you out)</label>
+        <button id="clear-go" class="px danger">CLEAR BROWSING DATA</button>
+        <span id="clear-done" class="muted" hidden></span>
+      </div>
+      <div id="hist"></div>
+    </section>
+  </main>
+  <script src="library.js"></script>
+</body>
+</html>

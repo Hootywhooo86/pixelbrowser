@@ -7,6 +7,7 @@ import { getState, update, getSecret, setSecret, onLocalChange, liveRecords } fr
 import { applyRemoteShields } from './shields'
 import { applyRemoteTheme } from './theme'
 import { mergeRemoteXp } from './xp'
+import { applyRemoteSiteSettings } from './site-settings'
 
 let running = null
 let debounce = null
@@ -100,6 +101,7 @@ async function applyRemoteSettings() {
   }
   await applyRemoteShields().catch(() => {})
   mergeRemoteXp()
+  applyRemoteSiteSettings()
   await applyRemoteTheme().catch(() => {})
   const keys = s.records.settings['ai-keys']
   if (keys && !keys.deleted && keys.deviceId !== s.deviceId && s.sync.syncKeys) {

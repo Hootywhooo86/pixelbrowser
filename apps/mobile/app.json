@@ -10,7 +10,11 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.pixelbrowser.app",
       "buildNumber": "305",
-      "requireFullScreen": false
+      "requireFullScreen": false,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Websites you allow can use the microphone.",
+        "NSLocationWhenInUseUsageDescription": "Websites you allow can see your location."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +26,11 @@
       "package": "com.pixelbrowser.app",
       "versionCode": 305,
       "permissions": [
-        "android.permission.REQUEST_INSTALL_PACKAGES"
+        "android.permission.REQUEST_INSTALL_PACKAGES",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ],
       "intentFilters": [
         {
@@ -69,8 +77,8 @@
         "expo-camera",
         {
           "cameraPermission": "Bit Browser uses the camera only to scan the sync QR code from your computer.",
-          "microphonePermission": false,
-          "recordAudioAndroid": false
+          "microphonePermission": "Websites you allow can use the microphone.",
+          "recordAudioAndroid": true
         }
       ],
       "./plugins/with-release-signing",

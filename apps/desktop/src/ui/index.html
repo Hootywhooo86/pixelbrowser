@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="ui.css">
 </head>
 <body>
+  <div id="shell">
   <div id="tabstrip">
     <div class="logo" title="Bit Browser">B</div>
     <button id="space" class="pxbtn space ico" title="Spaces: Personal, Work, 128bit… (each keeps its own tabs)">PERSONAL</button>
@@ -23,6 +24,8 @@
       <span id="agentbadge" hidden title="The AI agent is using this window">AGENT</span>
       <button type="button" id="shield" class="ico" title="Bit Shields: ads and trackers blocked on this page. Click for options.">0</button>
       <input id="address" spellcheck="false" autocomplete="off" placeholder="Search, type a URL, or ask AI a question">
+      <button type="button" id="reader" class="inbar ico only" hidden title="Reader mode: just the article (Ctrl+Alt+R)">READ</button>
+      <button type="button" id="star" class="inbar ico only" title="Bookmark this page (Ctrl+D)">STAR</button>
     </form>
     <button id="tracker" class="pxbtn ico" hidden title="Add this show or movie to 128bittracker">+TRK</button>
     <button id="ask" class="pxbtn ico" title="Ask Bitter (Shift+Enter in the address bar)">ASK</button>
@@ -32,9 +35,24 @@
     <button id="store" class="pxbtn ico only" title="Get extensions (Chrome Web Store)">EXT</button>
     <button id="private" class="pxbtn ico only" title="New private window (Ctrl+Shift+N)">PVT</button>
     <button id="panic" class="pxbtn ico only" title="Panic: close private windows and wipe recent activity (Ctrl+Shift+X)">!</button>
+    <button id="menu" class="pxbtn ico only" title="Menu: bookmarks, history, find, reader, translate, save as PDF…">MENU</button>
     <button id="settings" class="pxbtn ico only" title="Settings: search engine, AI, sync (Ctrl+,)">SET</button>
     <button id="update" class="pxbtn ico" hidden title="A new version is ready. Click to restart and update.">UPDATE</button>
   </div>
+  <div id="bookbar" hidden></div>
+  <div id="bars">
+    <form id="findbar" class="bar" hidden>
+      <span class="barlabel">FIND</span>
+      <input id="findq" spellcheck="false" autocomplete="off" placeholder="Find in page" aria-label="Find in page">
+      <span id="findcount" class="count"></span>
+      <button type="button" id="findprev" class="pxbtn" title="Previous (Shift+Enter)">&lt;</button>
+      <button type="button" id="findnext" class="pxbtn" title="Next (Enter)">&gt;</button>
+      <button type="button" id="findclose" class="pxbtn" title="Close (Esc)">X</button>
+    </form>
+    <div id="prompts"></div>
+  </div>
+  </div>
+  <div id="toast" hidden></div>
   <div id="lock" hidden>
     <form id="lockform">
       <div class="logo big">B</div>
