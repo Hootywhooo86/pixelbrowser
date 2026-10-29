@@ -805,6 +805,11 @@ function Browser() {
           <Pressable onLongPress={panic} delayLongPress={600} style={[st.logo, { backgroundColor: accent }]} accessibilityLabel="Bit Browser. Long-press for the panic button">
             <Text style={st.logoText}>B</Text>
           </Pressable>
+          {/^http:\/\//i.test(active.url || '') && !editing && (
+            <Pressable onPress={() => Alert.alert('Not secure', "This site doesn't use encryption (http). Others on your network could see what you send. Don't enter passwords or card numbers here.")} hitSlop={8} accessibilityLabel="Not secure: this site doesn't use encryption">
+              <PixelIcon name="unlock" size={16} color={C.pink} />
+            </Pressable>
+          )}
           <TextInput
             style={st.address}
             value={editing ? address : active.url === NEW_TAB_URL ? '' : active.url}

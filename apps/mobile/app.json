@@ -2,18 +2,21 @@
   "expo": {
     "name": "Bit Browser",
     "slug": "pixelbrowser",
-    "version": "0.4.1",
+    "version": "0.4.2",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.pixelbrowser.app",
-      "buildNumber": "401",
+      "buildNumber": "402",
       "requireFullScreen": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Websites you allow can use the microphone.",
-        "NSLocationWhenInUseUsageDescription": "Websites you allow can see your location."
+        "NSLocationWhenInUseUsageDescription": "Websites you allow can see your location.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoadsInWebContent": true
+        }
       }
     },
     "android": {
@@ -24,7 +27,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.pixelbrowser.app",
-      "versionCode": 401,
+      "versionCode": 402,
       "permissions": [
         "android.permission.REQUEST_INSTALL_PACKAGES",
         "android.permission.RECORD_AUDIO",
@@ -108,7 +111,8 @@
         }
       ],
       "expo-asset",
-      "./plugins/with-shields"
+      "./plugins/with-shields",
+      "./plugins/with-cleartext"
     ],
     "scheme": "pixelbrowser",
     "backgroundColor": "#0b0b16"
