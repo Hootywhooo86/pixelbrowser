@@ -29,7 +29,7 @@ function defaults() {
     customSearchUrl: '',
     sync: { server: '', enabled: false, cursor: 0, lastPushedAt: 0, lastSyncAt: 0, syncKeys: false, error: '' },
     updatedAt: { ai: 0, search: 0 },
-    records: { memory: {}, history: {}, tabs: {}, settings: {}, passwords: {}, addresses: {}, cards: {}, bookmarks: {} },
+    records: { memory: {}, history: {}, tabs: {}, settings: {}, passwords: {}, addresses: {}, cards: {}, bookmarks: {}, notes: {}, packages: {}, readlater: {}, totp: {}, watchers: {} },
     // Settings screen (v0.2)
     homepage: '', // '' = the search engine's home page
     tabLayout: 'grid',
