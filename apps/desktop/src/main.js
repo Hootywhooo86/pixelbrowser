@@ -32,6 +32,7 @@ const bookmarks = require('./bookmarks')
 const vault = require('./vault')
 const quests = require('./quests')
 const crashlog = require('./crashlog')
+const v05 = require('./v05')
 const { READERABLE_JS, EXTRACT_ARTICLE_JS, readerPage, fillBusinessJS, pipJS } = require('./page-tools')
 const { THEMES, themeCss, paletteFor } = require('./ui/themes')
 
@@ -41,6 +42,7 @@ crashlog.install()
 const SHELL_HEIGHT = 96 // px: tab strip + toolbar
 const PROFILE_PARTITION = 'persist:pixel'
 const SIDEBAR_WIDTH = 400
+const SPLIT_GAP = 8 // px between split-view pages (the shell draws the divider there)
 const SIDEBAR_HEADER = 44 // px of the sidebar UI kept above an AI web app
 
 // Privacy defaults, applied before any window opens.
@@ -188,6 +190,7 @@ class PixelWindow {
       url: isNtp(url) ? '' : url,
       title: (tab.reader ? tab.reader.title : tab.pendingUrl ? tab.pendingTitle : isNtp(url) ? 'New tab' : wc.getTitle()) || 'New tab',
       pinned: !!tab.pinned,
+      group: tab.group || null,
       loading: !tab.pendingUrl && wc.isLoading(),
       canGoBack: wc.navigationHistory.canGoBack(),
       canGoForward: wc.navigationHistory.canGoForward(),
@@ -235,6 +238,14 @@ class PixelWindow {
       readerable: !!active?.readerable && !active?.reader,
       inReader: !!active?.reader,
       prompts,
+      // 0.5
+      tracking: (active?.tracking || []).length,
+      trackingSaved: (active?.tracking || []).length > 0 && (active.tracking || []).every((f) => v05.collections.packages.has(f.number)),
+      groups: store.settings.data.groups,
+      vertical: !!store.settings.data.verticalTabs,
+      split: this.splitGeometry(),
+      kids: v05.kidsOn(),
+      isPdf: v05.looksLikePdf(url),
     })
   }
 
@@ -322,14 +333,14 @@ class PixelWindow {
    * Open a tab. lazy: remember the address but don't load it until the tab is
    * first selected (restored tabs), so startup stays fast.
    */
-  createTab(url = '', { space = this.space, select = true, pinned = false, lazy = false, title = '' } = {}) {
+  createTab(url = '', { space = this.space, select = true, pinned = false, lazy = false, title = '', group = null } = {}) {
     const view = new WebContentsView({
       // plugins: Chromium's built-in PDF viewer, so PDFs open in the tab.
       // backgroundThrottling off: videos and music keep playing when the window is minimized.
       webPreferences: { session: this.ses, sandbox: true, contextIsolation: true, plugins: true, backgroundThrottling: false },
     })
     const wc = view.webContents
-    const tab = { id: wc.id, view, space, lastActive: Date.now(), pinned: !!pinned }
+    const tab = { id: wc.id, view, space, lastActive: Date.now(), pinned: !!pinned, group: group && store.settings.data.groups[group] ? group : null }
     // Pinned tabs stay together at the front.
     if (pinned) this.tabs.splice(this.tabs.filter((t) => t.pinned).length, 0, tab)
     else this.tabs.push(tab)
@@ -349,7 +360,12 @@ class PixelWindow {
         }
       }
     })
-    wc.on('did-finish-load', () => this.pageLoaded(tab))
+    wc.on('did-finish-load', () => {
+      this.pageLoaded(tab)
+      v05.onPageLoaded(this, tab)
+    })
+    // An HTTPS-upgraded page that fails falls back to http (and is remembered).
+    wc.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL, isMainFrame) => v05.onFailLoad(tab, { errorCode, errorDescription, validatedURL, isMainFrame }))
     wc.on('dom-ready', () => {
       // Password capture (main frame, normal windows, real sites only).
       if (!this.isPrivate && vaultable(wc.getURL())) wc.executeJavaScript(vault.CAPTURE_LOGIN_JS).catch(() => {})
@@ -357,6 +373,7 @@ class PixelWindow {
     wc.on('console-message', (e, _level, message) => {
       const text = typeof e?.message === 'string' ? e.message : message
       if (typeof text !== 'string' || !text.startsWith('__bit')) return
+      if (v05.handleConsole(this, tab, text)) return
       if (text.startsWith('__bitLogin:')) {
         try {
           const { username, password } = JSON.parse(text.slice(11))
@@ -378,6 +395,17 @@ class PixelWindow {
     // Buttons on our own pages go to made-up addresses: the warning page
     // (go back / continue), the new tab page (search, edit), reader (exit).
     wc.on('will-navigate', (e, target) => {
+      // Kids mode: only allowed sites. HTTPS upgrade and safe search for links.
+      if (/^https?:/.test(target) && v05.kidsBlocked(target)) {
+        e.preventDefault()
+        return wc.loadURL(v05.kidsBlockPage(target)).catch(() => {})
+      }
+      const better = /^https?:/.test(target) && v05.navigationRewrite(target)
+      if (better) {
+        e.preventDefault()
+        tab.upgradedFrom = /^http:/.test(target) && /^https:/.test(better) ? target : null
+        return wc.loadURL(better).catch(() => {})
+      }
       if (target.startsWith(NTP_ACTION) && isNtp(wc.getURL())) {
         e.preventDefault()
         const u = new URL(target)
@@ -472,6 +500,8 @@ class PixelWindow {
           { label: 'Print…', click: () => wc.print({}) }
         )
       }
+      items.push(...v05.contextItems(this, tab, params))
+      while (items[0]?.type === 'separator') items.shift()
       if (items.length) Menu.buildFromTemplate(items).popup({ window: this.win })
     })
 
@@ -486,7 +516,12 @@ class PixelWindow {
   /** Load what someone typed (or a saved address) into a tab. */
   load(wc, input) {
     if (!wc || wc.isDestroyed()) return
-    wc.loadURL(normalizeInput(input)).catch(() => {})
+    const url = normalizeInput(input)
+    if (/^https?:/.test(url) && v05.kidsBlocked(url)) return wc.loadURL(v05.kidsBlockPage(url)).catch(() => {})
+    const target = v05.rewrite(url)
+    const tab = this.tabs.find((t) => t.view.webContents === wc)
+    if (tab) tab.upgradedFrom = /^http:/.test(url) && /^https:/.test(target) ? url : null
+    wc.loadURL(target).catch(() => {})
   }
 
   /** After each page load: new tab page data, reader check, saved-login offer. */
@@ -654,6 +689,7 @@ class PixelWindow {
       { label: 'Close other tabs', enabled: others.length > 0, click: () => others.forEach((t) => this.closeTab(t.id)) },
       { type: 'separator' },
       { label: 'Reopen closed tab', accelerator: 'CmdOrCtrl+Shift+T', enabled: this.closed.length > 0, click: () => this.reopenClosed() },
+      ...v05.tabMenuItems(this, tab),
     ]).popup({ window: this.win })
   }
 
@@ -688,9 +724,11 @@ class PixelWindow {
 
   // ---------- private window lock ----------
 
-  setLocked(locked) {
+  setLocked(locked, reason = 'private') {
     this.locked = locked
-    const views = [this.activeTab()?.view, this.sidebar.open && this.sidebar.view, this.sidebar.open && this.sidebar.appView].filter(Boolean)
+    this.lockReason = locked ? reason : null
+    const pair = this.splitPair()
+    const views = [...(pair ? pair.map((t) => t.view) : [this.activeTab()?.view]), this.sidebar.open && this.sidebar.view, this.sidebar.open && this.sidebar.appView].filter(Boolean)
     for (const v of views) {
       if (locked) this.win.contentView.removeChildView(v)
       else this.win.contentView.addChildView(v)
@@ -722,7 +760,13 @@ class PixelWindow {
       tab.view.webContents.loadURL(url)
     }
     const prev = this.activeTab()
-    if (prev && prev !== tab) {
+    const inSplit = this.split && [this.split.left, this.split.right].includes(id)
+    if (this.split && !inSplit) {
+      // Leaving the split pair: hide its other page too (split stays for when you come back).
+      const other = this.getTab(prev?.id === this.split.left ? this.split.right : this.split.left)
+      if (other && other !== tab && !this.win.isDestroyed()) this.win.contentView.removeChildView(other.view)
+    }
+    if (prev && prev !== tab && !(inSplit && [this.split.left, this.split.right].includes(prev.id))) {
       prev.lastActive = Date.now()
       this.win.contentView.removeChildView(prev.view)
       if (this.findingTab) {
@@ -730,7 +774,10 @@ class PixelWindow {
         this.send('find', { close: true })
       }
     }
-    if (!this.locked) this.win.contentView.addChildView(tab.view)
+    if (!this.locked) {
+      if (inSplit) for (const sid of [this.split.left, this.split.right]) if (sid !== id && this.getTab(sid)) this.win.contentView.addChildView(this.getTab(sid).view)
+      this.win.contentView.addChildView(tab.view)
+    }
     this.activeId = id
     this.layout()
     this.extensions.selectTab(tab.view.webContents)
@@ -751,6 +798,7 @@ class PixelWindow {
     if (idx === -1) return
     // Pinned tabs stay open until you unpin them.
     if (this.tabs[idx].pinned) return
+    if (this.split && [this.split.left, this.split.right].includes(id)) this.exitSplit()
     const [tab] = this.tabs.splice(idx, 1)
     // Closing a tab nobody looked at for days counts as tidying up (XP).
     if (id !== this.activeId && Date.now() - tab.lastActive > STALE_TAB_MS) {
@@ -786,12 +834,80 @@ class PixelWindow {
       return
     }
     const top = this.shellH
+    const left = store.settings.data.verticalTabs ? this.shellLeft || 0 : 0
     const bodyH = Math.max(0, height - top)
     const sideW = this.sidebar.open ? Math.min(SIDEBAR_WIDTH, Math.floor(width * 0.6)) : 0
-    this.activeTab()?.view.setBounds({ x: 0, y: top, width: width - sideW, height: bodyH })
+    const pageW = width - sideW - left
+    const pair = this.splitPair()
+    if (pair) {
+      // Split view: two tabs side by side; the shell shows the divider in the gap.
+      const leftW = Math.round((pageW - SPLIT_GAP) * (this.split.ratio || 0.5))
+      pair[0].view.setBounds({ x: left, y: top, width: leftW, height: bodyH })
+      pair[1].view.setBounds({ x: left + leftW + SPLIT_GAP, y: top, width: pageW - leftW - SPLIT_GAP, height: bodyH })
+    } else this.activeTab()?.view.setBounds({ x: left, y: top, width: pageW, height: bodyH })
     const { view, appView, app: openApp } = this.sidebar
     if (view) view.setBounds({ x: width - sideW, y: top, width: sideW, height: openApp ? SIDEBAR_HEADER : bodyH })
     if (appView) appView.setBounds({ x: width - sideW, y: top + SIDEBAR_HEADER, width: sideW, height: Math.max(0, bodyH - SIDEBAR_HEADER) })
+  }
+
+  // ---------- split view ----------
+
+  /** The two tabs shown side by side, if split view is on and one of them is active. */
+  splitPair() {
+    if (!this.split || this.htmlFullscreen) return null
+    const a = this.getTab(this.split.left)
+    const b = this.getTab(this.split.right)
+    if (!a || !b || a.space !== this.space || b.space !== this.space) return null
+    return this.activeId === a.id || this.activeId === b.id ? [a, b] : null
+  }
+
+  splitGeometry() {
+    const pair = this.splitPair()
+    if (!pair || this.win.isDestroyed()) return null
+    const { width } = this.win.getContentBounds()
+    const left = store.settings.data.verticalTabs ? this.shellLeft || 0 : 0
+    const sideW = this.sidebar.open ? Math.min(SIDEBAR_WIDTH, Math.floor(width * 0.6)) : 0
+    const pageW = width - sideW - left
+    return { x: left + Math.round((pageW - SPLIT_GAP) * (this.split.ratio || 0.5)), width: SPLIT_GAP, left: pair[0].id, right: pair[1].id }
+  }
+
+  openSplit(leftId, rightId) {
+    if (leftId === rightId || !this.getTab(leftId) || !this.getTab(rightId)) return
+    const r = this.getTab(rightId)
+    if (r.space !== this.space) r.space = this.space
+    this.split = { left: leftId, right: rightId, ratio: this.split?.ratio || 0.5 }
+    if (r.pendingUrl) {
+      const url = r.pendingUrl
+      r.pendingUrl = null
+      r.view.webContents.loadURL(url)
+    }
+    if (!this.locked) this.win.contentView.addChildView(r.view)
+    this.layout()
+    this.pushStateNow()
+  }
+
+  /** Split with the next tab in this Space (or a new tab). */
+  splitWithNext() {
+    const list = this.tabsInSpace()
+    const i = list.findIndex((t) => t.id === this.activeId)
+    const other = list[i + 1] || list[i - 1] || this.createTab('', { select: false })
+    this.openSplit(this.activeId, other.id)
+  }
+
+  exitSplit() {
+    if (!this.split) return
+    const pair = [this.getTab(this.split.left), this.getTab(this.split.right)].filter(Boolean)
+    this.split = null
+    for (const t of pair) if (t.id !== this.activeId && !this.win.isDestroyed()) this.win.contentView.removeChildView(t.view)
+    this.layout()
+    this.pushStateNow()
+  }
+
+  setSplitRatio(r) {
+    if (!this.split || !(r > 0.15 && r < 0.85)) return
+    this.split.ratio = r
+    this.layout()
+    this.pushState()
   }
 
   // ---------- AI sidebar ----------
@@ -941,7 +1057,7 @@ function sessionSnapshot() {
       let url = realUrl(t)
       if (isNtp(url)) url = 'bit://newtab' // the app's folder can move between versions
       if (!/^(https?|file|bit):/.test(url)) continue
-      tabs.push({ url, title: (t.reader ? t.reader.title : t.pendingUrl ? t.pendingTitle : wc.getTitle()) || url, pinned: !!t.pinned, space: t.space, active: activeBySpace[t.space] === t.id })
+      tabs.push({ url, title: (t.reader ? t.reader.title : t.pendingUrl ? t.pendingTitle : wc.getTitle()) || url, pinned: !!t.pinned, space: t.space, active: activeBySpace[t.space] === t.id, group: t.group || null })
     }
     if (tabs.length) out.push({ space: pw.space, tabs: tabs.slice(0, 200) })
   }
@@ -969,7 +1085,7 @@ function restoreInto(pw, saved, { all }) {
   for (const t of saved.tabs || []) {
     if (!all && !t.pinned) continue
     if (!/^(https?|file|bit):/.test(t.url || '')) continue
-    const tab = pw.createTab(t.url, { space: spaceOf(t.space), pinned: !!t.pinned, lazy: true, select: false, title: t.title })
+    const tab = pw.createTab(t.url, { space: spaceOf(t.space), pinned: !!t.pinned, lazy: true, select: false, title: t.title, group: t.group })
     if (t.active) active[tab.space] = tab.id
   }
   pw.space = spaceOf(saved.space)
@@ -1028,6 +1144,8 @@ async function prepareSession(ses, { isPrivate }) {
 
   // Bit Shields: ads, trackers and phishing warnings in every profile.
   shields.attach(ses)
+  // 0.5: fingerprinting protection and cookie-banner rejection at page start.
+  v05.attachSession(ses)
 
   // Downloads go straight to the Downloads folder (no save dialog) and the
   // shell shows them; PDFs open in a tab from there.
@@ -1259,7 +1377,11 @@ function chromeUserAgent(ua) {
   return ua.replace(/ Electron\/\S+/, '').replace(/ (pixelbrowser|bit-browser|Bit Browser|@pixelbrowser\/desktop)\/\S+/gi, '')
 }
 
-async function openWindow({ isPrivate = false, url, restore = null } = {}) {
+async function openWindow({ isPrivate = false, url, restore = null, tor = 0 } = {}) {
+  if (isPrivate && v05.kidsOn()) {
+    focusedWindow()?.toast('Private windows are off in kids mode.')
+    return null
+  }
   if (!isPrivate) sessionFrozen = false
   // Private windows get an in-memory partition: nothing touches disk.
   const ses = isPrivate
@@ -1268,8 +1390,11 @@ async function openWindow({ isPrivate = false, url, restore = null } = {}) {
   // Look like plain Chrome to websites. The default user agent includes
   // "Electron" and the app name, and Google then refuses or shortens sign-ins.
   ses.setUserAgent(chromeUserAgent(ses.getUserAgent()))
+  if (isPrivate && tor) await v05.useTor(ses, tor)
   const extensions = await prepareSession(ses, { isPrivate })
   const pw = new PixelWindow({ ses, extensions, isPrivate })
+  pw.tor = !!tor
+  if (tor) pw.win.setTitle('Bit Browser — Private (Tor)')
   pw.win.webContents.once('did-finish-load', () => {
     const restored = restore ? restoreInto(pw, restore, { all: store.settings.data.startup !== 'new' }) : false
     // A link opened from another app still gets its own new tab on top.
@@ -1761,12 +1886,15 @@ ipcMain.on('tab:select', (e, id) => fromSender(e)?.selectTab(id))
 ipcMain.on('tab:close', (e, id) => fromSender(e)?.closeTab(id))
 ipcMain.on('tab:menu', (e, id) => fromSender(e)?.tabMenu(id))
 ipcMain.on('tab:pin', (e, id, pinned) => fromSender(e)?.pinTab(id, pinned))
-ipcMain.on('shell:height', (e, h) => {
+ipcMain.on('shell:height', (e, h, left = 0) => {
   const pw = fromSender(e)
   const n = Math.round(Number(h))
-  if (!pw || !(n >= 60 && n <= 600) || n === pw.shellH) return
+  const l = Math.max(0, Math.min(400, Math.round(Number(left) || 0)))
+  if (!pw || !(n >= 40 && n <= 600) || (n === pw.shellH && l === (pw.shellLeft || 0))) return
   pw.shellH = n
+  pw.shellLeft = l
   pw.layout()
+  pw.pushState()
 })
 ipcMain.on('bookmark:toggle', (e) => {
   const pw = fromSender(e)
@@ -1844,7 +1972,16 @@ ipcMain.on('tracker:add', (e) => {
 })
 ipcMain.handle('lock:unlock', (e, pin) => {
   const pw = fromSender(e)
-  if (!pw || !checkPin(pin)) return false
+  if (!pw) return false
+  if (pw.lockReason === 'kids' ? !v05.checkKidsPin(pin) : !checkPin(pin)) return false
+  if (pw.lockReason === 'kids') {
+    // A grown-up's PIN gives kids mode 30 more minutes today.
+    const k = store.settings.data.kids
+    k.minutesPerDay = Math.max(k.minutesPerDay, (k.usedToday || 0) + 30)
+    store.settings.save()
+    for (const w of windows.values()) if (w.lockReason === 'kids') w.setLocked(false)
+    return true
+  }
   pw.setLocked(false)
   return true
 })
@@ -2161,7 +2298,12 @@ ipcMain.handle('ai:set-enabled', (_e, on) => {
   setAIEnabled(on)
   return publicState()
 })
-ipcMain.on('ai:ask', (e, request) => fromSidebar(e)?.ai.ask(request))
+ipcMain.on('ai:ask', (e, request) => {
+  const pw = fromSidebar(e)
+  // Kids mode: Bitter can answer, but can't drive the browser.
+  if (v05.kidsOn() && request?.mode === 'agent') return pw?.toast('Agent mode is off in kids mode.')
+  pw?.ai.ask(request)
+})
 ipcMain.on('ai:stop', (e) => fromSidebar(e)?.ai.stop())
 ipcMain.on('ai:new-chat', (e) => fromSidebar(e)?.ai.newChat())
 ipcMain.on('ai:confirm', (e, { id, ok }) => fromSidebar(e)?.ai.answerConfirm(id, ok))

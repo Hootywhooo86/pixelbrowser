@@ -14,6 +14,7 @@ const os = require('node:os')
 const path = require('node:path')
 const net = require('node:net')
 const crypto = require('node:crypto')
+const { pathToFileURL } = require('node:url')
 const { app, BrowserWindow, ipcMain, dialog, Menu, Notification, clipboard, session, shell } = require('electron')
 const store = require('./store')
 const vault = require('./vault')
@@ -997,14 +998,9 @@ function addWatcher(pw, kind) {
 
 // ---------- IPC from local UI pages (shell, settings, library) ----------
 
-const LOCAL_UI = path.join(__dirname, 'ui')
-const fromLocalUi = (e) => {
-  try {
-    return e.senderFrame?.url?.startsWith('file:') && decodeURIComponent(new URL(e.senderFrame.url).pathname).includes(LOCAL_UI.replace(/\\/g, '/').split('/').slice(-2).join('/'))
-  } catch {
-    return false
-  }
-}
+// Only Bit Browser's own pages (shell, settings, library) may call these.
+const LOCAL_UI = pathToFileURL(path.join(__dirname, 'ui')).href
+const fromLocalUi = (e) => String(e.senderFrame?.url || '').startsWith(LOCAL_UI)
 
 function windowFor(e) {
   const win = BrowserWindow.fromWebContents(e.sender)

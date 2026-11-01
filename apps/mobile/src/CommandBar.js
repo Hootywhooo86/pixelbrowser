@@ -68,7 +68,7 @@ export function matchScore(q, text, scatter = true) {
     if (start < 0) start = pos
     pos++
   }
-  return pos - start <= q.length * 3 ? 20 : 0
+  return pos - start <= q.length * 2 ? 20 : 0
 }
 
 const hostOf = (url) => {
@@ -86,13 +86,13 @@ function CommandBar({ query, tabs = [], onAction, onClose }) {
 
   const results = useMemo(() => {
     const out = []
-    const add = (kind, item, score, extra) => score > 0 && out.push({ kind, score, ...item, ...extra })
-    for (const a of ACTIONS) add('action', { key: `a:${a.id}`, title: a.title, sub: 'Action', icon: a.icon, action: a.id }, Math.max(matchScore(q, a.title), matchScore(q, a.words, false) * 0.8) + 5)
-    for (const t of tabs) add('tab', { key: `t:${t.id}`, title: t.title || 'New tab', sub: `${t.private ? 'Private tab' : 'Open tab'} · ${hostOf(t.url)}`, icon: 'tabs', action: 'tab', arg: t.id }, Math.max(matchScore(q, t.title), matchScore(q, t.url, false)) + 3)
+    const add = (kind, item, score, bonus = 0) => score > 0 && out.push({ kind, score: score + bonus, ...item })
+    for (const a of ACTIONS) add('action', { key: `a:${a.id}`, title: a.title, sub: 'Action', icon: a.icon, action: a.id }, Math.max(matchScore(q, a.title), matchScore(q, a.words, false) * 0.8), 5)
+    for (const t of tabs) add('tab', { key: `t:${t.id}`, title: t.title || 'New tab', sub: `${t.private ? 'Private tab' : 'Open tab'} · ${hostOf(t.url)}`, icon: 'tabs', action: 'tab', arg: t.id }, Math.max(matchScore(q, t.title), matchScore(q, t.url, false)), 3)
     for (const b of bookmarks) add('bookmark', { key: `b:${b.id}`, title: b.title || b.url, sub: `Bookmark · ${hostOf(b.url)}`, icon: 'star', action: 'open', arg: b.url }, Math.max(matchScore(q, b.title), matchScore(q, b.url, false)))
     if (q)
       for (const r of liveRecords('history').slice(-800))
-        add('history', { key: `h:${r.id}`, title: r.data.title || r.data.url, sub: `History · ${hostOf(r.data.url)}`, icon: 'reload', action: 'open', arg: r.data.url }, Math.max(matchScore(q, r.data.title), matchScore(q, r.data.url, false)) - 5)
+        add('history', { key: `h:${r.id}`, title: r.data.title || r.data.url, sub: `History · ${hostOf(r.data.url)}`, icon: 'reload', action: 'open', arg: r.data.url }, Math.max(matchScore(q, r.data.title), matchScore(q, r.data.url, false)), -5)
     for (const p of SETTINGS_PAGES) add('settings', { key: `s:${p.id}`, title: p.title, sub: 'Settings', icon: 'settings', action: 'settings', arg: p.id }, matchScore(q, p.title))
     return out.sort((a, b) => b.score - a.score).slice(0, q ? 40 : 14)
   }, [q, tabs, bookmarks])
