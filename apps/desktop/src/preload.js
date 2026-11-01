@@ -6,6 +6,9 @@ const { injectBrowserAction } = require('electron-chrome-extensions/browser-acti
 injectBrowserAction()
 
 contextBridge.exposeInMainWorld('pixel', {
+  // 0.5 features (packages, notes, palette, imports, backup, 2FA…): see v05.js COMMANDS.
+  v05: (cmd, ...args) => ipcRenderer.invoke('v05', cmd, ...args),
+  onPalette: (fn) => ipcRenderer.on('palette', (_e, cmd) => fn(cmd)),
   newTab: (url) => ipcRenderer.send('tab:new', url),
   selectTab: (id) => ipcRenderer.send('tab:select', id),
   closeTab: (id) => ipcRenderer.send('tab:close', id),
@@ -35,7 +38,7 @@ contextBridge.exposeInMainWorld('pixel', {
   openDownload: (id) => ipcRenderer.send('download:open', id),
   showDownload: (id) => ipcRenderer.send('download:show', id),
   // 0.4: shell height, bookmarks, find, info bars, reader, menu
-  shellHeight: (h) => ipcRenderer.send('shell:height', h),
+  shellHeight: (h, left) => ipcRenderer.send('shell:height', h, left),
   toggleBookmark: () => ipcRenderer.send('bookmark:toggle'),
   bookmarkMenu: (id) => ipcRenderer.send('bookmark:menu', id),
   folderMenu: (name) => ipcRenderer.send('bookmark:folder-menu', name),

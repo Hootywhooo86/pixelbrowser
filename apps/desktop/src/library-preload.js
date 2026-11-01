@@ -2,6 +2,8 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('pixelLibrary', {
+  // 0.5 features (packages, notes, palette, imports, backup, 2FA…): see v05.js COMMANDS.
+  v05: (cmd, ...args) => ipcRenderer.invoke('v05', cmd, ...args),
   bookmarks: () => ipcRenderer.invoke('library:bookmarks'),
   updateBookmark: (id, patch) => ipcRenderer.invoke('library:bookmark-update', id, patch),
   removeBookmark: (id) => ipcRenderer.invoke('library:bookmark-remove', id),

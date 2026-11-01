@@ -868,7 +868,7 @@ class PixelWindow {
     const left = store.settings.data.verticalTabs ? this.shellLeft || 0 : 0
     const sideW = this.sidebar.open ? Math.min(SIDEBAR_WIDTH, Math.floor(width * 0.6)) : 0
     const pageW = width - sideW - left
-    return { x: left + Math.round((pageW - SPLIT_GAP) * (this.split.ratio || 0.5)), width: SPLIT_GAP, left: pair[0].id, right: pair[1].id }
+    return { x: left + Math.round((pageW - SPLIT_GAP) * (this.split.ratio || 0.5)), width: SPLIT_GAP, pageLeft: left, pageW, left: pair[0].id, right: pair[1].id }
   }
 
   openSplit(leftId, rightId) {
@@ -1595,14 +1595,33 @@ function appMenu(pw) {
   const web = /^https?:/.test(url)
   Menu.buildFromTemplate([
     { label: 'New tab', accelerator: 'CmdOrCtrl+T', click: () => pw.createTab() },
-    { label: 'New private window', accelerator: 'CmdOrCtrl+Shift+N', click: () => openWindow({ isPrivate: true }) },
+    { label: 'New private window', accelerator: 'CmdOrCtrl+Shift+N', enabled: !v05.kidsOn(), click: () => openWindow({ isPrivate: true }) },
+    { label: 'New private window over Tor', enabled: !v05.kidsOn(), click: () => v05.openTorWindow(pw) },
     { label: 'Reopen closed tab', accelerator: 'CmdOrCtrl+Shift+T', enabled: pw.closed.length > 0, click: () => pw.reopenClosed() },
+    { label: 'Command palette…', accelerator: 'CmdOrCtrl+K', click: () => pw.send('palette', { open: true }) },
     { type: 'separator' },
     { label: bookmarks.find(url) ? 'Edit bookmark…' : 'Bookmark this page', accelerator: 'CmdOrCtrl+D', enabled: web, click: () => toggleBookmark(pw) },
     { label: 'Bookmarks manager', accelerator: 'CmdOrCtrl+Shift+O', click: () => openLibrary('bookmarks') },
     { label: 'Show bookmarks bar', type: 'checkbox', checked: !!store.settings.data.bookmarksBar, accelerator: 'CmdOrCtrl+Shift+B', click: () => toggleBookmarksBar() },
     { label: 'History', accelerator: 'CmdOrCtrl+H', click: () => openLibrary('history') },
     { label: 'Downloads folder', click: () => shell.openPath(downloadDir()) },
+    { label: 'Packages', click: () => openLibrary('packages') },
+    { label: 'Notes', click: () => openLibrary('notes') },
+    { label: 'Reading list', click: () => openLibrary('reading') },
+    { label: 'Watched pages & prices', click: () => openLibrary('watchers') },
+    { type: 'separator' },
+    { label: 'Save page to notes', enabled: web && !pw.isPrivate, click: () => v05.saveNote(pw) },
+    { label: 'Save to read later', enabled: web && !pw.isPrivate, click: () => v05.saveForLater(pw) },
+    { label: 'Watch this page for changes', enabled: web && !pw.isPrivate, click: () => v05.addWatcher(pw, 'changes') },
+    { label: 'Track the price on this page', enabled: web && !pw.isPrivate, click: () => v05.addWatcher(pw, 'price') },
+    { label: 'Scan a 2FA QR code on this page', enabled: web && !pw.isPrivate, click: () => v05.scanQrOnPage(pw) },
+    { label: 'Ask Bitter about this PDF', visible: v05.looksLikePdf(url), enabled: !pw.isPrivate && store.settings.data.aiEnabled, click: () => v05.askAboutPdf(pw) },
+    { type: 'separator' },
+    { label: pw.split ? 'Close split view' : 'Split view', enabled: !!tab, click: () => (pw.split ? pw.exitSplit() : pw.splitWithNext()) },
+    { label: 'Vertical tabs', type: 'checkbox', checked: !!store.settings.data.verticalTabs, click: () => v05.setVerticalTabs(!store.settings.data.verticalTabs) },
+    { label: 'Video speed', enabled: web, click: () => v05.speedMenu(pw) },
+    { label: 'Sleep timer', click: () => v05.sleepMenu(pw) },
+    { label: 'Save video or images…', enabled: web, click: () => v05.saveMediaMenu(pw) },
     { type: 'separator' },
     { label: 'Find in page…', accelerator: 'CmdOrCtrl+F', enabled: !!tab, click: () => pw.openFind() },
     { label: tab?.reader ? 'Leave reader mode' : 'Reader mode', accelerator: 'CmdOrCtrl+Alt+R', enabled: !!tab?.reader || (web && !!tab?.readerable), click: () => pw.toggleReader() },
@@ -2422,12 +2441,18 @@ function broadcastSettingsSoon() {
   settingsTimer = setTimeout(broadcastSettings, 500)
 }
 
+v05.init({
+  windows, openLibrary, openSettings, focusedWindow, realUrl, openWindow, broadcastSettingsSoon, notifyLibrary, toggleBookmark,
+  panic: (win) => panic(win), EXTRACT_ARTICLE_JS, readerPage, paletteFor,
+})
+
 // Hooks for the end-to-end test only.
 if (process.env.PIXEL_E2E) {
   globalThis.__bitTest = {
     runPanic, shields, xp, setTheme, windows, history: store.history, records: store.records, downloads,
     bookmarks, vault, quests, store, openLibrary, toggleBookmark, appMenu, isNtp, NTP_URL, realUrl,
     sitePermission, setSitePermission, lastAutoPrint: () => lastAutoPrint, crashlog,
+    v05, openWindow,
   }
 }
 
@@ -2477,12 +2502,20 @@ app.whenReady().then(async () => {
           { label: 'Bookmarks Manager', accelerator: 'CmdOrCtrl+Shift+O', click: () => openLibrary('bookmarks') },
           { label: 'Show Bookmarks Bar', accelerator: 'CmdOrCtrl+Shift+B', click: () => toggleBookmarksBar() },
           { label: 'History', accelerator: 'CmdOrCtrl+H', click: () => openLibrary('history') },
+          { type: 'separator' },
+          { label: 'Packages', click: () => openLibrary('packages') },
+          { label: 'Notes', click: () => openLibrary('notes') },
+          { label: 'Reading List', click: () => openLibrary('reading') },
+          { label: 'Watched Pages & Prices', click: () => openLibrary('watchers') },
         ],
       },
       {
         label: 'View',
         submenu: [
           { label: 'Reader Mode', accelerator: 'CmdOrCtrl+Alt+R', click: (_i, w) => (w && windows.get(w.id))?.toggleReader() },
+          { label: 'Command Palette', accelerator: 'CmdOrCtrl+K', click: (_i, w) => (w && windows.get(w.id))?.send('palette', { open: true }) },
+          { label: 'Split View', accelerator: 'CmdOrCtrl+Alt+S', click: (_i, w) => { const pw = w && windows.get(w.id); if (pw) pw.split ? pw.exitSplit() : pw.splitWithNext() } },
+          { label: 'Vertical Tabs', click: () => v05.setVerticalTabs(!store.settings.data.verticalTabs) },
           { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: (_i, w) => w && windows.get(w.id)?.activeTab()?.view.webContents.reload() },
           { label: 'Developer Tools', accelerator: 'F12', click: (_i, w) => w && windows.get(w.id)?.activeTab()?.view.webContents.toggleDevTools() },
           { role: 'togglefullscreen' },

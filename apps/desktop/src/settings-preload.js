@@ -2,6 +2,8 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('pixelSettings', {
+  // 0.5 features (packages, notes, palette, imports, backup, 2FA…): see v05.js COMMANDS.
+  v05: (cmd, ...args) => ipcRenderer.invoke('v05', cmd, ...args),
   get: () => ipcRenderer.invoke('settings:get'),
   setSearch: (engine, customUrl) => ipcRenderer.invoke('settings:set-search', { engine, customUrl }),
   setAI: (on) => ipcRenderer.invoke('settings:set-ai', on),

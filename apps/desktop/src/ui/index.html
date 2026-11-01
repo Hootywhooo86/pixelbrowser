@@ -27,6 +27,8 @@
       <button type="button" id="reader" class="inbar ico only" hidden title="Reader mode: just the article (Ctrl+Alt+R)">READ</button>
       <button type="button" id="star" class="inbar ico only" title="Bookmark this page (Ctrl+D)">STAR</button>
     </form>
+    <button id="track" class="pxbtn" hidden title="Tracking numbers on this page. Click to add them to your packages.">TRACK</button>
+    <button id="askpdf" class="pxbtn" hidden title="Ask Bitter about this PDF">ASK PDF</button>
     <button id="tracker" class="pxbtn ico" hidden title="Add this show or movie to 128bittracker">+TRK</button>
     <button id="ask" class="pxbtn ico" title="Ask Bitter (Shift+Enter in the address bar)">ASK</button>
     <browser-action-list id="actions" alignment="bottom right"></browser-action-list>
@@ -51,7 +53,12 @@
     </form>
     <div id="prompts"></div>
   </div>
+  <form id="palette" hidden>
+    <input id="paletteq" spellcheck="false" autocomplete="off" placeholder="Type a command, a tab, a bookmark or a setting…" aria-label="Command palette">
+    <div id="palettelist" role="listbox"></div>
+  </form>
   </div>
+  <div id="splitter" hidden title="Drag to resize. Double-click to close split view."></div>
   <div id="toast" hidden></div>
   <div id="lock" hidden>
     <form id="lockform">

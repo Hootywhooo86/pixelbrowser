@@ -207,3 +207,27 @@ body.agent #toolbar { border-top-color: var(--pink); }
   padding: 8px 10px; max-width: 420px; background: var(--panel); color: var(--ink);
   border: 3px solid var(--edge); box-shadow: 4px 4px 0 #05050f; font: 12px/1.3 system-ui, sans-serif;
 }
+
+/* ---------- 0.5: palette, track chip, groups, split view, vertical tabs ---------- */
+#track, #askpdf { height: 26px; font-size: 8px; color: var(--bg); background: var(--orange); border-color: #a5600a; }
+#track.saved { background: var(--panel); color: var(--teal); border-color: var(--teal); }
+#palette { padding: 6px 10px 8px; background: var(--panel); border-top: 3px solid var(--edge); border-bottom: 3px solid var(--teal); }
+#paletteq { width: 100%; height: 30px; font: 13px system-ui, sans-serif; color: var(--ink); background: var(--bg); border: 3px solid var(--edge); padding: 0 8px; outline: none; }
+#paletteq:focus { border-color: var(--teal); }
+#palettelist { max-height: 260px; overflow-y: auto; margin-top: 6px; }
+.pitem { display: flex; gap: 10px; align-items: center; padding: 5px 8px; cursor: pointer; font: 12px system-ui, sans-serif; color: var(--ink); }
+.pitem .kind { font: 7px 'Press Start 2P', monospace; color: var(--muted); width: 64px; flex: none; }
+.pitem .t { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pitem .sub { color: var(--muted); max-width: 40%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pitem.on { background: var(--bg); outline: 2px solid var(--teal); }
+.gchip { flex: none; height: 26px; padding: 0 8px; display: inline-flex; align-items: center; font: 8px 'Press Start 2P', monospace; color: var(--bg); border: 3px solid rgba(0,0,0,.35); cursor: pointer; max-width: 120px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.gchip input { width: 90px; font: 8px 'Press Start 2P', monospace; border: none; background: transparent; color: inherit; outline: none; }
+.tab.grouped { box-shadow: inset 0 3px 0 var(--gcolor); }
+#splitter { position: fixed; width: 8px; bottom: 0; background: var(--edge); cursor: col-resize; z-index: 5; box-shadow: inset 2px 0 0 rgba(255,255,255,.08), inset -2px 0 0 rgba(0,0,0,.4); }
+#splitter:hover, #splitter.drag { background: var(--teal); }
+body.vertical #tabstrip { height: auto; position: fixed; left: 0; top: 0; bottom: 0; width: 220px; flex-direction: column; align-items: stretch; padding: 8px; gap: 6px; border-right: 3px solid var(--edge); z-index: 3; }
+body.vertical #tabs { flex-direction: column; overflow-y: auto; flex: 1; }
+body.vertical .tab { width: 100%; max-width: none; flex: none; }
+body.vertical .tab.pinned { width: 100%; justify-content: flex-start; padding: 0 8px; }
+body.vertical #shell > :not(#tabstrip) { margin-left: 220px; }
+body.vertical .gchip { max-width: none; }

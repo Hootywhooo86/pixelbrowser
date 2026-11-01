@@ -14,11 +14,48 @@ if (new URLSearchParams(location.search).get('private') === '1') {
   $('space').hidden = true
 }
 
+function groupChip(gid, g) {
+  const chip = document.createElement('div')
+  chip.className = 'gchip'
+  chip.style.background = g.color
+  chip.textContent = (g.collapsed ? '+ ' : '') + g.name
+  chip.title = `${g.name}: click for options, double-click to rename`
+  chip.onclick = () => window.pixel.v05('group-menu', gid)
+  chip.ondblclick = (e) => {
+    e.stopPropagation()
+    const input = document.createElement('input')
+    input.value = g.name
+    input.maxLength = 30
+    chip.replaceChildren(input)
+    input.focus()
+    input.select()
+    const done = () => window.pixel.v05('group-rename', gid, input.value)
+    input.onkeydown = (k) => (k.key === 'Enter' ? input.blur() : k.key === 'Escape' && ((input.value = g.name), input.blur()))
+    input.onblur = done
+  }
+  return chip
+}
+
 function render() {
+  const groups = state.groups || {}
+  const seenGroups = new Set()
+  document.body.classList.toggle('vertical', !!state.vertical)
   tabsEl.replaceChildren(
-    ...state.tabs.map((tab) => {
+    ...state.tabs.flatMap((tab) => {
+      const g = tab.group && groups[tab.group]
+      const pre = []
+      if (g && !seenGroups.has(tab.group)) {
+        seenGroups.add(tab.group)
+        pre.push(groupChip(tab.group, g))
+      }
+      // Collapsed groups hide their tabs (the active one stays visible).
+      if (g && g.collapsed && tab.id !== state.activeId) return pre
       const el = document.createElement('div')
-      el.className = 'tab' + (tab.id === state.activeId ? ' active' : '') + (tab.loading ? ' loading' : '') + (tab.pinned ? ' pinned' : '')
+      if (g) {
+        el.style.setProperty('--gcolor', g.color)
+        el.classList.add('grouped')
+      }
+      el.className += ' tab' + (tab.id === state.activeId ? ' active' : '') + (tab.loading ? ' loading' : '') + (tab.pinned ? ' pinned' : '')
       el.title = tab.pinned ? `${tab.title} (pinned)` : tab.title
       el.dataset.id = tab.id
       el.onclick = () => window.pixel.selectTab(tab.id)
@@ -39,7 +76,7 @@ function render() {
         const mark = document.createElement('i')
         mark.className = 'pin-mark'
         el.append(letter, mark)
-        return el
+        return [...pre, el]
       }
 
       const title = document.createElement('span')
@@ -54,7 +91,7 @@ function render() {
         window.pixel.closeTab(tab.id)
       }
       el.append(title, close)
-      return el
+      return [...pre, el]
     })
   )
 
@@ -97,9 +134,110 @@ function render() {
   $('reader').hidden = !(state.readerable || state.inReader)
   $('reader').classList.toggle('on', !!state.inReader)
   $('reader').title = state.inReader ? 'Leave reader mode (Esc)' : 'Reader mode: just the article (Ctrl+Alt+R)'
+  $('track').hidden = !state.tracking
+  $('track').textContent = state.tracking ? `TRACK ${state.tracking}` : 'TRACK'
+  $('track').classList.toggle('saved', !!state.trackingSaved)
+  $('askpdf').hidden = !(state.isPdf && state.aiEnabled !== false && !state.isPrivate)
+  renderSplit()
   renderBookbar()
   renderPrompts()
 }
+
+// ---------- split view divider ----------
+
+let dragging = false
+function renderSplit() {
+  const sp = state.split
+  const el = $('splitter')
+  el.hidden = !sp
+  if (!sp || dragging) return
+  el.style.left = `${sp.x}px`
+  el.style.top = `${reported}px`
+}
+$('splitter').addEventListener('mousedown', (e) => {
+  if (!state.split) return
+  dragging = true
+  $('splitter').classList.add('drag')
+  e.preventDefault()
+})
+window.addEventListener('mousemove', (e) => {
+  if (!dragging || !state.split) return
+  const { pageLeft, pageW } = state.split
+  $('splitter').style.left = `${e.clientX - 4}px`
+  window.pixel.v05('split-ratio', (e.clientX - pageLeft) / pageW)
+})
+window.addEventListener('mouseup', () => {
+  if (!dragging) return
+  dragging = false
+  $('splitter').classList.remove('drag')
+})
+$('splitter').ondblclick = () => window.pixel.v05('split-close')
+
+// ---------- command palette (Ctrl+K, or ">" in the address bar) ----------
+
+let pItems = []
+let pIndex = 0
+async function paletteSearch() {
+  const q = $('paletteq').value.replace(/^>\s*/, '')
+  pItems = await window.pixel.v05('palette', q)
+  if (q && /\S/.test(q)) pItems.push({ kind: 'go', id: q, title: `Search or go to "${q}"`, sub: '' })
+  pIndex = 0
+  drawPalette()
+}
+const KIND_LABEL = { action: 'DO', tab: 'TAB', bookmark: 'BOOKMARK', history: 'HISTORY', settings: 'SETTINGS', go: 'GO' }
+function drawPalette() {
+  $('palettelist').replaceChildren(
+    ...pItems.map((it, i) => {
+      const row = document.createElement('div')
+      row.className = 'pitem' + (i === pIndex ? ' on' : '')
+      row.setAttribute('role', 'option')
+      const k = document.createElement('span')
+      k.className = 'kind'
+      k.textContent = KIND_LABEL[it.kind] || it.kind.toUpperCase()
+      const t = document.createElement('span')
+      t.className = 't'
+      t.textContent = it.title
+      const sub = document.createElement('span')
+      sub.className = 'sub'
+      sub.textContent = it.sub || ''
+      row.append(k, t, sub)
+      row.onmousedown = (e) => (e.preventDefault(), runPalette(i))
+      return row
+    })
+  )
+  $('palettelist').children[pIndex]?.scrollIntoView({ block: 'nearest' })
+}
+function openPalette(text = '') {
+  $('palette').hidden = false
+  $('paletteq').value = text
+  $('paletteq').focus()
+  paletteSearch()
+}
+function closePalette() {
+  if ($('palette').hidden) return
+  $('palette').hidden = true
+  $('paletteq').value = ''
+  pItems = []
+}
+function runPalette(i) {
+  const it = pItems[i]
+  closePalette()
+  if (it) window.pixel.v05('palette-run', it)
+}
+$('palette').addEventListener('submit', (e) => (e.preventDefault(), runPalette(pIndex)))
+$('paletteq').addEventListener('input', paletteSearch)
+$('paletteq').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') (pIndex = Math.min(pItems.length - 1, pIndex + 1)), drawPalette(), e.preventDefault()
+  else if (e.key === 'ArrowUp') (pIndex = Math.max(0, pIndex - 1)), drawPalette(), e.preventDefault()
+  else if (e.key === 'Escape') closePalette()
+})
+$('paletteq').addEventListener('blur', () => setTimeout(closePalette, 150))
+window.pixel.onPalette((cmd) => (cmd.open ? openPalette(cmd.text || '') : closePalette()))
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') (e.preventDefault(), openPalette())
+})
+$('track').onclick = () => window.pixel.v05('track-menu')
+$('askpdf').onclick = () => window.pixel.v05('palette-run', { kind: 'action', id: 'askpdf' })
 
 // ---------- bookmarks bar ----------
 
@@ -239,12 +377,20 @@ window.pixel.onFind((cmd) => {
 let reported = 0
 new ResizeObserver(() => {
   if (document.body.classList.contains('locked')) return
-  const h = Math.ceil($('shell').getBoundingClientRect().height)
-  if (h && h !== reported) {
-    reported = h
-    window.pixel.shellHeight(h)
-  }
+  reportShell()
 }).observe($('shell'))
+let reportedLeft = -1
+function reportShell() {
+  if (document.body.classList.contains('locked')) return
+  const h = Math.ceil($('shell').getBoundingClientRect().height)
+  const left = document.body.classList.contains('vertical') ? Math.ceil($('tabstrip').getBoundingClientRect().width) : 0
+  if (h && (h !== reported || left !== reportedLeft)) {
+    reported = h
+    reportedLeft = left
+    window.pixel.shellHeight(h, left)
+  }
+}
+new MutationObserver(reportShell).observe(document.body, { attributes: true, attributeFilter: ['class'] })
 
 // ---------- toast ----------
 
@@ -283,6 +429,15 @@ $('settings').onclick = () => window.pixel.openSettings()
 $('update').onclick = () => window.pixel.installUpdate()
 $('aitoggle').onclick = () => window.pixel.setAIEnabled(state.aiEnabled === false)
 address.addEventListener('focus', () => address.select())
+// Typing ">" first in the address bar opens the command palette.
+address.addEventListener('input', () => {
+  if (address.value.startsWith('>')) {
+    const rest = address.value
+    address.value = state.tabs.find((t) => t.id === state.activeId)?.url || ''
+    address.blur()
+    openPalette(rest)
+  }
+})
 $('newtab').onclick = () => window.pixel.newTab()
 $('back').onclick = () => window.pixel.back()
 $('forward').onclick = () => window.pixel.forward()
