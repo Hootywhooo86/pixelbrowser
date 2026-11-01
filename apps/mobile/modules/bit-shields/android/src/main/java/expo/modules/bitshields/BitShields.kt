@@ -61,6 +61,131 @@ object BitShields {
 
   // ---------- called from react-native-webview ----------
 
+  // ---------- pop-up windows (Sign in with Google, Apple, Microsoft…) ----------
+  //
+  // Sign-in buttons open a pop-up that reports back to the page through
+  // window.opener and then closes. react-native-webview can't keep that link,
+  // so sign-in pop-ups open here: a real child WebView in a full-screen dialog,
+  // attached with WebViewTransport so window.opener works. Ordinary new-window
+  // links are handed to the app to open as a normal tab instead.
+  @Volatile var openTabListener: ((String) -> Unit)? = null
+
+  private val AUTH_HOSTS = Regex(
+    "(^|\\.)(accounts\\.google\\.com|accounts\\.youtube\\.com|appleid\\.apple\\.com|idmsa\\.apple\\.com|login\\.microsoftonline\\.com|login\\.live\\.com|login\\.microsoft\\.com|github\\.com|facebook\\.com|instagram\\.com|twitter\\.com|x\\.com|discord\\.com|slack\\.com|auth0\\.com|okta\\.com|onelogin\\.com|claude\\.ai|anthropic\\.com|openai\\.com|chatgpt\\.com|paypal\\.com|stripe\\.com|shopify\\.com|amazon\\.[a-z.]+|goshippo\\.com|linkedin\\.com|yahoo\\.com|dropbox\\.com|zoom\\.us|notion\\.so)$",
+    RegexOption.IGNORE_CASE
+  )
+
+  private fun isSignIn(url: String?): Boolean {
+    if (url.isNullOrBlank() || url == "about:blank") return true
+    val host = try { android.net.Uri.parse(url).host ?: "" } catch (e: Throwable) { "" }
+    return AUTH_HOSTS.containsMatchIn(host) || Regex("oauth|/authorize|/signin|/login|/auth/", RegexOption.IGNORE_CASE).containsMatchIn(url)
+  }
+
+  @JvmStatic
+  fun onCreateWindow(parent: WebView, resultMsg: android.os.Message): Boolean {
+    val ctx = parent.context
+    val child = WebView(ctx)
+    val ps = parent.settings
+    child.settings.apply {
+      javaScriptEnabled = true
+      domStorageEnabled = true
+      userAgentString = ps.userAgentString
+      javaScriptCanOpenWindowsAutomatically = true
+      setSupportMultipleWindows(true)
+      loadWithOverviewMode = true
+      useWideViewPort = true
+    }
+    try { android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(child, true) } catch (e: Throwable) {}
+    // Private tabs keep their own cookie jar; so does their pop-up.
+    try {
+      if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+        val name = WebViewCompat.getProfile(parent).name
+        if (name != "Default") WebViewCompat.setProfile(child, name)
+      }
+    } catch (e: Throwable) {}
+
+    val dialog = android.app.Dialog(ctx, android.R.style.Theme_DeviceDefault_NoActionBar)
+    val dp = ctx.resources.displayMetrics.density
+    val title = android.widget.TextView(ctx).apply {
+      setTextColor(android.graphics.Color.parseColor("#f4f1ff"))
+      textSize = 14f
+      maxLines = 1
+      ellipsize = android.text.TextUtils.TruncateAt.END
+      setPadding((14 * dp).toInt(), 0, (8 * dp).toInt(), 0)
+      text = "Sign in"
+    }
+    val close = android.widget.Button(ctx).apply {
+      text = "CLOSE"
+      setTextColor(android.graphics.Color.parseColor("#0b0b16"))
+      setBackgroundColor(android.graphics.Color.parseColor("#2dd4bf"))
+      setOnClickListener { dialog.dismiss() }
+    }
+    val header = android.widget.LinearLayout(ctx).apply {
+      orientation = android.widget.LinearLayout.HORIZONTAL
+      gravity = android.view.Gravity.CENTER_VERTICAL
+      setBackgroundColor(android.graphics.Color.parseColor("#141428"))
+      setPadding(0, (6 * dp).toInt(), (8 * dp).toInt(), (6 * dp).toInt())
+      addView(title, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+      addView(close)
+    }
+    val root = android.widget.LinearLayout(ctx).apply {
+      orientation = android.widget.LinearLayout.VERTICAL
+      setBackgroundColor(android.graphics.Color.parseColor("#141428"))
+      fitsSystemWindows = true
+      addView(header, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
+      addView(child, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    }
+    dialog.setContentView(root)
+    dialog.setOnDismissListener {
+      try { android.webkit.CookieManager.getInstance().flush() } catch (e: Throwable) {}
+      try { child.stopLoading(); child.destroy() } catch (e: Throwable) {}
+    }
+
+    var first = true
+    var shown = false
+    val showIt = { if (!shown) { shown = true; try { dialog.show() } catch (e: Throwable) {} } }
+    child.webViewClient = object : android.webkit.WebViewClient() {
+      override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = decide(request.url.toString())
+
+      @Deprecated("old API") override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean = decide(url)
+
+      fun decide(url: String): Boolean {
+        if (first) {
+          first = false
+          if (!isSignIn(url) && openTabListener != null) {
+            // An ordinary "open in new window" link: make it a normal tab.
+            openTabListener?.invoke(url)
+            dialog.dismiss()
+            return true
+          }
+          showIt()
+        }
+        if (!url.startsWith("http") && !url.startsWith("about:") && !url.startsWith("data:") && !url.startsWith("blob:")) return true
+        return false
+      }
+
+      override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+        if (first) { first = false; if (!isSignIn(url) && openTabListener != null && url != null) { openTabListener?.invoke(url); dialog.dismiss(); return } }
+        showIt()
+        title.text = try { android.net.Uri.parse(url).host ?: "Sign in" } catch (e: Throwable) { "Sign in" }
+      }
+    }
+    child.webChromeClient = object : android.webkit.WebChromeClient() {
+      override fun onCloseWindow(window: WebView) { dialog.dismiss() }
+    }
+    dialog.setOnKeyListener { _, keyCode, event ->
+      if (keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_UP) {
+        if (child.canGoBack()) child.goBack() else dialog.dismiss()
+        true
+      } else false
+    }
+
+    val transport = resultMsg.obj as WebView.WebViewTransport
+    transport.webView = child
+    resultMsg.sendToTarget()
+    return true
+  }
+
   // Files the web view can't show itself (PDFs, attachments). When the app
   // is listening, it saves and opens them (PDF viewer) instead of Android's
   // download manager, which can't show them in the app.

@@ -417,10 +417,25 @@ class PixelWindow {
       if (!this.wasFullScreen && !this.win.isDestroyed()) this.win.setFullScreen(false)
       this.layout()
     })
-    wc.setWindowOpenHandler(({ url: target }) => {
+    wc.setWindowOpenHandler(({ url: target, disposition }) => {
       if (/^tel:/i.test(target)) {
         callWithBitCaller(target.slice(4))
         return { action: 'deny' }
+      }
+      // Sign-in pop-ups (Google, Apple, Microsoft…) must stay real pop-ups so
+      // they can report back to the page through window.opener and close.
+      if (isSignInPopup(target, disposition)) {
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            parent: this.win,
+            width: 520,
+            height: 720,
+            autoHideMenuBar: true,
+            backgroundColor: '#141428',
+            webPreferences: { session: this.ses, sandbox: true, contextIsolation: true },
+          },
+        }
       }
       this.selectTab(this.createTab(target).id)
       return { action: 'deny' }
@@ -1225,6 +1240,19 @@ function addToTracker(pw) {
   const link = `128bittracker://add?title=${encodeURIComponent(title)}&url=${encodeURIComponent(wc.getURL())}&source=bitbrowser`
   if (app.getApplicationNameForProtocol('128bittracker://')) return shell.openExternal(link).catch(() => {})
   dialog.showMessageBox(pw.win, { type: 'info', message: '128bittracker isn\'t installed on this computer yet.', detail: `When it is, this button adds "${title}" to your list.` })
+}
+
+const SIGN_IN_HOSTS = /(^|\.)(accounts\.google\.com|accounts\.youtube\.com|appleid\.apple\.com|idmsa\.apple\.com|login\.microsoftonline\.com|login\.live\.com|login\.microsoft\.com|github\.com|facebook\.com|instagram\.com|twitter\.com|x\.com|discord\.com|slack\.com|auth0\.com|okta\.com|onelogin\.com|claude\.ai|anthropic\.com|openai\.com|chatgpt\.com|paypal\.com|stripe\.com|shopify\.com|amazon\.[a-z.]+|goshippo\.com|linkedin\.com|yahoo\.com|dropbox\.com|zoom\.us|notion\.so)$/i
+
+/** A window.open that's a sign-in pop-up (blank pop-ups usually become one). */
+function isSignInPopup(url, disposition) {
+  if (disposition && disposition !== 'new-window') return false // target=_blank links → tabs
+  if (!url || url === 'about:blank') return true
+  try {
+    return SIGN_IN_HOSTS.test(new URL(url).hostname) || /oauth|\/authorize|\/signin|\/login|\/auth\//i.test(url)
+  } catch {
+    return false
+  }
 }
 
 function chromeUserAgent(ua) {

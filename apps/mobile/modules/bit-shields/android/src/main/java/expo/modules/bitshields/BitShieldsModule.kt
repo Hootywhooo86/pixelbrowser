@@ -8,7 +8,11 @@ class BitShieldsModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("BitShields")
 
-    Events("onDownload")
+    Events("onDownload", "onOpenTab")
+
+    OnStartObserving("onOpenTab") { BitShields.openTabListener = { url -> sendEvent("onOpenTab", mapOf("url" to url)) } }
+
+    OnStopObserving("onOpenTab") { BitShields.openTabListener = null }
 
     OnStartObserving("onDownload") { BitShields.downloadListener = { sendEvent("onDownload", it) } }
 

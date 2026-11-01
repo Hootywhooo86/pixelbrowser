@@ -243,6 +243,7 @@ function Browser() {
   // Android hands files it can't show (PDFs, attachments) to the app here,
   // with the page's sign-in cookies, instead of its own download manager.
   useEffect(() => {
+    const tabSub = nativeWeb?.addListener?.('onOpenTab', (e) => e?.url && /^https?:/i.test(e.url) && openTab(e.url, { private: !!tabsRef.current.find((t) => t.id === activeRef.current)?.private }))
     const sub = nativeWeb?.addListener?.('onDownload', (e) => {
       let filename = guessFilename(e.url, e.contentDisposition)
       if (/pdf/i.test(e.mimetype || '') && !/\.pdf$/i.test(filename)) filename += '.pdf'
@@ -254,7 +255,10 @@ function Browser() {
         else toast(`Downloaded ${item.filename}. Open it from Menu > Downloads.`)
       })
     })
-    return () => sub?.remove?.()
+    return () => {
+      sub?.remove?.()
+      tabSub?.remove?.()
+    }
   }, [])
   const [find, setFind] = useState(null) // { index, total } while the find bar is open
   const findQuery = useRef('')
@@ -1156,7 +1160,10 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
       pullToRefreshEnabled
       sharedCookiesEnabled
       cacheEnabled
-      setSupportMultipleWindows={false}
+      // Pop-ups on: sign-in windows (Google, Apple…) open as real pop-ups that can
+      // report back to the page; other new-window links come back as tabs (onOpenTab).
+      setSupportMultipleWindows
+      javaScriptCanOpenWindowsAutomatically
       allowsBackForwardNavigationGestures
       allowsFullscreenVideo
       allowsInlineMediaPlayback

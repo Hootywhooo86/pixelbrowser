@@ -111,7 +111,9 @@ const SCRIPT = String.raw`(function(){
   function fakeWindow(){
     var w = { closed: false, opener: window, close: function(){ w.closed = true }, focus: function(){}, blur: function(){}, print: function(){},
       document: { write: function(){}, writeln: function(){}, close: function(){}, open: function(){}, body: null, title: '' } };
-    var go = function(u){ u = abs(u); if (isFileUrl(u) || /\.pdf(?:[?#]|$)/i.test(u)) grab(u); else location.href = u };
+    // A page that opened a blank window and then sends it somewhere real (often
+    // a sign-in pop-up): open that real window, so it keeps window.opener.
+    var go = function(u){ u = abs(u); if (isFileUrl(u) || /\.pdf(?:[?#]|$)/i.test(u)) grab(u); else { w.closed = true; open.call(window, u) } };
     var loc = { assign: go, replace: go, reload: function(){}, toString: function(){ return 'about:blank' } };
     Object.defineProperty(loc, 'href', { get: function(){ return 'about:blank' }, set: go });
     Object.defineProperty(w, 'location', { get: function(){ return loc }, set: go });

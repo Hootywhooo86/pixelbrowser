@@ -31,7 +31,7 @@ import java.lang.reflect.Method;
 
 final class BitShieldsHook {
   private static boolean looked = false;
-  private static Method created, pageStarted, intercept, download;
+  private static Method created, pageStarted, intercept, download, createWindow;
 
   private static synchronized void lookUp() {
     if (looked) return;
@@ -42,8 +42,9 @@ final class BitShieldsHook {
       pageStarted = c.getMethod("onPageStarted", WebView.class, String.class);
       intercept = c.getMethod("intercept", WebView.class, WebResourceRequest.class);
       try { download = c.getMethod("onDownload", WebView.class, String.class, String.class, String.class, String.class, long.class); } catch (Throwable e) { download = null; }
+      try { createWindow = c.getMethod("onCreateWindow", WebView.class, android.os.Message.class); } catch (Throwable e) { createWindow = null; }
     } catch (Throwable ignored) {
-      created = pageStarted = intercept = download = null;
+      created = pageStarted = intercept = download = createWindow = null;
     }
   }
 
@@ -57,6 +58,13 @@ final class BitShieldsHook {
     lookUp();
     if (pageStarted == null) return;
     try { pageStarted.invoke(null, view, url); } catch (Throwable ignored) {}
+  }
+
+  /** True when Bit Browser opened the pop-up itself (sign-in windows keep window.opener). */
+  static boolean createWindow(WebView view, android.os.Message resultMsg) {
+    lookUp();
+    if (createWindow == null) return false;
+    try { return Boolean.TRUE.equals(createWindow.invoke(null, view, resultMsg)); } catch (Throwable ignored) { return false; }
   }
 
   /** True when the app took the download (it opens PDFs in its own viewer). */
@@ -118,6 +126,13 @@ function patchWebView(projectRoot) {
     [
       '        webView.setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->\n',
       `        webView.setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->\n            if (BitShieldsHook.download(webView, url, userAgent, contentDisposition, mimetype, contentLength)) return@DownloadListener\n`,
+    ],
+  ])
+
+  patch(path.join(dir, 'RNCWebChromeClient.java'), [
+    [
+      '    public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {\n',
+      `    public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {\n        ${MARK}\n        if (BitShieldsHook.createWindow(view, resultMsg)) return true;\n`,
     ],
   ])
 
