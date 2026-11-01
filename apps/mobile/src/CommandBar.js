@@ -52,20 +52,23 @@ export const SETTINGS_PAGES = [
 ].map(([id, title]) => ({ id, title }))
 
 /** Score how well `q` matches `text`: 0 = no match. Whole-word and prefix hits rank higher than scattered letters. */
-export function matchScore(q, text) {
+export function matchScore(q, text, scatter = true) {
   const t = String(text || '').toLowerCase()
   if (!q) return 1
   const i = t.indexOf(q)
   if (i === 0) return 100
   if (i > 0) return /\W/.test(t[i - 1]) ? 80 : 60
-  // Letters in order (e.g. "rdm" → "reader mode").
+  if (!scatter || q.length < 2) return 0
+  // Letters in order, close together (e.g. "rdm" → "reader mode").
   let pos = 0
+  let start = -1
   for (const ch of q) {
     pos = t.indexOf(ch, pos)
     if (pos < 0) return 0
+    if (start < 0) start = pos
     pos++
   }
-  return 20
+  return pos - start <= q.length * 3 ? 20 : 0
 }
 
 const hostOf = (url) => {
@@ -84,12 +87,12 @@ function CommandBar({ query, tabs = [], onAction, onClose }) {
   const results = useMemo(() => {
     const out = []
     const add = (kind, item, score, extra) => score > 0 && out.push({ kind, score, ...item, ...extra })
-    for (const a of ACTIONS) add('action', { key: `a:${a.id}`, title: a.title, sub: 'Action', icon: a.icon, action: a.id }, Math.max(matchScore(q, a.title), matchScore(q, a.words) * 0.8) + 5)
-    for (const t of tabs) add('tab', { key: `t:${t.id}`, title: t.title || 'New tab', sub: `${t.private ? 'Private tab' : 'Open tab'} · ${hostOf(t.url)}`, icon: 'tabs', action: 'tab', arg: t.id }, Math.max(matchScore(q, t.title), matchScore(q, t.url)) + 3)
-    for (const b of bookmarks) add('bookmark', { key: `b:${b.id}`, title: b.title || b.url, sub: `Bookmark · ${hostOf(b.url)}`, icon: 'star', action: 'open', arg: b.url }, Math.max(matchScore(q, b.title), matchScore(q, b.url)))
+    for (const a of ACTIONS) add('action', { key: `a:${a.id}`, title: a.title, sub: 'Action', icon: a.icon, action: a.id }, Math.max(matchScore(q, a.title), matchScore(q, a.words, false) * 0.8) + 5)
+    for (const t of tabs) add('tab', { key: `t:${t.id}`, title: t.title || 'New tab', sub: `${t.private ? 'Private tab' : 'Open tab'} · ${hostOf(t.url)}`, icon: 'tabs', action: 'tab', arg: t.id }, Math.max(matchScore(q, t.title), matchScore(q, t.url, false)) + 3)
+    for (const b of bookmarks) add('bookmark', { key: `b:${b.id}`, title: b.title || b.url, sub: `Bookmark · ${hostOf(b.url)}`, icon: 'star', action: 'open', arg: b.url }, Math.max(matchScore(q, b.title), matchScore(q, b.url, false)))
     if (q)
       for (const r of liveRecords('history').slice(-800))
-        add('history', { key: `h:${r.id}`, title: r.data.title || r.data.url, sub: `History · ${hostOf(r.data.url)}`, icon: 'reload', action: 'open', arg: r.data.url }, Math.max(matchScore(q, r.data.title), matchScore(q, r.data.url)) - 5)
+        add('history', { key: `h:${r.id}`, title: r.data.title || r.data.url, sub: `History · ${hostOf(r.data.url)}`, icon: 'reload', action: 'open', arg: r.data.url }, Math.max(matchScore(q, r.data.title), matchScore(q, r.data.url, false)) - 5)
     for (const p of SETTINGS_PAGES) add('settings', { key: `s:${p.id}`, title: p.title, sub: 'Settings', icon: 'settings', action: 'settings', arg: p.id }, matchScore(q, p.title))
     return out.sort((a, b) => b.score - a.score).slice(0, q ? 40 : 14)
   }, [q, tabs, bookmarks])
@@ -135,11 +138,11 @@ export function firstResult(query, tabs = []) {
   if (!q) return null
   let best = null
   for (const a of ACTIONS) {
-    const s = Math.max(matchScore(q, a.title), matchScore(q, a.words) * 0.8) + 5
+    const s = Math.max(matchScore(q, a.title), matchScore(q, a.words, false) * 0.8) + 5
     if (s > 5 && (!best || s > best.s)) best = { s, action: a.id }
   }
   for (const t of tabs) {
-    const s = Math.max(matchScore(q, t.title), matchScore(q, t.url)) + 3
+    const s = Math.max(matchScore(q, t.title), matchScore(q, t.url, false)) + 3
     if (s > 3 && (!best || s > best.s)) best = { s, action: 'tab', arg: t.id }
   }
   for (const p of SETTINGS_PAGES) {
