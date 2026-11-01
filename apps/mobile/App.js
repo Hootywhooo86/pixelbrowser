@@ -140,7 +140,7 @@ const flushCookies = (now) => {
 
 // Sign-in sites that need their sister domains' cookies (Google ↔ YouTube,
 // Microsoft, Apple, Amazon…). Elsewhere third-party cookies stay blocked.
-const SIGN_IN_HOSTS = /(^|\.)(google\.[a-z.]+|youtube\.com|gmail\.com|googleusercontent\.com|microsoftonline\.com|live\.com|microsoft\.com|office\.com|apple\.com|icloud\.com|amazon\.[a-z.]+|facebook\.com|instagram\.com|github\.com|okta\.com|auth0\.com|goshippo\.com)$/i
+const SIGN_IN_HOSTS = /(^|\.)(google\.[a-z.]+|youtube\.com|gmail\.com|googleusercontent\.com|microsoftonline\.com|live\.com|microsoft\.com|office\.com|apple\.com|icloud\.com|amazon\.[a-z.]+|facebook\.com|instagram\.com|github\.com|okta\.com|auth0\.com|goshippo\.com|claude\.ai|anthropic\.com|appleid\.apple\.com)$/i
 
 const toast = (text) => (Platform.OS === 'android' ? ToastAndroid.show(text, ToastAndroid.SHORT) : Alert.alert(text))
 
