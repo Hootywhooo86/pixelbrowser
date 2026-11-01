@@ -71,12 +71,16 @@ object BitShields {
   @Volatile var openTabListener: ((String) -> Unit)? = null
 
   private val AUTH_HOSTS = Regex(
-    "(^|\\.)(accounts\\.google\\.com|accounts\\.youtube\\.com|appleid\\.apple\\.com|idmsa\\.apple\\.com|login\\.microsoftonline\\.com|login\\.live\\.com|login\\.microsoft\\.com|github\\.com|facebook\\.com|instagram\\.com|twitter\\.com|x\\.com|discord\\.com|slack\\.com|auth0\\.com|okta\\.com|onelogin\\.com|claude\\.ai|anthropic\\.com|openai\\.com|chatgpt\\.com|paypal\\.com|stripe\\.com|shopify\\.com|amazon\\.[a-z.]+|goshippo\\.com|linkedin\\.com|yahoo\\.com|dropbox\\.com|zoom\\.us|notion\\.so)$",
+    "(^|\\.)(accounts\\.google\\.com|accounts\\.youtube\\.com|appleid\\.apple\\.com|idmsa\\.apple\\.com|login\\.microsoftonline\\.com|login\\.live\\.com|login\\.microsoft\\.com|github\\.com|facebook\\.com|instagram\\.com|twitter\\.com|x\\.com|discord\\.com|slack\\.com|auth0\\.com|okta\\.com|onelogin\\.com|claude\\.ai|anthropic\\.com|openai\\.com|chatgpt\\.com|paypal\\.com|stripe\\.com|shopify\\.com|amazon\\.[a-z.]+|linkedin\\.com|yahoo\\.com|dropbox\\.com|zoom\\.us|notion\\.so)$",
     RegexOption.IGNORE_CASE
   )
 
+  // Files (labels, invoices, PDFs) opened in a new window are downloads, not sign-ins.
+  private val FILE_URL = Regex("\\.(pdf|zip|csv|xlsx?|docx?|png|jpe?g|gif|apk)([?#]|$)|/download|/label|[?&](download|attachment)=|amazonaws\\.com/", RegexOption.IGNORE_CASE)
+
   private fun isSignIn(url: String?): Boolean {
     if (url.isNullOrBlank() || url == "about:blank") return true
+    if (FILE_URL.containsMatchIn(url)) return false
     val host = try { android.net.Uri.parse(url).host ?: "" } catch (e: Throwable) { "" }
     return AUTH_HOSTS.containsMatchIn(host) || Regex("oauth|/authorize|/signin|/login|/auth/", RegexOption.IGNORE_CASE).containsMatchIn(url)
   }
@@ -169,6 +173,13 @@ object BitShields {
         showIt()
         title.text = try { android.net.Uri.parse(url).host ?: "Sign in" } catch (e: Throwable) { "Sign in" }
       }
+    }
+    // A pop-up that turns out to be a file (a label PDF, an invoice): hand it to
+    // the app like any other download, which opens PDFs in the viewer.
+    child.setDownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->
+      val taken = try { onDownload(parent, url, userAgent, contentDisposition, mimetype, contentLength) } catch (e: Throwable) { false }
+      if (!taken) openTabListener?.invoke(url)
+      dialog.dismiss()
     }
     child.webChromeClient = object : android.webkit.WebChromeClient() {
       override fun onCloseWindow(window: WebView) { dialog.dismiss() }
