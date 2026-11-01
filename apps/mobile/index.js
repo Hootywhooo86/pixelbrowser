@@ -26,3 +26,13 @@ function Root() {
 }
 
 registerRootComponent(Root)
+import './src/https-upgrade'
+import './src/autoconsent'
+import './src/fingerprint'
+import './src/AliasesScreen'
+import './src/history-search'
+import './src/WatchersScreen'
+import './src/offline-ai'
+import './src/Family128Screen'
+import './src/SharingScreen'
+import './src/KidsScreen'

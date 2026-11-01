@@ -15,7 +15,7 @@
     <input id="find" type="search" placeholder="Search" aria-label="Search" spellcheck="false">
   </header>
   <nav id="nav" aria-label="Library sections">
-    <a href="#bookmarks" data-sec="bookmarks">BOOKMARKS</a><a href="#history" data-sec="history">HISTORY</a>
+    <a href="#bookmarks" data-sec="bookmarks">BOOKMARKS</a><a href="#history" data-sec="history">HISTORY</a><a href="#packages" data-sec="packages">PACKAGES</a><a href="#notes" data-sec="notes">NOTES</a><a href="#reading" data-sec="reading">READ LATER</a><a href="#watchers" data-sec="watchers">WATCHING</a>
   </nav>
   <main class="view">
     <section id="bookmarks">
@@ -41,7 +41,27 @@
         <button id="clear-go" class="px danger">CLEAR BROWSING DATA</button>
         <span id="clear-done" class="muted" hidden></span>
       </div>
+      <label class="check"><input type="checkbox" id="hist-words"> Search in plain words (e.g. "that shipping supplies site last week")</label>
       <div id="hist"></div>
+    </section>
+    <section id="packages" hidden>
+      <p class="muted">Tracking numbers you've saved. Bit Browser spots them on pages (Shippo, store emails, order pages): click TRACK in the toolbar to add them. Status opens on the carrier's own site.</p>
+      <form id="pkg-add" class="row wrap"><input id="pkg-number" placeholder="Paste a tracking number" spellcheck="false" aria-label="Tracking number"><input id="pkg-label" placeholder="What is it? (optional)" aria-label="Label"><button class="px">ADD</button><span id="pkg-msg" class="muted"></span></form>
+      <ul id="pkg-list" class="list"></ul>
+    </section>
+    <section id="notes" hidden>
+      <p class="muted">Clips and notes, kept per Space and synced. Select text on a page and right-click → Save to notes.</p>
+      <form id="note-add" class="row wrap"><textarea id="note-text" rows="3" placeholder="Write a note…" aria-label="New note"></textarea><button class="px">SAVE NOTE</button></form>
+      <ul id="note-list" class="list"></ul>
+    </section>
+    <section id="reading" hidden>
+      <p class="muted">Pages saved to read later (Menu → Save to read later). Articles are kept on this computer so they open offline.</p>
+      <label class="check"><input type="checkbox" id="read-show"> Show ones I've read</label>
+      <ul id="read-list" class="list"></ul>
+    </section>
+    <section id="watchers" hidden>
+      <p class="muted">Pages Bitter keeps an eye on. Bit Browser checks them while it's open (every 30 minutes) and sends a notification when a page changes or a price drops. Add one from Menu → Watch this page / Track the price.</p>
+      <ul id="watch-list" class="list"></ul>
     </section>
   </main>
   <script src="library.js"></script>

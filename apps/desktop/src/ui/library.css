@@ -25,3 +25,10 @@ aside { display: flex; flex-direction: column; gap: 4px; }
 .item .time { color: var(--muted); font: 12px ui-monospace, monospace; }
 .hist .item { grid-template-columns: 52px 1fr auto; }
 .px.danger { background: var(--pink); color: var(--bg); border-color: #a02a55; }
+
+/* 0.5 */
+.item.dim { opacity: .55; }
+.item .note { color: var(--ink); white-space: pre-wrap; word-break: break-word; font-size: 13px; }
+#note-text, textarea.edit { width: 100%; min-height: 64px; font: 13px system-ui, sans-serif; color: var(--ink); background: var(--bg); border: 3px solid var(--edge); padding: 6px; }
+.px.hot { background: var(--teal); color: var(--bg); border-color: var(--teal-dark); }
+#pkg-add input { flex: 1; min-width: 160px; }

@@ -224,3 +224,4 @@ export async function syncOnce({ client, data, deviceId, cursor = 0, lastPushedA
   }
   return { cursor: seq, lastPushedAt: startedAt, changed }
 }
+export { createShareCode, deriveShareKeys, sharePayload, parseSharePayload, ShareClient, syncShare, shareCollection, SHARE_KINDS } from './sharing.js'
