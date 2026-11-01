@@ -8,7 +8,61 @@ class BitShieldsModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("BitShields")
 
-    Events("onDownload", "onOpenTab")
+    Events("onDownload", "onOpenTab", "onMediaControl", "onPipChanged")
+
+    OnStartObserving("onMediaControl") { BitMedia.controlListener = { action -> sendEvent("onMediaControl", mapOf("action" to action)) } }
+
+    OnStopObserving("onMediaControl") { BitMedia.controlListener = null }
+
+    OnStartObserving("onPipChanged") { BitMedia.pipListener = { on -> sendEvent("onPipChanged", mapOf("pip" to on)) } }
+
+    OnStopObserving("onPipChanged") { BitMedia.pipListener = null }
+
+    // Home pressed while a video is full screen (Android below 12) -> PiP.
+    OnUserLeavesActivity { BitMedia.onUserLeave(appContext.currentActivity) }
+
+    // ---------- background play ----------
+
+    Function("setBackgroundPlay") { on: Boolean ->
+      BitMedia.backgroundPlay = on
+      if (!on) appContext.reactContext?.let { BitMedia.stopMedia(it) }
+    }
+
+    Function("mediaState") { playing: Boolean, title: String, site: String ->
+      appContext.reactContext?.let { BitMedia.mediaState(it, playing, title, site) }
+    }
+
+    Function("stopMedia") { appContext.reactContext?.let { BitMedia.stopMedia(it) } }
+
+    // ---------- picture-in-picture ----------
+
+    Function("isPipSupported") { BitMedia.pipSupported(appContext.currentActivity) }
+
+    Function("enterPip") { w: Int, h: Int -> BitMedia.enterPip(appContext.currentActivity, w, h) }
+
+    Function("setAutoPip") { on: Boolean, w: Int, h: Int -> BitMedia.setAutoPip(appContext.currentActivity, on, w, h) }
+
+    // ---------- Tor through Orbot ----------
+
+    Function("orbotInstalled") { appContext.reactContext?.let { BitMedia.orbotInstalled(it) } ?: false }
+
+    Function("startOrbot") { appContext.reactContext?.let { BitMedia.startOrbot(it) } }
+
+    Function("openOrbot") { appContext.reactContext?.let { BitMedia.openOrbot(it) } ?: false }
+
+    AsyncFunction("portOpen") { port: Int -> BitMedia.portOpen(port) }
+
+    Function("proxySupported") { BitMedia.proxySupported() }
+
+    AsyncFunction("setProxy") { rules: List<String>, promise: expo.modules.kotlin.Promise ->
+      BitMedia.setProxy(rules) { ok, err -> if (ok) promise.resolve(true) else promise.reject("ERR_PROXY", err ?: "Couldn't set the proxy", null) }
+    }
+
+    AsyncFunction("clearProxy") { promise: expo.modules.kotlin.Promise -> BitMedia.clearProxy { promise.resolve(it) } }
+
+    // ---------- passkeys ----------
+
+    Function("passkeysSupported") { BitMedia.passkeysSupported() }
 
     OnStartObserving("onOpenTab") { BitShields.openTabListener = { url -> sendEvent("onOpenTab", mapOf("url" to url)) } }
 

@@ -10,15 +10,30 @@
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": {
+        "buildType": "apk"
+      }
     },
     "production": {
-      "android": { "buildType": "app-bundle" }
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
+    "play": {
+      "extends": "production",
+      "env": {
+        "BIT_PLAY_BUILD": "1"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
     }
   },
   "submit": {
     "production": {
-      "android": { "track": "internal" }
+      "android": {
+        "track": "internal"
+      }
     }
   }
 }

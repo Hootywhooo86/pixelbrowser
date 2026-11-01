@@ -1,0 +1,19 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Background play: keep page audio going with the screen off -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <!-- Tor mode: see whether Orbot is installed -->
+  <queries>
+    <package android:name="org.torproject.android" />
+  </queries>
+
+  <application>
+    <service
+      android:name="expo.modules.bitshields.BitMediaService"
+      android:exported="false"
+      android:foregroundServiceType="mediaPlayback" />
+  </application>
+</manifest>

@@ -96,6 +96,7 @@ object BitShields {
       useWideViewPort = true
     }
     try { android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(child, true) } catch (e: Throwable) {}
+    BitMedia.enablePasskeys(child) // "Sign in with a passkey" inside sign-in pop-ups
     // Private tabs keep their own cookie jar; so does their pop-up.
     try {
       if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
@@ -214,6 +215,7 @@ object BitShields {
   fun onWebViewCreated(view: WebView) {
     views[view] = null
     applyDocStart(view)
+    BitMedia.enablePasskeys(view)
   }
 
   @JvmStatic

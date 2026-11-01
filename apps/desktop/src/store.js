@@ -88,13 +88,24 @@ const settings = new JsonFile('pixel-settings.json', {
   vault: { offerToSave: true, syncPasswords: false, syncCards: false, never: [] }, // never = origins not to offer saving for
   crashReports: false, // opt-in: problems are written to a local log only
   quests: { week: '', progress: {}, done: {} },
+  // v0.5
+  privacy5: { httpsUpgrade: true, cookieBanners: true, fingerprint: true, siteOff: {} }, // siteOff[host] = { cookieBanners, fingerprint } turned off for that site
+  httpOnly: {}, // host -> time https failed, so it loads over http next time
+  verticalTabs: false,
+  groups: {}, // group id -> { name, color, collapsed }
+  breachCheck: { enabled: false, lastRun: 0, results: {} }, // results[loginId] = { pwned, checkedAt }
+  aliases: { provider: '', lastAlias: '' }, // 'simplelogin' | 'addy'; the API key lives in secrets
+  kids: { enabled: false, pin: '', safeSearch: true, mode: 'block', allow: [], block: [], minutesPerDay: 0, usedToday: 0, day: '' },
+  family: { server: '', account: null }, // 128bit account (coming soon)
+  sharing: [], // [{ id, name, collections: ['bookmarks'], code-in-secrets }]
+  watcherMinutes: 30,
 })
 settings.save()
 
 // Synced collections, stored as { [id]: { id, updatedAt, deviceId, deleted?, data } }
-const records = new JsonFile('pixel-records.json', { memory: {}, history: {}, tabs: {}, settings: {}, bookmarks: {}, passwords: {}, addresses: {}, cards: {} })
+const records = new JsonFile('pixel-records.json', { memory: {}, history: {}, tabs: {}, settings: {}, bookmarks: {}, passwords: {}, addresses: {}, cards: {}, notes: {}, packages: {}, readlater: {}, totp: {}, watchers: {} })
 // Files from older versions lack the newer collections; sync merges into them.
-for (const c of ['memory', 'history', 'tabs', 'settings', 'bookmarks', 'passwords', 'addresses', 'cards']) records.data[c] = records.data[c] || {}
+for (const c of ['memory', 'history', 'tabs', 'settings', 'bookmarks', 'passwords', 'addresses', 'cards', 'notes', 'packages', 'readlater', 'totp', 'watchers']) records.data[c] = records.data[c] || {}
 
 const secretsFile = new JsonFile('pixel-secrets.json', {})
 

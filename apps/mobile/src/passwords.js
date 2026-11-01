@@ -210,6 +210,15 @@ const COLLECTIONS = {
   cards: { secret: 'number', index: () => cardIndex(), key: CARD, store: storeCard, remove: (id) => SecureStore.deleteItemAsync(CARD(id)), field: 'cardIndex' },
 }
 
+/**
+ * Other secret stores (2FA codes in totp.js) join the same sync rules: synced
+ * only when "Sync passwords" is on, moved into SecureStore and stripped from
+ * local records once pushed. spec: { secret, index, key, store, remove, field }.
+ */
+export function registerSecretCollection(name, spec) {
+  COLLECTIONS[name] = spec
+}
+
 let applying = false
 
 /**

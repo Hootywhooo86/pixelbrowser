@@ -5,8 +5,13 @@
   "description": "End-to-end encrypted sync: 24-word sync codes, XChaCha20-Poly1305 records, last-writer-wins merge.",
   "type": "module",
   "main": "src/index.js",
-  "exports": { ".": "./src/index.js" },
-  "scripts": { "test": "node --test test/*.test.js" },
+  "exports": {
+    ".": "./src/index.js",
+    "./backup": "./src/backup.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
     "@noble/hashes": "^2.4.0",

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- Hidden helper page: reads PDF text (pdf.js) and QR codes (jsQR) for the
+     app. Pinned library versions from the public CDNs, the same pdf.js the
+     phone's PDF viewer uses. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net 'unsafe-inline'; connect-src https://cdnjs.cloudflare.com data: blob:; worker-src blob:; img-src data: blob:">
+<title>helper</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+</head>
+<body>
+<script>
+  // Load the pdf.js worker from a blob (workers must be same-origin).
+  let workerReady = null
+  function ensureWorker() {
+    if (!window.pdfjsLib) throw new Error("Couldn't load the PDF reader. Check your internet connection.")
+    workerReady = workerReady || fetch('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js')
+      .then((r) => r.text())
+      .then((t) => (pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([t], { type: 'text/javascript' }))))
+    return workerReady
+  }
+  const b64bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+
+  /** PDF bytes (base64) → { pages, text }. */
+  window.pdfText = async (b64, maxChars = 120000) => {
+    await ensureWorker()
+    const doc = await pdfjsLib.getDocument({ data: b64bytes(b64) }).promise
+    let text = ''
+    for (let i = 1; i <= doc.numPages && text.length < maxChars; i++) {
+      const page = await doc.getPage(i)
+      const content = await page.getTextContent()
+      text += `\n\n[Page ${i}]\n` + content.items.map((it) => it.str + (it.hasEOL ? '\n' : ' ')).join('')
+    }
+    return { pages: doc.numPages, text: text.slice(0, maxChars).trim() }
+  }
+
+  /** PNG (base64) → the text of a QR code in it, or ''. */
+  window.readQr = async (b64) => {
+    if (!window.jsQR) throw new Error("Couldn't load the QR reader. Check your internet connection.")
+    const img = new Image()
+    img.src = 'data:image/png;base64,' + b64
+    await img.decode()
+    const c = document.createElement('canvas')
+    c.width = img.naturalWidth
+    c.height = img.naturalHeight
+    const ctx = c.getContext('2d')
+    ctx.drawImage(img, 0, 0)
+    const data = ctx.getImageData(0, 0, c.width, c.height)
+    return jsQR(data.data, c.width, c.height)?.data || ''
+  }
+</script>
+</body>
+</html>

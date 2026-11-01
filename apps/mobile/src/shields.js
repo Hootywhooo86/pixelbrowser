@@ -22,11 +22,17 @@ import { requireOptionalNativeModule } from 'expo'
 import { award } from './xp'
 import { track } from './quests'
 import {
-  LISTS, REGIONAL_LISTS, SCRIPTLETS_URL, selectedLists, compileLists, createMatcher, buildPageScript, buildSiteScript, hostOf, findIn,
+  LISTS, REGIONAL_LISTS, SCRIPTLETS_URL, selectedLists, compileLists, createMatcher, buildPageScript, buildSiteScript, hostOf, findIn, YOUTUBE_JS, EARLY_SITES,
 } from '@pixelbrowser/shields-core'
+import Constants from 'expo-constants'
 import { getState, update, putRecord } from './store'
 
 const native = Platform.OS === 'android' ? requireOptionalNativeModule('BitShields') : null
+
+// Google Play build (BIT_PLAY_BUILD=1, see app.config.js): Play doesn't allow
+// apps that block YouTube ads, so YouTube's scriptlets and backup layer are left out.
+const PLAY_BUILD = !!Constants.expoConfig?.extra?.playBuild
+const isYouTubeHost = (host) => EARLY_SITES.some((s) => host === s || String(host).endsWith(`.${s}`))
 const DIR = `${FileSystem.documentDirectory}bitshields/`
 const MAX_AGE = 24 * 60 * 60 * 1000
 
@@ -198,11 +204,12 @@ async function rebuildPageScript() {
     generic: generic.generic,
     genericExceptions: generic.genericExceptions,
     cosmeticOff: generic.off,
-    scriptlets: site?.scriptlets || {},
+    scriptlets: PLAY_BUILD ? {} : site?.scriptlets || {},
     scriptletExceptions: site?.scriptletExceptions || {},
     library,
     siteOff,
   })
+  if (PLAY_BUILD) pageScript = pageScript.replace(YOUTUBE_JS, '')
   siteCache.clear()
   if (native) {
     native.setSiteOff(siteOff)
@@ -234,6 +241,7 @@ export function useShieldsScript() {
 export function siteScript(url) {
   const host = hostOf(url)
   if (!enabled() || !host || !site || !siteShieldsOn(url)) return ''
+  if (PLAY_BUILD && isYouTubeHost(host)) return ''
   if (siteCache.has(host)) return siteCache.get(host)
   const js = buildSiteScript({ compiled: site, library, host })
   siteCache.set(host, js)

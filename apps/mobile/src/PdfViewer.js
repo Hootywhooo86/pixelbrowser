@@ -4,10 +4,11 @@
 // service so labels come out at their true size.
 
 import { useEffect, useRef, useState } from 'react'
-import { Modal, View, Text, StyleSheet, Alert, ScrollView } from 'react-native'
+import { Modal, View, Text, StyleSheet, Alert, ScrollView, Platform, Pressable } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { readDownloadBase64, printDownload, shareDownload, saveDownloadCopy, openDownload, formatSize } from './downloads'
+import { readDownloadBase64, shareDownload, saveDownloadCopy, openDownload, formatSize } from './downloads'
+import { printPdf, usePreset, setPreset, choosePrinter, presetLabel, PAPERS } from './label-presets'
 import { PButton, PText } from './ui'
 import { C } from './theme'
 
@@ -35,9 +36,23 @@ export const VIEWER_HTML = `<!doctype html><html><head>
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     render(bytes);
   };
+  // Text of every page (for "Ask Bitter about this PDF"), capped at ~60k characters.
+  var doc = null;
+  window.__pdfText = function(){
+    if (!doc) return post({ text: '', textError: 'The PDF is still opening.' });
+    var out = [], total = 0, chain = Promise.resolve();
+    for (var n = 1; n <= doc.numPages; n++) (function(n){
+      chain = chain.then(function(){ if (total > 60000) return; return doc.getPage(n).then(function(p){ return p.getTextContent() }).then(function(tc){
+        var t = tc.items.map(function(i){ return i.str + (i.hasEOL ? '\n' : ' ') }).join('');
+        out.push('--- Page ' + n + ' ---\n' + t); total += t.length;
+      }) });
+    })(n);
+    chain.then(function(){ post({ text: out.join('\n\n').slice(0, 60000) }) }).catch(function(e){ post({ text: '', textError: String(e && e.message || e) }) });
+  };
   function fail(text){ document.getElementById('msg').textContent = text; post({ error: text }) }
   function render(bytes){
     pdfjsLib.getDocument({ data: bytes, isEvalSupported: false }).promise.then(function(pdf){
+      doc = pdf;
       document.getElementById('msg').style.display = 'none';
       post({ pages: pdf.numPages });
       var box = document.getElementById('pages');
@@ -68,11 +83,13 @@ export const VIEWER_HTML = `<!doctype html><html><head>
 <script src="${PDFJS}/pdf.min.js" onload="start()" onerror="fail('Showing PDFs needs an internet connection the first time. You can still PRINT, SAVE or OPEN WITH another app.')"></script>
 </body></html>`
 
-export default function PdfViewer({ item, visible, onClose }) {
+export default function PdfViewer({ item, visible, onClose, onAskPdf }) {
   const insets = useSafeAreaInsets()
   const view = useRef(null)
   const [pages, setPages] = useState(0)
   const [error, setError] = useState('')
+  const [presetOpen, setPresetOpen] = useState(false)
+  const preset = usePreset()
 
   useEffect(() => {
     setPages(0)
@@ -101,6 +118,10 @@ export default function PdfViewer({ item, visible, onClose }) {
     }
     if (m.ready) sendPdf()
     else if (m.pages) setPages(m.pages)
+    else if (m.text !== undefined) {
+      if (!m.text.trim()) return Alert.alert('Ask Bitter', m.textError || "This PDF has no text Bitter can read (it may be a scanned image).")
+      onAskPdf?.({ title: item.filename, text: m.text })
+    }
     else if (m.error) setError(m.error)
   }
 
@@ -118,11 +139,39 @@ export default function PdfViewer({ item, visible, onClose }) {
           <PButton small label="DONE" onPress={onClose} />
         </View>
         <ScrollView horizontal style={st.actionsBar} contentContainerStyle={st.actions} showsHorizontalScrollIndicator={false}>
-          <PButton small hot label="PRINT" onPress={run(() => printDownload(item))} />
+          <PButton small hot icon="print" label="PRINT" onPress={run(() => printPdf(item.path))} />
+          <Pressable onPress={() => setPresetOpen(true)} style={st.chip} accessibilityRole="button" accessibilityLabel={`Printer settings: ${presetLabel(preset)}`}>
+            <Text style={st.chipText} numberOfLines={1}>{presetLabel(preset)}</Text>
+          </Pressable>
+          {onAskPdf && <PButton small icon="bitter" label="ASK BITTER" onPress={() => view.current?.injectJavaScript('window.__pdfText && window.__pdfText();true;')} disabled={!pages} />}
           <PButton small label="SAVE" onPress={run(async () => (await saveDownloadCopy(item)) && Alert.alert('Saved', `${item.filename} was saved.`))} />
           <PButton small label="SHARE" onPress={run(() => shareDownload(item))} />
           <PButton small label="OPEN WITH" onPress={run(() => openDownload(item))} />
         </ScrollView>
+        {presetOpen && (
+          <View style={st.preset}>
+            <Text style={st.presetLabel}>Paper</Text>
+            <View style={st.row}>
+              {Object.entries(PAPERS).map(([id, p]) => (
+                <PButton key={id} small hot={preset.paper === id} label={p.label} onPress={() => setPreset({ paper: id })} />
+              ))}
+            </View>
+            <Text style={st.presetLabel}>Orientation</Text>
+            <View style={st.row}>
+              <PButton small hot={preset.orientation !== 'landscape'} label="PORTRAIT" onPress={() => setPreset({ orientation: 'portrait' })} />
+              <PButton small hot={preset.orientation === 'landscape'} label="LANDSCAPE" onPress={() => setPreset({ orientation: 'landscape' })} />
+            </View>
+            {Platform.OS === 'ios' ? (
+              <View style={st.row}>
+                <PButton small label={preset.printerName ? `PRINTER: ${preset.printerName}` : 'CHOOSE PRINTER'} onPress={run(choosePrinter)} />
+                {!!preset.printerName && <PButton small label="FORGET" onPress={() => setPreset({ printerUrl: '', printerName: '' })} />}
+              </View>
+            ) : (
+              <Text style={st.presetNote}>Android asks which printer each time. Pick your label printer and the same paper size there; labels print at their real size.</Text>
+            )}
+            <PButton small label="DONE" onPress={() => setPresetOpen(false)} style={{ alignSelf: 'flex-end' }} />
+          </View>
+        )}
         {!!error && <Text style={st.error}>{error}</Text>}
         {visible && (
           <WebView
@@ -151,4 +200,10 @@ const st = StyleSheet.create({
   actionsBar: { flexGrow: 0, backgroundColor: C.panel, borderBottomWidth: 3, borderBottomColor: C.edge },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10 },
   error: { color: C.pink, fontSize: 13, padding: 12, backgroundColor: C.panel },
+  chip: { height: 30, paddingHorizontal: 10, borderWidth: 2, borderColor: C.edge, justifyContent: 'center', maxWidth: 200 },
+  chipText: { color: C.muted, fontSize: 11, includeFontPadding: false },
+  preset: { backgroundColor: C.panel, borderBottomWidth: 3, borderBottomColor: C.edge, padding: 14, gap: 8 },
+  presetLabel: { color: C.muted, fontSize: 12 },
+  presetNote: { color: C.muted, fontSize: 12, lineHeight: 17 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 })

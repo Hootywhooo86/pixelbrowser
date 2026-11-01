@@ -1,0 +1,10 @@
+{
+  "name": "@pixelbrowser/tracking-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Finds parcel tracking numbers (UPS, USPS, FedEx, Canada Post, DHL, Purolator, Amazon) in text and links them to the carrier's tracking page.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": { ".": "./src/index.js" },
+  "scripts": { "test": "node --test test/*.test.js" }
+}

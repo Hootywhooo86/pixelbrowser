@@ -25,7 +25,8 @@ export async function checkForAppUpdate() {
     const latest = String(release.tag_name || '').replace(/^v/, '')
     if (!latest || !isNewer(latest, current)) return null
     const apk = (release.assets || []).find((a) => a.name.endsWith('.apk'))
-    return { version: latest, url: apk?.browser_download_url || release.html_url }
+    // apkUrl: the file itself, for the in-app installer (app-update.js); url: what GET IT opens.
+    return { version: latest, url: apk?.browser_download_url || release.html_url, apkUrl: apk?.browser_download_url || '', notesUrl: release.html_url, size: apk?.size || 0 }
   } catch {
     return null
   }

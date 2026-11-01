@@ -13,8 +13,8 @@ const crypto = require('node:crypto')
 const { safeStorage } = require('electron')
 const store = require('./store')
 
-const file = new store.JsonFile('pixel-vault.json', { logins: {}, addresses: {}, cards: {}, index: { logins: {}, addresses: {}, cards: {} } })
-for (const k of ['logins', 'addresses', 'cards']) {
+const file = new store.JsonFile('pixel-vault.json', { logins: {}, addresses: {}, cards: {}, totp: {}, index: { logins: {}, addresses: {}, cards: {}, totp: {} } })
+for (const k of ['logins', 'addresses', 'cards', 'totp']) {
   file.data[k] = file.data[k] || {}
   file.data.index = file.data.index || {}
   file.data.index[k] = file.data.index[k] || {}
@@ -183,6 +183,56 @@ function deleteCard(id) {
   if (store.records.data.cards[id]) store.putRecord('cards', id, null, { deleted: true })
 }
 
+// ---------- 2FA codes (authenticator) ----------
+// Each entry { issuer, account, secret, digits, period, algorithm } is sealed
+// like a password; it syncs as a 'totp' record with "Sync passwords" on.
+
+const TOTP_FIELDS = ['issuer', 'account', 'secret', 'digits', 'period', 'algorithm', 'origin']
+
+function totpIndex() {
+  return Object.entries(file.data.index.totp).map(([id, v]) => ({ id, ...v }))
+}
+
+function getTotp(id) {
+  const v = open(file.data.totp[id])
+  return v ? { id, ...v } : null
+}
+
+function storeTotp(id, data, { sync = true } = {}) {
+  const updatedAt = data.updatedAt || Date.now()
+  const entry = { updatedAt }
+  for (const k of TOTP_FIELDS) if (data[k] !== undefined && data[k] !== '') entry[k] = data[k]
+  file.data.totp[id] = seal(entry)
+  file.data.index.totp[id] = { issuer: entry.issuer || 'Account', account: entry.account || '', origin: entry.origin || '', updatedAt }
+  save()
+  if (sync && opts().syncPasswords) store.putRecord('totp', id, entry)
+}
+
+function saveTotp(entry) {
+  if (!entry?.secret) return null
+  const dup = totpIndex().find((x) => x.issuer === (entry.issuer || 'Account') && x.account === (entry.account || ''))
+  const id = entry.id || dup?.id || crypto.randomUUID()
+  storeTotp(id, entry)
+  return id
+}
+
+function deleteTotp(id) {
+  delete file.data.totp[id]
+  delete file.data.index.totp[id]
+  save()
+  if (opts().syncPasswords || store.records.data.totp?.[id]) store.putRecord('totp', id, null, { deleted: true })
+}
+
+/** 2FA entries for a site, matched on the saved site or the issuer's name in the host. */
+function totpFor(url) {
+  const origin = originOf(url)
+  const host = origin.replace(/^https?:\/\//, '').replace(/^www\./, '')
+  return totpIndex()
+    .filter((x) => (x.origin && x.origin === origin) || (x.issuer && host.includes(String(x.issuer).toLowerCase().replace(/[^a-z0-9]/g, ''))))
+    .map((x) => getTotp(x.id))
+    .filter(Boolean)
+}
+
 // ---------- sync ----------
 
 /** Push everything saved so far (when the user turns sync on). */
@@ -197,6 +247,15 @@ function pushAllForSync() {
       store.putRecord('addresses', id, rest)
     }
   }
+  if (opts().syncPasswords) {
+    for (const x of totpIndex()) {
+      const t = getTotp(x.id)
+      if (t) {
+        const { id, ...rest } = t
+        store.putRecord('totp', id, rest)
+      }
+    }
+  }
   if (opts().syncCards) {
     for (const c of listCards()) {
       const { id, ...rest } = c
@@ -209,6 +268,7 @@ const COLLECTIONS = {
   passwords: { index: () => file.data.index.logins, store: storeLogin, remove: (id) => (delete file.data.logins[id], delete file.data.index.logins[id]) },
   addresses: { index: () => file.data.index.addresses, store: storeAddress, remove: (id) => (delete file.data.addresses[id], delete file.data.index.addresses[id]) },
   cards: { index: () => file.data.index.cards, store: storeCard, remove: (id) => (delete file.data.cards[id], delete file.data.index.cards[id]) },
+  totp: { index: () => file.data.index.totp, store: storeTotp, remove: (id) => (delete file.data.totp[id], delete file.data.index.totp[id]) },
 }
 
 /**
@@ -278,6 +338,7 @@ function summary() {
       .map((x) => ({ id: x.id, origin: x.origin, username: x.username })),
     addresses: Object.entries(file.data.index.addresses).map(([id, v]) => ({ id, label: v.label })),
     cards: cardIndex().map((c) => ({ id: c.id, holder: c.holder, last4: c.last4, exp: c.exp, nickname: c.nickname })),
+    totp: totpIndex().sort((a, b) => a.issuer.localeCompare(b.issuer)).map((t) => ({ id: t.id, issuer: t.issuer, account: t.account })),
     options: { offerToSave: opts().offerToSave, syncPasswords: opts().syncPasswords, syncCards: opts().syncCards, never: opts().never || [] },
   }
 }
@@ -286,6 +347,7 @@ function wipe() {
   for (const id of Object.keys(file.data.logins)) deleteLogin(id)
   for (const id of Object.keys(file.data.addresses)) deleteAddress(id)
   for (const id of Object.keys(file.data.cards)) deleteCard(id)
+  for (const id of Object.keys(file.data.totp)) deleteTotp(id)
 }
 
 // ---------- page scripts ----------
@@ -369,7 +431,35 @@ function autofillJS(username, password) {
 })()`
 }
 
+/** Fill a one-time code into the page's 2FA field. Returns true if one was found. */
+function otpFillJS(code) {
+  return `(function(){
+  try {
+    var C = ${JSON.stringify(String(code || ''))};
+    function visible(el){ return !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length)); }
+    function set(el, v){
+      var d = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value');
+      if (d && d.set) d.set.call(el, v); else el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    var inputs = Array.prototype.filter.call(document.querySelectorAll('input'), function(i){ return visible(i) && !i.disabled && !i.readOnly && /^(text|tel|number|password|)$/.test((i.type || '').toLowerCase()) });
+    var one = inputs.filter(function(i){ var h = (i.autocomplete + ' ' + i.name + ' ' + i.id + ' ' + (i.placeholder || '') + ' ' + (i.getAttribute('aria-label') || '')).toLowerCase(); return /one-time-code|otp|2fa|totp|token|verification|security code|mfa|authenticator|code/.test(h) });
+    var boxes = inputs.filter(function(i){ return i.maxLength === 1 });
+    if (boxes.length >= C.length) { for (var k = 0; k < C.length; k++) set(boxes[k], C[k]); return true }
+    var el = one[0] || (inputs.length === 1 ? inputs[0] : null);
+    if (!el) return false;
+    set(el, C); return true;
+  } catch (e) { return false }
+})()`
+}
+
 module.exports = {
+  totpIndex,
+  getTotp,
+  saveTotp,
+  deleteTotp,
+  totpFor,
+  otpFillJS,
   originOf,
   loginIndex,
   getLogin,
