@@ -10,6 +10,36 @@ class BitShieldsModule : Module() {
 
     Events("onDownload", "onOpenTab", "onMediaControl", "onPipChanged")
 
+    // Draw a PDF's pages to images with Android's own PDF renderer, so the
+    // viewer works offline and doesn't depend on a script from the internet.
+    AsyncFunction("renderPdf") { path: String, widthPx: Int ->
+      val ctx = appContext.reactContext ?: throw Exception("No app context")
+      val file = java.io.File(android.net.Uri.parse(path).path ?: path)
+      val pfd = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+      val renderer = android.graphics.pdf.PdfRenderer(pfd)
+      val outDir = java.io.File(ctx.cacheDir, "pdfpages/" + Integer.toHexString((file.absolutePath + file.lastModified()).hashCode()))
+      outDir.deleteRecursively(); outDir.mkdirs()
+      val pages = ArrayList<Map<String, Any>>()
+      try {
+        val w = widthPx.coerceIn(400, 2400)
+        for (i in 0 until minOf(renderer.pageCount, 80)) {
+          val page = renderer.openPage(i)
+          val h = (page.height.toFloat() * w / page.width).toInt().coerceAtLeast(1)
+          val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+          bmp.eraseColor(android.graphics.Color.WHITE)
+          page.render(bmp, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+          page.close()
+          val f = java.io.File(outDir, "p" + i + ".png")
+          java.io.FileOutputStream(f).use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+          bmp.recycle()
+          pages.add(mapOf("uri" to ("file://" + f.absolutePath), "width" to w, "height" to h))
+        }
+      } finally {
+        renderer.close(); pfd.close()
+      }
+      mapOf("count" to pages.size, "pages" to pages)
+    }
+
     OnStartObserving("onMediaControl") { BitMedia.controlListener = { action -> sendEvent("onMediaControl", mapOf("action" to action)) } }
 
     OnStopObserving("onMediaControl") { BitMedia.controlListener = null }

@@ -4,7 +4,8 @@
 // service so labels come out at their true size.
 
 import { useEffect, useRef, useState } from 'react'
-import { Modal, View, Text, StyleSheet, Alert, ScrollView, Platform, Pressable } from 'react-native'
+import { Modal, View, Text, StyleSheet, Alert, ScrollView, Platform, Pressable, PixelRatio, useWindowDimensions } from 'react-native'
+import { requireOptionalNativeModule } from 'expo'
 import { WebView } from 'react-native-webview'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { readDownloadBase64, shareDownload, saveDownloadCopy, openDownload, formatSize } from './downloads'
@@ -13,6 +14,14 @@ import { PButton, PText } from './ui'
 import { C } from './theme'
 
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174'
+// Android draws PDFs itself (offline, no scripts); pdf.js stays for reading the text for Bitter.
+const nativePdf = Platform.OS === 'android' ? requireOptionalNativeModule('BitShields') : null
+
+// Page images drawn by Android, shown in a zoomable page.
+const imagesHtml = (pages) => `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=6, user-scalable=yes">
+<style>html,body{margin:0;background:${C.bg}}#pages{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px 8px 40px}img{width:100%;max-width:900px;height:auto;background:#fff;box-shadow:4px 4px 0 #05050f}</style>
+</head><body><div id="pages">${pages.map((p) => `<img src="${p.uri}" width="${p.width}" height="${p.height}">`).join('')}</div></body></html>`
 const CHUNK = 512 * 1024
 
 // The page inside the viewer. It asks for the PDF once pdf.js has loaded,
@@ -89,11 +98,27 @@ export default function PdfViewer({ item, visible, onClose, onAskPdf }) {
   const [pages, setPages] = useState(0)
   const [error, setError] = useState('')
   const [presetOpen, setPresetOpen] = useState(false)
+  const [rendered, setRendered] = useState(null) // { pages: [{uri,width,height}] } from Android's PDF renderer
+  const { width } = useWindowDimensions()
   const preset = usePreset()
 
   useEffect(() => {
     setPages(0)
     setError('')
+    setRendered(null)
+    if (!visible || !item?.path || !nativePdf?.renderPdf) return
+    let gone = false
+    nativePdf
+      .renderPdf(item.path, Math.round(Math.min(width, 900) * PixelRatio.get()))
+      .then((r) => {
+        if (gone) return
+        setRendered(r)
+        setPages(r?.count || r?.pages?.length || 0)
+      })
+      .catch((e) => !gone && setError(`Couldn't draw this PDF: ${e?.message || e}`))
+    return () => {
+      gone = true
+    }
   }, [item?.id, visible])
 
   const run = (fn) => () => fn().catch((e) => Alert.alert("Couldn't do that", String(e?.message || e)))
@@ -117,12 +142,12 @@ export default function PdfViewer({ item, visible, onClose, onAskPdf }) {
       return
     }
     if (m.ready) sendPdf()
-    else if (m.pages) setPages(m.pages)
+    else if (m.pages) setPages((n) => n || m.pages)
     else if (m.text !== undefined) {
       if (!m.text.trim()) return Alert.alert('Ask Bitter', m.textError || "This PDF has no text Bitter can read (it may be a scanned image).")
       onAskPdf?.({ title: item.filename, text: m.text })
     }
-    else if (m.error) setError(m.error)
+    else if (m.error && !nativePdf?.renderPdf) setError(m.error)
   }
 
   if (!item) return null
@@ -143,7 +168,7 @@ export default function PdfViewer({ item, visible, onClose, onAskPdf }) {
           <Pressable onPress={() => setPresetOpen(true)} style={st.chip} accessibilityRole="button" accessibilityLabel={`Printer settings: ${presetLabel(preset)}`}>
             <Text style={st.chipText} numberOfLines={1}>{presetLabel(preset)}</Text>
           </Pressable>
-          {onAskPdf && <PButton small icon="bitter" label="ASK BITTER" onPress={() => view.current?.injectJavaScript('window.__pdfText && window.__pdfText();true;')} disabled={!pages} />}
+          {onAskPdf && <PButton small icon="bitter" label="ASK BITTER" onPress={() => view.current?.injectJavaScript('window.__pdfText && window.__pdfText();true;')} />}
           <PButton small label="SAVE" onPress={run(async () => (await saveDownloadCopy(item)) && Alert.alert('Saved', `${item.filename} was saved.`))} />
           <PButton small label="SHARE" onPress={run(() => shareDownload(item))} />
           <PButton small label="OPEN WITH" onPress={run(() => openDownload(item))} />
@@ -173,10 +198,23 @@ export default function PdfViewer({ item, visible, onClose, onAskPdf }) {
           </View>
         )}
         {!!error && <Text style={st.error}>{error}</Text>}
+        {visible && rendered?.pages?.length > 0 && (
+          <WebView
+            style={{ flex: 1, backgroundColor: C.bg }}
+            originWhitelist={['*']}
+            source={{ html: imagesHtml(rendered.pages), baseUrl: 'file:///' }}
+            allowFileAccess
+            allowFileAccessFromFileURLs
+            setBuiltInZoomControls
+            setDisplayZoomControls={false}
+            cacheEnabled={false}
+          />
+        )}
         {visible && (
           <WebView
             ref={view}
-            style={{ flex: 1, backgroundColor: C.bg }}
+            // With Android's renderer this pdf.js copy is hidden: it only reads the text for "Ask Bitter".
+            style={rendered?.pages?.length ? { height: 0, flex: 0, opacity: 0 } : { flex: 1, backgroundColor: C.bg }}
             originWhitelist={['*']}
             source={{ html: VIEWER_HTML, baseUrl: 'https://pdf.bitbrowser.invalid/' }}
             onMessage={onMessage}
