@@ -122,6 +122,27 @@ function addMsg(cls, html) {
   return el
 }
 
+// Read an answer aloud (the system's voices; nothing is sent anywhere).
+function addSpeakButton(el, text) {
+  if (!('speechSynthesis' in window)) return
+  const b = document.createElement('button')
+  b.className = 'px speak'
+  b.textContent = 'READ ALOUD'
+  b.onclick = () => {
+    if (speechSynthesis.speaking) {
+      speechSynthesis.cancel()
+      b.textContent = 'READ ALOUD'
+      return
+    }
+    const plain = String(text || '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[*_`#>]/g, '').slice(0, 6000)
+    const u = new SpeechSynthesisUtterance(plain)
+    u.onend = u.onerror = () => (b.textContent = 'READ ALOUD')
+    speechSynthesis.speak(u)
+    b.textContent = 'STOP'
+  }
+  el.appendChild(b)
+}
+
 const TOOL_TEXT = {
   list_tabs: () => 'checking your tabs',
   read_tab: (i) => `reading tab ${i.tab_id ?? ''}`,
@@ -158,6 +179,7 @@ ai.onEvent((e) => {
       break
     case 'text':
       currentAI = addMsg('ai', markdown(e.text) + sourcesHtml(e.sources))
+      addSpeakButton(currentAI, e.text)
       talk()
       break
     case 'tool': {

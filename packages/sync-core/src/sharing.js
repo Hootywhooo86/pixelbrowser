@@ -45,13 +45,18 @@ export function parseSharePayload(text) {
   return { kind: m[1], server: decodeURIComponent(m[2]), code: m[3].replace(/-/g, ' ') }
 }
 
-/** A SyncClient talking to a share's chain. */
-export class ShareClient extends SyncClient {
+/**
+ * A SyncClient talking to a share's chain. (Built at call time rather than
+ * with `extends`, because index.js re-exports this file and the two import
+ * each other.)
+ */
+export class ShareClient {
   constructor({ server, code, kind, deviceId, fetch }) {
+    checkKind(kind)
     // SyncClient derives personal-sync keys from a valid code; replace them.
-    super({ server, code, deviceId, fetch })
-    this.kind = checkKind(kind)
-    Object.assign(this, deriveShareKeys(code, kind))
+    const client = new SyncClient({ server, code, deviceId, fetch })
+    Object.assign(client, deriveShareKeys(code, kind), { kind })
+    return client
   }
 }
 

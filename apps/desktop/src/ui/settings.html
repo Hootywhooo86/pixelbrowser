@@ -14,7 +14,7 @@
     <input id="find" type="search" placeholder="Search settings" aria-label="Search settings" spellcheck="false">
   </header>
   <nav id="nav" aria-label="Settings sections">
-    <a href="#shields">SHIELDS</a><a href="#passwords">PASSWORDS</a><a href="#sites">SITES</a><a href="#security">SECURITY</a><a href="#newtab">NEW TAB</a><a href="#downloads">DOWNLOADS</a><a href="#business">BUSINESS</a><a href="#appearance">LOOK</a><a href="#media">MEDIA</a><a href="#spaces">SPACES</a><a href="#family">128BIT</a><a href="#data">DATA</a><a href="#search">SEARCH</a><a href="#sync">SYNC</a><a href="#crash">CRASHES</a>
+    <a href="#shields">SHIELDS</a><a href="#passwords">PASSWORDS</a><a href="#twofa">2FA</a><a href="#importbackup">IMPORT</a><a href="#sites">SITES</a><a href="#security">SECURITY</a><a href="#newtab">NEW TAB</a><a href="#downloads">DOWNLOADS</a><a href="#business">BUSINESS</a><a href="#appearance">LOOK</a><a href="#media">MEDIA</a><a href="#spaces">SPACES</a><a href="#tabs5">TABS</a><a href="#kids">KIDS</a><a href="#family">128BIT</a><a href="#sharing">SHARING</a><a href="#aliases">ALIASES</a><a href="#tor">TOR</a><a href="#localai">LOCAL AI</a><a href="#data">DATA</a><a href="#search">SEARCH</a><a href="#sync">SYNC</a><a href="#crash">CRASHES</a>
   </nav>
   <main class="view">
     <section id="shields" data-keys="shields ads trackers block youtube filter lists cookie banners annoyances phishing malware">
@@ -75,7 +75,46 @@
       </form>
     </section>
 
-    <section id="sites" data-keys="site settings permissions camera microphone mic location notifications allow block">
+    <section id="privacy5" data-keys="https upgrade secure cookie banners reject consent fingerprinting farbling canvas privacy">
+      <h2>PRIVACY PLUS</h2>
+      <label class="check"><input type="checkbox" id="p5-https"> Upgrade to HTTPS: try the secure https:// version of every site first, and fall back to http only for sites without it</label>
+      <label class="check"><input type="checkbox" id="p5-cookies"> Answer cookie banners "no" automatically (reject all, or only necessary)</label>
+      <label class="check"><input type="checkbox" id="p5-fp"> Fingerprinting protection: add tiny noise to canvas, WebGL and audio, and give sites generic hardware details, so they can't recognise you without cookies</label>
+      <p class="muted">If a site breaks, turn these off for just that site from the shield button.</p>
+      <div id="p5-sites" class="vlist"></div>
+      <div class="row"><span id="p5-http" class="muted"></span><button id="p5-http-reset" class="px" hidden>FORGET</button></div>
+    </section>
+
+    <section id="twofa" data-keys="2fa two factor authenticator totp codes otp security check breach pwned weak reused passwords">
+      <h2>2FA CODES &amp; SECURITY CHECK</h2>
+      <p class="muted">Bit Browser can be your authenticator app. When a site asks for a 2FA code, it offers to fill it. Codes are encrypted with your computer's keychain and sync with "Sync passwords".</p>
+      <div id="totp-list" class="vlist"></div>
+      <form id="totp-add" class="row wrap">
+        <input id="totp-text" placeholder="otpauth://… link or the secret key" spellcheck="false" aria-label="2FA secret">
+        <input id="totp-label" placeholder="Site name (for a plain key)" aria-label="Site name">
+        <button class="px">ADD CODE</button><span id="totp-msg" class="muted"></span>
+      </form>
+      <p class="muted">Setting up 2FA on a site? Open its QR code page and use Menu → Scan a 2FA QR code on this page.</p>
+      <h3>PASSWORD SECURITY CHECK</h3>
+      <p class="muted">Finds weak and reused passwords on this computer. The breach check asks Have I Been Pwned using only the first 5 characters of each password's fingerprint (hash): your passwords never leave this computer.</p>
+      <label class="check"><input type="checkbox" id="sec-on"> Check for breached passwords every week</label>
+      <div class="row"><button id="sec-run" class="px">CHECK NOW</button><span id="sec-summary" class="muted"></span></div>
+      <div id="sec-list" class="vlist"></div>
+    </section>
+
+    <section id="importbackup" data-keys="import chrome brave edge firefox bookmarks passwords csv history backup restore export file move switch">
+      <h2>IMPORT &amp; BACKUP</h2>
+      <h3>IMPORT FROM ANOTHER BROWSER</h3>
+      <div id="imp-profiles" class="vlist"></div>
+      <div class="row wrap"><button id="imp-bm" class="px">IMPORT BOOKMARKS FILE…</button><button id="imp-pw" class="px">IMPORT PASSWORDS CSV…</button></div>
+      <p class="muted">Passwords can't be read from other browsers directly: export them as a CSV (Chrome/Brave/Edge: Settings → Passwords → Export; Bitwarden and 1Password work too), import it here, then delete the CSV.</p>
+      <p id="imp-msg" class="muted"></p>
+      <h3>ENCRYPTED BACKUP</h3>
+      <p class="muted">One file with your bookmarks, history, notes, packages, passwords, 2FA codes, settings and XP, locked with a passphrase only you know. Keep it somewhere safe (a USB stick, Google Drive). The phone app reads the same file.</p>
+      <div class="row wrap"><input id="bk-pass" type="password" placeholder="Passphrase (8+ characters)" autocomplete="new-password" aria-label="Backup passphrase"><button id="bk-make" class="px">MAKE BACKUP…</button><button id="bk-restore" class="px">RESTORE…</button></div>
+      <p id="bk-msg" class="muted"></p>
+    </section>
+="site settings permissions camera microphone mic location notifications allow block">
       <h2>SITE SETTINGS</h2>
       <p class="muted">Sites ask before using your camera, microphone, location or notifications. Your answers are remembered here, and sync to your other devices.</p>
       <table id="sites-table" class="ptable"><thead><tr><th>SITE</th><th>CAMERA</th><th>MIC</th><th>LOCATION</th><th>NOTIFY</th><th></th></tr></thead><tbody></tbody></table>
@@ -181,8 +220,30 @@
       <p class="muted">Pinned tabs always reopen. Right-click a tab to pin it.</p>
     </section>
 
+    <section id="tabs5" data-keys="tabs vertical tab groups split view command palette ctrl+k">
+      <h2>TABS</h2>
+      <label class="check"><input type="checkbox" id="t5-vertical"> Vertical tabs (a column on the left)</label>
+      <p class="muted">Tab groups: right-click a tab → Add to new group. Click a group's name for colors and collapsing, double-click to rename. Split view: right-click a tab → Open in split view (Ctrl+Alt+S). Command palette: Ctrl+K, or type ">" in the address bar.</p>
+    </section>
+
+    <section id="kids" data-keys="kids children parental control safe search screen time block allow list pin">
+      <h2>KIDS MODE</h2>
+      <p class="muted">Safe search on every search engine, only the sites you allow (or everything except sites you block), a daily time limit, no private windows and no Bitter agent. A PIN keeps it on.</p>
+      <div class="row wrap"><input id="kid-pin" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off" aria-label="Kids mode PIN"><input id="kid-newpin" type="password" inputmode="numeric" placeholder="New PIN (4+ digits)" autocomplete="new-password" aria-label="New kids PIN"></div>
+      <label class="check"><input type="checkbox" id="kid-on"> Kids mode on</label>
+      <label class="check"><input type="checkbox" id="kid-safe"> Force safe search</label>
+      <div class="row wrap">
+        <label class="check"><input type="radio" name="kidmode" value="block"> Allow everything except blocked sites</label>
+        <label class="check"><input type="radio" name="kidmode" value="allow"> Only allowed sites</label>
+      </div>
+      <div class="grid2"><textarea id="kid-allow" rows="4" placeholder="Allowed sites, one per line"></textarea><textarea id="kid-block" rows="4" placeholder="Blocked sites, one per line"></textarea></div>
+      <div class="row"><label class="check">Daily limit <input id="kid-min" type="number" min="0" max="1440" class="num"> minutes (0 = no limit)</label><span id="kid-used" class="muted"></span></div>
+      <div class="row"><button id="kid-save" class="px">SAVE</button><span id="kid-msg" class="muted"></span></div>
+    </section>
+
     <section id="family" data-keys="128bit family xp level streak badges bitcaller tracker 128bittracker">
       <h2>128BIT FAMILY</h2>
+      <div class="vrow"><div class="main"><b>128bit account</b><span id="acct-status">Coming soon: one account for XP, quests and streaks across the 128bit family apps.</span></div><input id="acct-server" placeholder="128bit server https://…" spellcheck="false" aria-label="128bit server"><button id="acct-connect" class="px">CONNECT</button></div>
       <div class="xp">
         <div class="lvl"><span>LVL</span><b id="xp-level">1</b></div>
         <div class="xpbody">
@@ -199,6 +260,40 @@
       <h3>FAMILY APPS</h3>
       <label class="check"><input type="checkbox" id="fl-bitcaller"> Phone numbers: "Call with BitCaller"</label>
       <label class="check"><input type="checkbox" id="fl-tracker"> Shows and movies: "Add to 128bittracker" on IMDb and TMDB pages</label>
+    </section>
+
+    <section id="sharing" data-keys="family sharing share bookmarks notes packages together">
+      <h2>FAMILY SHARING</h2>
+      <p class="muted">Share bookmarks, notes, packages or your reading list with family, end-to-end encrypted. Each share has its own 24-word share code: give it only to the people you share with. Everyone needs the same sync server.</p>
+      <div id="share-list" class="vlist"></div>
+      <form id="share-add" class="row wrap">
+        <input id="share-name" placeholder="Name (e.g. Family)" aria-label="Share name">
+        <input id="share-server" placeholder="Sync server https://…" spellcheck="false" aria-label="Sync server">
+        <input id="share-code" placeholder="Share code to join (leave empty to start one)" spellcheck="false" aria-label="Share code">
+        <label class="check"><input type="checkbox" value="bookmarks" checked> Bookmarks</label><label class="check"><input type="checkbox" value="notes"> Notes</label><label class="check"><input type="checkbox" value="packages"> Packages</label><label class="check"><input type="checkbox" value="readlater"> Reading list</label>
+        <button class="px">SHARE</button>
+      </form>
+      <p id="share-msg" class="muted"></p>
+    </section>
+
+    <section id="aliases" data-keys="email aliases hide my email simplelogin addy anonaddy">
+      <h2>EMAIL ALIASES</h2>
+      <p class="muted">Sign up for sites with a throwaway address that forwards to you. Uses your own SimpleLogin or addy.io account: paste its API key. Then right-click an email box → Hide my email.</p>
+      <div class="row wrap"><select id="al-provider" aria-label="Alias service"><option value="">Off</option><option value="simplelogin">SimpleLogin</option><option value="addy">addy.io</option></select><input id="al-key" type="password" placeholder="API key" autocomplete="off" aria-label="API key"><button id="al-save" class="px">SAVE</button><button id="al-test" class="px">MAKE ONE NOW</button></div>
+      <p id="al-msg" class="muted"></p>
+    </section>
+
+    <section id="tor" data-keys="tor onion anonymous private window proxy">
+      <h2>TOR</h2>
+      <p class="muted">Private windows can go through the Tor network, so sites can't see where you are. Bit Browser uses Tor that's running on this computer (Tor Browser, or the tor service).</p>
+      <div class="row"><button id="tor-check" class="px">CHECK</button><button id="tor-open" class="px">NEW PRIVATE WINDOW OVER TOR</button><span id="tor-msg" class="muted"></span></div>
+      <p class="muted"><a href="#" data-url="https://www.torproject.org/download/">Get Tor Browser</a></p>
+    </section>
+
+    <section id="localai" data-keys="offline ai local ollama lm studio models no key">
+      <h2>AI ON THIS COMPUTER</h2>
+      <p class="muted">Bitter can use an AI that runs on this computer, with no internet and no key: install Ollama or LM Studio, download a model, then pick it in the Bitter sidebar's settings.</p>
+      <div class="row"><button id="lai-find" class="px">FIND AI ON THIS COMPUTER</button><span id="lai-msg" class="muted"></span></div>
     </section>
 
     <section id="data" data-keys="data dashboard storage stored synced delete cookies cache history memory">

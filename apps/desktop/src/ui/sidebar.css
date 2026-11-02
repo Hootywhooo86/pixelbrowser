@@ -166,3 +166,4 @@ a.tabref { color: var(--orange); }
 /* 128bit pixel look: bevelled buttons with a hard drop shadow. */
 .px { box-shadow: inset 2px 2px 0 rgba(255,255,255,.12), inset -2px -2px 0 rgba(0,0,0,.35), 3px 3px 0 #05050f; }
 .px:active { box-shadow: inset 2px 2px 0 rgba(0,0,0,.35), 1px 1px 0 #05050f; }
+.msg .speak { margin-top: 6px; height: 22px; font-size: 7px; padding: 0 6px; }

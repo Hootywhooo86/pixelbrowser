@@ -2062,6 +2062,7 @@ function settingsState() {
     searchEngine: s.searchEngine,
     customSearchUrl: s.customSearchUrl,
     engines: SEARCH_ENGINES,
+    verticalTabs: !!s.verticalTabs,
     aiEnabled: s.aiEnabled,
     update: updater.status(),
     sync: syncHost.status(),

@@ -423,6 +423,227 @@ if (location.hash) setTimeout(() => goto(location.hash.slice(1)), 50)
 api.onState((next) => applyState(next))
 api.get().then(applyState)
 
+// ---------- 0.5 ----------
+
+const v05 = (...args) => api.v05(...args)
+const el = (tag, props = {}, ...kids) => {
+  const n = Object.assign(document.createElement(tag), props)
+  n.append(...kids)
+  return n
+}
+const say = (id, text) => ($(id).textContent = text)
+const fail = (id) => (err) => say(id, String(err?.message || err).replace(/^Error invoking remote method 'v05': (Error: )?/, ''))
+
+// Privacy plus
+async function renderPrivacy5(p) {
+  p = p || (await v05('privacy'))
+  $('p5-https').checked = p.httpsUpgrade
+  $('p5-cookies').checked = p.cookieBanners
+  $('p5-fp').checked = p.fingerprint
+  $('p5-sites').replaceChildren(
+    ...Object.entries(p.siteOff || {}).map(([host, off]) =>
+      el('div', { className: 'vrow' }, el('div', { className: 'main' }, el('b', { textContent: host }), el('span', { textContent: `Off here: ${Object.keys(off).map((k) => (k === 'fingerprint' ? 'fingerprinting protection' : 'cookie banners')).join(', ')}` })), el('button', { className: 'px', textContent: 'TURN BACK ON', onclick: async () => renderPrivacy5(await v05('privacy-set', { resetSite: host })) }))
+    )
+  )
+  $('p5-http').textContent = p.httpOnly?.length ? `Loaded over http because they have no https: ${p.httpOnly.slice(0, 8).join(', ')}${p.httpOnly.length > 8 ? '…' : ''}` : ''
+  $('p5-http-reset').hidden = !p.httpOnly?.length
+}
+for (const [id, key] of [['p5-https', 'httpsUpgrade'], ['p5-cookies', 'cookieBanners'], ['p5-fp', 'fingerprint']]) $(id).onchange = async () => renderPrivacy5(await v05('privacy-set', { [key]: $(id).checked }))
+$('p5-http-reset').onclick = async () => renderPrivacy5(await v05('privacy-set', { resetHttpOnly: true }))
+
+// 2FA codes
+let totpTimer = null
+async function renderTotp() {
+  const list = await v05('totp')
+  $('totp-list').replaceChildren(
+    ...(list.length
+      ? list.map((t) =>
+          el('div', { className: 'vrow' },
+            el('div', { className: 'main' }, el('b', { textContent: t.issuer }), el('span', { textContent: t.account || t.origin || '' })),
+            el('span', { className: 'secret totp-code', textContent: t.code.replace(/(\d{3})(?=\d)/, '$1 ') }),
+            el('span', { className: 'muted', textContent: `${t.left}s` }),
+            el('button', { className: 'px', textContent: 'COPY', onclick: async () => (await v05('totp-copy', t.id), say('totp-msg', 'Copied.')) }),
+            el('button', { className: 'px', textContent: 'DELETE', onclick: async () => confirm(`Delete the 2FA code for ${t.issuer}? Make sure you can still sign in another way.`) && (await v05('totp-remove', t.id), renderTotp()) })
+          )
+        )
+      : [el('p', { className: 'muted', textContent: 'No 2FA codes yet.' })])
+  )
+}
+$('totp-add').onsubmit = async (e) => {
+  e.preventDefault()
+  try {
+    await v05('totp-add', $('totp-text').value, $('totp-label').value)
+    $('totp-text').value = ''
+    $('totp-label').value = ''
+    say('totp-msg', 'Added.')
+    renderTotp()
+  } catch (err) {
+    fail('totp-msg')(err)
+  }
+}
+
+// Security check
+function renderSecurity(r) {
+  $('sec-on').checked = r.enabled
+  const c = r.counts
+  say('sec-summary', `${c.total} logins: ${c.weak} weak, ${c.reused} reused${r.lastRun ? `, ${c.breached} found in breaches (checked ${new Date(r.lastRun).toLocaleDateString()})` : ''}.`)
+  $('sec-list').replaceChildren(
+    ...r.items.map((i) =>
+      el('div', { className: 'vrow' }, el('div', { className: 'main' }, el('b', { textContent: `${i.origin}${i.username ? ` (${i.username})` : ''}` }), el('span', { textContent: [i.pwned > 0 && `Found in ${i.pwned.toLocaleString()} breaches: change it now`, i.reused && 'Used on other sites too', i.strength < 2 && `${i.label} password`].filter(Boolean).join(' · ') })), el('button', { className: 'px', textContent: 'CHANGE', onclick: () => api.openUrl(i.origin) }))
+    )
+  )
+}
+$('sec-on').onchange = async () => renderSecurity(await v05('security-enable', $('sec-on').checked))
+$('sec-run').onclick = async () => {
+  say('sec-summary', 'Checking…')
+  renderSecurity(await v05('security-run').catch((err) => (fail('sec-summary')(err), v05('security-report'))))
+}
+
+// Import & backup
+async function renderProfiles() {
+  const list = await v05('profiles')
+  $('imp-profiles').replaceChildren(
+    ...(list.length
+      ? list.map((p) => el('div', { className: 'vrow' }, el('div', { className: 'main' }, el('b', { textContent: `${p.browser}: ${p.profile}` }), el('span', { textContent: 'Bookmarks and history' })), el('button', { className: 'px', textContent: 'IMPORT', onclick: async () => {
+          const r = await v05('import-profile', p.id, { history: true }).catch((err) => (fail('imp-msg')(err), null))
+          if (r) say('imp-msg', `Imported ${r.bookmarks} bookmarks and ${r.history} history entries from ${r.browser}. ${r.note}`)
+        } })))
+      : [el('p', { className: 'muted', textContent: 'No Chrome, Brave or Edge profiles found on this computer. You can still import an exported file.' })])
+  )
+}
+$('imp-bm').onclick = async () => {
+  const r = await v05('import-file', 'bookmarks').catch((err) => (fail('imp-msg')(err), null))
+  if (r) say('imp-msg', `Imported ${r.bookmarks} bookmarks into the "Imported" folder.`)
+}
+$('imp-pw').onclick = async () => {
+  const r = await v05('import-file', 'passwords').catch((err) => (fail('imp-msg')(err), null))
+  if (r) say('imp-msg', `Imported ${r.passwords} passwords. ${r.note}`)
+}
+$('bk-make').onclick = async () => {
+  say('bk-msg', 'Encrypting…')
+  const r = await v05('backup-create', $('bk-pass').value).catch((err) => (fail('bk-msg')(err), undefined))
+  if (r) say('bk-msg', `Saved ${r.file}. Keep the passphrase somewhere safe: without it the backup can't be opened.`)
+  else if (r === null) say('bk-msg', '')
+}
+$('bk-restore').onclick = async () => {
+  say('bk-msg', 'Opening…')
+  const r = await v05('backup-restore', $('bk-pass').value).catch((err) => (fail('bk-msg')(err), undefined))
+  if (r) say('bk-msg', `Restored from a ${r.from} backup: ${Object.entries(r.counts).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`).join(', ') || 'nothing new'}.`)
+  else if (r === null) say('bk-msg', '')
+}
+
+// Tabs
+$('t5-vertical').onchange = () => v05('vertical-tabs', $('t5-vertical').checked)
+
+// Kids mode
+async function renderKids(k) {
+  k = k || (await v05('kids'))
+  $('kid-on').checked = k.enabled
+  $('kid-safe').checked = k.safeSearch
+  for (const r of document.querySelectorAll('input[name=kidmode]')) r.checked = r.value === k.mode
+  $('kid-allow').value = (k.allow || []).join('\n')
+  $('kid-block').value = (k.block || []).join('\n')
+  $('kid-min').value = k.minutesPerDay || 0
+  say('kid-used', k.minutesPerDay ? `${k.usedToday} used today` : '')
+  $('kid-pin').placeholder = k.hasPin ? 'Current PIN' : 'No PIN yet'
+}
+$('kid-save').onclick = async () => {
+  const lines = (id) => $(id).value.split('\n').map((x) => x.trim()).filter(Boolean)
+  const patch = { enabled: $('kid-on').checked, safeSearch: $('kid-safe').checked, mode: document.querySelector('input[name=kidmode]:checked')?.value || 'block', allow: lines('kid-allow'), block: lines('kid-block'), minutesPerDay: Number($('kid-min').value) || 0 }
+  if ($('kid-newpin').value) patch.newPin = $('kid-newpin').value
+  try {
+    renderKids(await v05('kids-set', patch, $('kid-pin').value))
+    $('kid-pin').value = ''
+    $('kid-newpin').value = ''
+    say('kid-msg', 'Saved.')
+  } catch (err) {
+    fail('kid-msg')(err)
+    renderKids()
+  }
+}
+
+// 128bit account
+async function renderAccount(f) {
+  f = f || (await v05('family'))
+  if (document.activeElement !== $('acct-server')) $('acct-server').value = f.server || ''
+}
+$('acct-connect').onclick = async () => {
+  await v05('family-set', $('acct-server').value)
+  try {
+    await v05('family-connect')
+    say('acct-status', 'Connected to the 128bit server.')
+  } catch (err) {
+    fail('acct-status')(err)
+  }
+}
+
+// Family sharing
+async function renderShares(list) {
+  list = list || (await v05('sharing'))
+  $('share-list').replaceChildren(
+    ...list.map((x) => el('div', { className: 'vrow' }, el('div', { className: 'main' }, el('b', { textContent: x.name }), el('span', { textContent: `${x.collections.join(', ')} · ${x.error ? `problem: ${x.error}` : x.lastSyncAt ? `synced ${new Date(x.lastSyncAt).toLocaleString()}` : 'not synced yet'}` })), el('button', { className: 'px', textContent: 'STOP SHARING', onclick: async () => (await v05('share-remove', x.id), renderShares()) })))
+  )
+}
+$('share-add').onsubmit = async (e) => {
+  e.preventDefault()
+  const collections = [...$('share-add').querySelectorAll('input[type=checkbox]:checked')].map((c) => c.value)
+  try {
+    const r = await v05('share-create', { name: $('share-name').value, server: $('share-server').value, code: $('share-code').value, collections })
+    say('share-msg', `Sharing. Share code (give it only to family): ${r.code}`)
+    $('share-code').value = ''
+    renderShares()
+  } catch (err) {
+    fail('share-msg')(err)
+  }
+}
+
+// Email aliases
+async function renderAliases(a) {
+  a = a || (await v05('aliases'))
+  $('al-provider').value = a.provider || ''
+  $('al-key').placeholder = a.hasKey ? 'API key saved (paste to replace)' : 'API key'
+  if (a.lastAlias) say('al-msg', `Last alias: ${a.lastAlias}`)
+}
+$('al-save').onclick = async () => {
+  renderAliases(await v05('aliases-set', { provider: $('al-provider').value, key: $('al-key').value }))
+  $('al-key').value = ''
+  say('al-msg', 'Saved.')
+}
+$('al-test').onclick = async () => {
+  const email = await v05('alias-new').catch((err) => (fail('al-msg')(err), null))
+  if (email) say('al-msg', `New alias: ${email}`)
+}
+
+// Tor
+$('tor-check').onclick = async () => {
+  const t = await v05('tor')
+  say('tor-msg', t.running ? `Tor is running (port ${t.port}).` : "Tor isn't running on this computer.")
+}
+$('tor-open').onclick = () => v05('tor-window')
+
+// AI on this computer
+$('lai-find').onclick = async () => {
+  say('lai-msg', 'Looking…')
+  const list = await v05('local-ai')
+  say('lai-msg', list.length ? list.map((x) => `${x.label}: ${x.models.length ? x.models.slice(0, 5).join(', ') : 'running, no models yet'}`).join(' · ') : 'No Ollama or LM Studio found running on this computer.')
+}
+
+function render05() {
+  renderPrivacy5().catch(() => {})
+  renderTotp().catch(() => {})
+  v05('security-report').then(renderSecurity).catch(() => {})
+  renderProfiles().catch(() => {})
+  renderKids().catch(() => {})
+  renderAccount().catch(() => {})
+  renderShares().catch(() => {})
+  renderAliases().catch(() => {})
+}
+render05()
+api.onState((next) => ($('t5-vertical').checked = !!next.verticalTabs))
+api.get().then((st) => ($('t5-vertical').checked = !!st.verticalTabs))
+clearInterval(totpTimer)
+totpTimer = setInterval(() => !$('twofa').hidden && $('totp-list').children.length && renderTotp().catch(() => {}), 1000)
+
 // ---------- default browser ----------
 
 function renderDefault(d) {

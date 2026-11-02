@@ -113,3 +113,8 @@ label.check { line-height: 1.3; }
 .questlist .bar i { background: var(--teal); }
 .questlist li.done b { color: var(--orange); }
 .crashlog { max-height: 220px; overflow: auto; margin-top: 8px; padding: 8px; background: var(--panel); border: 3px solid var(--edge); font: 11px/1.4 ui-monospace, monospace; white-space: pre-wrap; }
+
+/* 0.5 */
+.totp-code { font-size: 16px; letter-spacing: 1px; }
+#kids textarea { width: 100%; font: 13px system-ui, sans-serif; color: var(--ink); background: var(--bg); border: 3px solid var(--edge); padding: 6px; }
+#share-add input[type=text], #share-add input:not([type]) { min-width: 180px; }
