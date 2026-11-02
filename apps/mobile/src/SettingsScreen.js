@@ -879,6 +879,12 @@ function TabsPage({ open }) {
         note="Off is smoothest. On: the address bar and buttons slide away when you scroll down."
       />
       <Toggle
+        value={s.pullToRefresh !== false}
+        onChange={(v) => update((x) => (x.pullToRefresh = v))}
+        label="Pull down to refresh"
+        note="Pull down from the very top of a page and hold for a moment to reload. Applies to pages you open after changing it."
+      />
+      <Toggle
         value={s.restoreTabs !== false}
         onChange={(v) => update((x) => (x.restoreTabs = v))}
         label="Reopen my tabs when Bit Browser starts"

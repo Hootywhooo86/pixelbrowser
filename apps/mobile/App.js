@@ -1418,7 +1418,7 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
   const js = useMemo(() => `${injectedJS(autoplay)}\n${autoconsentFor(site, getState())}\ntrue;`, [autoplay, site])
   const beforeJS = useMemo(
     () =>
-      `${fingerprintFor(t.url, site, getState())}\n${autoconsentFor(site, getState())}\n${isKidsMode() ? KIDS_YOUTUBE_JS : ''}\n${CAPTURE_DOWNLOADS_JS}\n${permissionsJS(site)}\n${Platform.OS === 'android' ? PULL_REFRESH_JS : ''}\n${shieldsJS || ''}`,
+      `${fingerprintFor(t.url, site, getState())}\n${autoconsentFor(site, getState())}\n${isKidsMode() ? KIDS_YOUTUBE_JS : ''}\n${CAPTURE_DOWNLOADS_JS}\n${permissionsJS(site)}\n${Platform.OS === 'android' && getState().pullToRefresh !== false ? PULL_REFRESH_JS : ''}\n${shieldsJS || ''}`,
     [shieldsJS, site, hostOf(t.url)]
   )
   // A tab woken from sleep reopens its last page; later navigations come in via t.source.
@@ -1449,7 +1449,7 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
       contentMode={site.desktop ? 'desktop' : 'recommended'}
       geolocationEnabled={site.location !== 'block'}
       mediaCapturePermissionGrantType={site.camera === 'block' && site.microphone === 'block' ? 'deny' : site.camera === 'allow' && site.microphone === 'allow' ? 'grant' : 'prompt'}
-      pullToRefreshEnabled
+      pullToRefreshEnabled={getState().pullToRefresh !== false}
       sharedCookiesEnabled
       cacheEnabled
       // Pop-ups on: sign-in windows (Google, Apple…) open as real pop-ups that can

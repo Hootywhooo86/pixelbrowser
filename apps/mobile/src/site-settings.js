@@ -140,7 +140,11 @@ export function permissionReplyJS(id, allow) {
  */
 export const PULL_REFRESH_JS = String.raw`(function(){
   if (window.__bitPull || window.top !== window) return; window.__bitPull = true;
-  var startY = null, pulled = 0, tip = null, LIMIT = 90;
+  // Deliberate pulls only: a long pull straight down from the very top of the
+  // page, not a fling that reaches the top, not a sideways swipe, and not a
+  // drag inside a map, chat box or other scrolling area.
+  var startY = null, startX = 0, pulled = 0, tip = null, lastScroll = 0, armedAt = 0;
+  function limit(){ return Math.max(170, Math.round(window.innerHeight * 0.28)) }
   function ensure(){
     if (tip) return tip;
     tip = document.createElement('div');
@@ -150,21 +154,40 @@ export const PULL_REFRESH_JS = String.raw`(function(){
     return tip;
   }
   function atTop(){ return (window.scrollY || document.documentElement.scrollTop || 0) <= 0 }
-  addEventListener('touchstart', function(e){ startY = e.touches.length === 1 && atTop() ? e.touches[0].clientY : null; pulled = 0 }, { passive: true });
+  function insideScroller(el){
+    for (var n = el; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+      if (/^(INPUT|TEXTAREA|SELECT|CANVAS|VIDEO|IFRAME)$/.test(n.tagName) || n.isContentEditable) return true;
+      if (n.scrollHeight > n.clientHeight + 4) { var oy = getComputedStyle(n).overflowY; if (oy === 'auto' || oy === 'scroll') return true }
+    }
+    return false;
+  }
+  function hide(){ if (tip) tip.style.transform = 'translateY(-60px)' }
+  addEventListener('scroll', function(){ lastScroll = Date.now() }, { passive: true });
+  addEventListener('touchstart', function(e){
+    pulled = 0; armedAt = 0;
+    var ok = e.touches.length === 1 && atTop() && Date.now() - lastScroll > 500 && !insideScroller(e.target);
+    startY = ok ? e.touches[0].clientY : null; startX = ok ? e.touches[0].clientX : 0;
+  }, { passive: true });
   addEventListener('touchmove', function(e){
     if (startY === null) return;
-    if (!atTop()) { startY = null; return }
-    pulled = Math.max(0, e.touches[0].clientY - startY);
-    if (pulled < 10) return;
-    var t = ensure(), d = Math.min(pulled, LIMIT * 1.4);
-    t.style.transform = 'translateY(' + (d * 0.7 - 50) + 'px)';
-    t.style.borderColor = pulled > LIMIT ? '#ff9f1c' : '#2dd4bf';
+    if (!atTop() || e.touches.length !== 1) { startY = null; hide(); return }
+    var dy = e.touches[0].clientY - startY, dx = Math.abs(e.touches[0].clientX - startX);
+    if (dx > 30 && dx > dy * 0.5) { startY = null; hide(); return } // sideways swipe
+    pulled = Math.max(0, dy);
+    if (pulled < 40) return hide();
+    var L = limit(), t = ensure(), d = Math.min(pulled, L * 1.3);
+    var ready = pulled > L;
+    if (ready && !armedAt) armedAt = Date.now();
+    if (!ready) armedAt = 0;
+    t.style.transform = 'translateY(' + (d / L * 70 - 50) + 'px)';
+    t.style.borderColor = ready ? '#ff9f1c' : '#2dd4bf';
     t.style.color = t.style.borderColor;
-    t.textContent = pulled > LIMIT ? '↻' : '↓';
+    t.textContent = ready ? '↻' : '↓';
   }, { passive: true });
   addEventListener('touchend', function(){
-    if (startY !== null && pulled > LIMIT) try { window.ReactNativeWebView.postMessage(JSON.stringify({ __bitPullRefresh: true })) } catch (e) {}
-    startY = null; pulled = 0;
-    if (tip) tip.style.transform = 'translateY(-60px)';
+    // Refresh only if the pull reached the line and was held there a moment.
+    if (startY !== null && pulled > limit() && armedAt && Date.now() - armedAt > 150) try { window.ReactNativeWebView.postMessage(JSON.stringify({ __bitPullRefresh: true })) } catch (e) {}
+    startY = null; pulled = 0; armedAt = 0; hide();
   }, { passive: true });
+  addEventListener('touchcancel', function(){ startY = null; pulled = 0; armedAt = 0; hide() }, { passive: true });
 })();true;`
