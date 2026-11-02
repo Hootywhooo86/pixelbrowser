@@ -461,7 +461,7 @@ class PixelWindow {
             height: 720,
             autoHideMenuBar: true,
             backgroundColor: '#141428',
-            webPreferences: { session: this.ses, sandbox: true, contextIsolation: true },
+            webPreferences: { session: this.ses, sandbox: true, contextIsolation: true, plugins: true }, // plugins: PDFs show in the pop-up
           },
         }
       }
@@ -1364,8 +1364,10 @@ const SIGN_IN_HOSTS = /(^|\.)(accounts\.google\.com|accounts\.youtube\.com|apple
 
 /** A window.open that's a sign-in pop-up (blank pop-ups usually become one). */
 function isSignInPopup(url, disposition) {
-  if (disposition && disposition !== 'new-window') return false // target=_blank links → tabs
+  // A blank pop-up is filled by the page afterwards (sign-ins, and Shippo's
+  // "Download label", which sends its label to it), so it must be a real window.
   if (!url || url === 'about:blank') return true
+  if (disposition && disposition !== 'new-window') return false // target=_blank links → tabs
   try {
     return SIGN_IN_HOSTS.test(new URL(url).hostname) || /oauth|\/authorize|\/signin|\/login|\/auth\//i.test(url)
   } catch {

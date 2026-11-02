@@ -176,6 +176,8 @@ const SCRIPT = String.raw`(function(){
   // write into it, add a PDF frame or image to it, send it to a link, or ask it
   // to print. Whatever file ends up in it is saved and opened in the viewer.
   var PDFISH = /^blob:|^data:application\/pdf|\.pdf(?:[?#]|$)/i;
+  // Where label/file services keep files (Shippo, S3, Google storage…).
+  var FILEISH = /amazonaws\.com\/|storage\.googleapis\.com\/|blob\.core\.windows\.net\/|deliver\.goshippo\.com|shippo-delivery|\/labels?\/|\/download/i;
   function fakeWindow(){
     var frame = document.createElement('iframe');
     frame.style.cssText = 'position:fixed;width:1px;height:1px;left:-9999px;top:0;border:0;opacity:0';
@@ -188,7 +190,7 @@ const SCRIPT = String.raw`(function(){
     // (often a sign-in), so it keeps window.opener.
     var go = function(u){
       u = abs(u); log('pop-up sent to', u);
-      if (isFileUrl(u) || PDFISH.test(u) || blobs[u]) { finish(); return grab(u) }
+      if (isFileUrl(u) || PDFISH.test(u) || FILEISH.test(u) || blobs[u]) { finish(); return grab(u) }
       closed = true; finish(); open.call(window, u);
     };
     function scan(){
@@ -221,6 +223,8 @@ const SCRIPT = String.raw`(function(){
         if (prop === 'close') return function(){ closed = true; setTimeout(function(){ if (!done) scan(); try { frame.remove() } catch (e) {} }, 1500) };
         if (prop === 'print') return print;
         if (prop === 'opener') return window;
+        // pop-up.open(url, '_self'): Shippo sends the label to its pop-up this way.
+        if (prop === 'open') return function(u){ log('pop-up opens', u || '(blank)'); if (u && u !== 'about:blank') go(u); return self };
         if (prop === 'focus' || prop === 'blur' || prop === 'moveTo' || prop === 'resizeTo') return function(){};
         if (prop === 'document') { var d = doc(); if (!asked.doc) { asked.doc = 1; log('pop-up document used', '') } setTimeout(scan, 50); return d }
         var v; try { v = frame.contentWindow[prop] } catch (e) { return undefined }
@@ -233,7 +237,8 @@ const SCRIPT = String.raw`(function(){
         return true;
       },
     };
-    try { return new Proxy({}, handler) } catch (e) {
+    var self;
+    try { return (self = new Proxy({}, handler)) } catch (e) {
       return { closed: false, opener: window, close: function(){}, focus: function(){}, print: print, document: doc(), location: loc };
     }
   }
