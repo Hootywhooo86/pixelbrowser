@@ -35,7 +35,7 @@ function upgradeUrl(url, httpOnly = new Set()) {
 
 /** True for load errors that mean "this site has no working https". */
 function isUpgradeFailure(description = '', code) {
-  return /SSL|CERT|ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|ERR_TIMED_OUT|ERR_NAME_NOT_RESOLVED|ERR_ADDRESS_UNREACHABLE|NSURLErrorSecureConnectionFailed|-1200|-1202|-1004|-1001/i.test(`${description} ${code ?? ''}`)
+  return /SSL|CERT|ERR_TUNNEL_CONNECTION_FAILED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|ERR_TIMED_OUT|ERR_NAME_NOT_RESOLVED|ERR_ADDRESS_UNREACHABLE|NSURLErrorSecureConnectionFailed|-1200|-1202|-1004|-1001/i.test(`${description} ${code ?? ''}`)
 }
 
 // ---------- price watching ----------
