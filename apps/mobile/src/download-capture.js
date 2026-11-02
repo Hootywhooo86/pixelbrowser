@@ -37,6 +37,25 @@ const SCRIPT = String.raw`(function(){
   var lastSend = 0, lastTap = 0, saved = typeof WeakSet === 'function' ? new WeakSet() : null, savedUrls = {};
   ['pointerdown', 'touchstart', 'mousedown', 'keydown', 'click'].forEach(function(t){ document.addEventListener(t, function(){ lastTap = Date.now() }, true) });
   function recentTap(ms){ return Date.now() - lastTap < (ms || 5000) }
+  // A JSON answer right after a tap that contains a file link (Shippo's
+  // label_regen returns the label's address): if nothing else saves the file
+  // within a moment, save it from that link.
+  function fileLinksIn(text){
+    var out = [], re = /https?:\\?\/\\?\/[^"'\s<>]+/g, m;
+    while ((m = re.exec(text)) && out.length < 10) {
+      var u = m[0].replace(/\\\//g, '/').replace(/\\u0026/g, '&');
+      if (/\.(pdf|png|zpl)(?:[?#]|$)/i.test(u) || /amazonaws\.com\/|storage\.googleapis\.com\/|deliver\.goshippo\.com|shippo-delivery|\/labels?\//i.test(u)) out.push(u);
+    }
+    return out;
+  }
+  function checkJson(text, from){
+    if (!recentTap(10000) || !text || text.length > 2000000) return;
+    var links = fileLinksIn(text); if (!links.length) return;
+    var pdf = links.filter(function(u){ return /\.pdf(?:[?#]|$)/i.test(u) })[0] || links[0];
+    log('file link in ' + from, pdf);
+    var at = Date.now();
+    setTimeout(function(){ if (lastSend > at) return; log('saving from link', pdf); grab(pdf) }, 1500);
+  }
   addEventListener('error', function(e){ if (recentTap(15000)) log('page error: ' + String(e.message || '').slice(0, 90), e.filename || '') }, true);
   addEventListener('unhandledrejection', function(e){ if (recentTap(15000)) log('page error: ' + String(e.reason && (e.reason.message || e.reason) || '').slice(0, 90), '') });
   function isPdfBlob(b, cb){
@@ -58,14 +77,14 @@ const SCRIPT = String.raw`(function(){
     var ofetch = window.fetch;
     if (ofetch) window.fetch = function(){
       var p = ofetch.apply(this, arguments);
-      try { p.then(function(r){ var ct = r.headers.get('content-type') || ''; if (recentTap(15000)) log('fetch ' + r.status + ' ' + ct.split(';')[0], r.url); if (/application\/pdf/i.test(ct) && recentTap(8000)) r.clone().blob().then(function(b){ maybePdf(b, r.url, 'fetch') }).catch(function(){}) }).catch(function(){}) } catch (e) {}
+      try { p.then(function(r){ var ct = r.headers.get('content-type') || ''; if (recentTap(15000)) log('fetch ' + r.status + ' ' + ct.split(';')[0], r.url); if (/json|text\/plain/i.test(ct) && recentTap(10000)) r.clone().text().then(function(t){ checkJson(t, 'answer') }).catch(function(){}); if (/application\/pdf/i.test(ct) && recentTap(8000)) r.clone().blob().then(function(b){ maybePdf(b, r.url, 'fetch') }).catch(function(){}) }).catch(function(){}) } catch (e) {}
       return p;
     };
     var xopen = XMLHttpRequest.prototype.open, xsend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.open = function(m, u){ this.__bitUrl = u; return xopen.apply(this, arguments) };
     XMLHttpRequest.prototype.send = function(){
       var x = this;
-      try { x.addEventListener('load', function(){ try { var ct = x.getResponseHeader('content-type') || ''; if (recentTap(15000)) log('xhr ' + x.status + ' ' + ct.split(';')[0], abs(x.__bitUrl)); if (!/application\/pdf/i.test(ct) || !recentTap(8000)) return; var b = x.response instanceof Blob ? x.response : x.response instanceof ArrayBuffer ? new Blob([x.response], { type: 'application/pdf' }) : null; if (b) maybePdf(b, abs(x.__bitUrl), 'xhr') } catch (e) {} }) } catch (e) {}
+      try { x.addEventListener('load', function(){ try { var ct = x.getResponseHeader('content-type') || ''; if (recentTap(15000)) log('xhr ' + x.status + ' ' + ct.split(';')[0], abs(x.__bitUrl)); if (/json|text\/plain/i.test(ct) && recentTap(10000)) { try { checkJson(x.responseType === 'json' ? JSON.stringify(x.response) : (!x.responseType || x.responseType === 'text') ? x.responseText : '', 'answer') } catch (e) {} } if (!/application\/pdf/i.test(ct) || !recentTap(8000)) return; var b = x.response instanceof Blob ? x.response : x.response instanceof ArrayBuffer ? new Blob([x.response], { type: 'application/pdf' }) : null; if (b) maybePdf(b, abs(x.__bitUrl), 'xhr') } catch (e) {} }) } catch (e) {}
       return xsend.apply(this, arguments);
     };
   } catch (e) {}
