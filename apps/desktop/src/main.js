@@ -757,7 +757,7 @@ class PixelWindow {
     if (tab.pendingUrl) {
       const url = tab.pendingUrl
       tab.pendingUrl = null
-      tab.view.webContents.loadURL(url)
+      this.load(tab.view.webContents, url)
     }
     const prev = this.activeTab()
     const inSplit = this.split && [this.split.left, this.split.right].includes(id)
@@ -879,7 +879,7 @@ class PixelWindow {
     if (r.pendingUrl) {
       const url = r.pendingUrl
       r.pendingUrl = null
-      r.view.webContents.loadURL(url)
+      this.load(r.view.webContents, url)
     }
     if (!this.locked) this.win.contentView.addChildView(r.view)
     this.layout()
@@ -1969,7 +1969,8 @@ ipcMain.on('nav:go', (e, input) => {
   if (!pw) return
   const text = String(input || '').trim()
   if (!pw.isPrivate && store.settings.data.aiEnabled && (text.startsWith('?') || looksLikeQuestion(text))) return askFromAddressBar(pw, text)
-  pw.activeTab()?.view.webContents.loadURL(normalizeInput(text))
+  const wc = pw.activeTab()?.view.webContents
+  if (wc) pw.load(wc, text)
 })
 ipcMain.on('nav:ask', (e, input) => {
   const pw = fromSender(e)
