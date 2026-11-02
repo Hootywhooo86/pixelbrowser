@@ -589,6 +589,15 @@ function Browser() {
     if (handleShieldsMessage(msg, tab.url)) return
     if (msg.__bitConsent) return
     if (msg.__bitDlLog) return logDownloadEvent(msg.__bitDlLog.what, msg.__bitDlLog.url, msg.__bitDlLog.page)
+    // A label the page drew as a web page and asked to print: make it a PDF
+    // and open it in the viewer (Print / Save / Share from there).
+    if (msg.__bitPrintHtml) {
+      const { html, base } = msg.__bitPrintHtml
+      const withBase = /<base\s/i.test(html) ? html : html.replace(/<head[^>]*>/i, (m) => `${m}<base href="${String(base).replace(/"/g, '')}">`)
+      toast('Making a PDF of your label…')
+      savePageAsPdf(async () => ({ html: withBase, title: 'Shipping label', url: base })).catch((e) => Alert.alert('Label', e.message))
+      return
+    }
     if (msg.__bitMedia) {
       if (msg.__bitMedia.playing) mediaTab.current = tab.id
       reportMedia(msg.__bitMedia)

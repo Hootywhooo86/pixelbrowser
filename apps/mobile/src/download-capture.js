@@ -34,7 +34,7 @@ const SCRIPT = String.raw`(function(){
   // PDF right after you tap something and no other path saved it, save it and
   // open it in the viewer. Sites do this many ways (blob links, pop-ups,
   // previews in an iframe, fetch + FileSaver); this catches the PDF itself.
-  var lastTap = 0, saved = typeof WeakSet === 'function' ? new WeakSet() : null, savedUrls = {};
+  var lastSend = 0, lastTap = 0, saved = typeof WeakSet === 'function' ? new WeakSet() : null, savedUrls = {};
   ['pointerdown', 'touchstart', 'mousedown', 'keydown', 'click'].forEach(function(t){ document.addEventListener(t, function(){ lastTap = Date.now() }, true) });
   function recentTap(ms){ return Date.now() - lastTap < (ms || 5000) }
   function isPdfBlob(b, cb){
@@ -49,7 +49,7 @@ const SCRIPT = String.raw`(function(){
       if (!yes) return;
       log('pdf made (' + how + ')', url);
       // Give the normal paths a moment; save it ourselves if none did.
-      setTimeout(function(){ if (saved && saved.has(b)) return; if (saved) saved.add(b); send(b, nameFor(url || '', '', '', 'application/pdf'), 'application/pdf') }, 1200);
+      setTimeout(function(){ if ((saved && saved.has(b)) || Date.now() - lastSend < 2000) return; if (saved) saved.add(b); send(b, nameFor(url || '', '', '', 'application/pdf'), 'application/pdf') }, 1200);
     });
   }
   try {
@@ -110,6 +110,7 @@ const SCRIPT = String.raw`(function(){
     return a.hasAttribute('download') && /^https?:/i.test(url);
   }
   function send(blob, name, mime){
+    lastSend = Date.now();
     try { if (saved) saved.add(blob) } catch (e) {}
     log('saving ' + (mime || ''), name);
     var reader = new FileReader();
@@ -167,16 +168,70 @@ const SCRIPT = String.raw`(function(){
 
   // window.open(blobUrl), or window.open('') and then setting its location.
   var open = window.open;
+  // A page that opened a blank window and then fills it (Shippo's "Download
+  // label" does this). The app shows one page per tab, so instead of a real
+  // pop-up the page gets a hidden same-site frame that behaves like one: it can
+  // write into it, add a PDF frame or image to it, send it to a link, or ask it
+  // to print. Whatever file ends up in it is saved and opened in the viewer.
+  var PDFISH = /^blob:|^data:application\/pdf|\.pdf(?:[?#]|$)/i;
   function fakeWindow(){
-    var w = { closed: false, opener: window, close: function(){ w.closed = true }, focus: function(){}, blur: function(){}, print: function(){},
-      document: { write: function(){}, writeln: function(){}, close: function(){}, open: function(){}, body: null, title: '' } };
-    // A page that opened a blank window and then sends it somewhere real (often
-    // a sign-in pop-up): open that real window, so it keeps window.opener.
-    var go = function(u){ u = abs(u); if (isFileUrl(u) || /\.pdf(?:[?#]|$)/i.test(u)) grab(u); else { w.closed = true; open.call(window, u) } };
+    var frame = document.createElement('iframe');
+    frame.style.cssText = 'position:fixed;width:1px;height:1px;left:-9999px;top:0;border:0;opacity:0';
+    frame.setAttribute('aria-hidden', 'true');
+    (document.body || document.documentElement).appendChild(frame);
+    var fw = frame.contentWindow, closed = false, done = false, seen = {};
+    var doc = function(){ try { return frame.contentWindow.document } catch (e) { return null } };
+    var finish = function(){ done = true };
+    // A real pop-up for a page that sends this window to an ordinary link
+    // (often a sign-in), so it keeps window.opener.
+    var go = function(u){
+      u = abs(u); log('pop-up sent to', u);
+      if (isFileUrl(u) || PDFISH.test(u) || blobs[u]) { finish(); return grab(u) }
+      closed = true; finish(); open.call(window, u);
+    };
+    function scan(){
+      var d = doc(); if (!d || done) return;
+      var els = d.querySelectorAll('iframe,embed,object,a[href],img');
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i], raw = el.getAttribute('src') || el.getAttribute('data') || el.getAttribute('href') || '';
+        if (!raw || seen[raw]) continue; seen[raw] = 1;
+        var u = abs(raw);
+        if (PDFISH.test(u) || blobs[u]) { log('pop-up shows a file', u); finish(); return grab(u) }
+      }
+    }
+    var timer = setInterval(function(){ if (done || closed) return clearInterval(timer); scan() }, 300);
+    setTimeout(function(){ clearInterval(timer) }, 30000);
+    function print(){
+      scan(); if (done) return;
+      // A label drawn as a web page (an image or HTML): print it as a PDF.
+      var d = doc(); var html = d && d.documentElement ? d.documentElement.outerHTML : '';
+      log('pop-up asks to print', (html || '').slice(0, 80));
+      if (html && html.length > 40) { finish(); post({ __bitPrintHtml: { html: html.slice(0, 4000000), base: location.href } }) }
+    }
     var loc = { assign: go, replace: go, reload: function(){}, toString: function(){ return 'about:blank' } };
     Object.defineProperty(loc, 'href', { get: function(){ return 'about:blank' }, set: go });
-    Object.defineProperty(w, 'location', { get: function(){ return loc }, set: go });
-    return w;
+    var asked = {};
+    var handler = {
+      get: function(t, prop){
+        if (prop === 'location') return loc;
+        if (prop === 'closed') return closed;
+        if (prop === 'close') return function(){ closed = true; setTimeout(function(){ if (!done) scan(); try { frame.remove() } catch (e) {} }, 1500) };
+        if (prop === 'print') return print;
+        if (prop === 'opener') return window;
+        if (prop === 'focus' || prop === 'blur' || prop === 'moveTo' || prop === 'resizeTo') return function(){};
+        if (prop === 'document') { var d = doc(); if (!asked.doc) { asked.doc = 1; log('pop-up document used', '') } setTimeout(scan, 50); return d }
+        var v; try { v = frame.contentWindow[prop] } catch (e) { return undefined }
+        return typeof v === 'function' ? v.bind(frame.contentWindow) : v;
+      },
+      set: function(t, prop, value){
+        if (prop === 'location') { go(value); return true }
+        try { frame.contentWindow[prop] = value } catch (e) {}
+        return true;
+      },
+    };
+    try { return new Proxy({}, handler) } catch (e) {
+      return { closed: false, opener: window, close: function(){}, focus: function(){}, print: print, document: doc(), location: loc };
+    }
   }
   window.open = function(u){
     var url = u ? abs(u) : '';
