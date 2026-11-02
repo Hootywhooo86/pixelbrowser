@@ -22,12 +22,68 @@ const SCRIPT = String.raw`(function(){
     var create = URL.createObjectURL, revoke = URL.revokeObjectURL;
     URL.createObjectURL = function(obj){
       var u = create.apply(URL, arguments);
-      try { if (obj instanceof Blob) { blobs[u] = obj; made.push(u); if (made.length > 30) delete blobs[made.shift()] } } catch (e) {}
+      try { if (obj instanceof Blob) { blobs[u] = obj; made.push(u); if (made.length > 30) delete blobs[made.shift()]; maybePdf(obj, u, 'blob') } } catch (e) {}
       return u;
     };
     URL.revokeObjectURL = function(u){ var args = arguments; setTimeout(function(){ try { revoke.apply(URL, args) } catch (e) {} }, 60000) };
   } catch (e) {}
   function post(o){ try { window.ReactNativeWebView.postMessage(JSON.stringify(o)) } catch (e) {} }
+  function log(what, url){ post({ __bitDlLog: { what: what, url: String(url || '').slice(0, 160), page: location.host } }) }
+
+  // Safety net for "Download label"-style buttons: if the page makes or loads a
+  // PDF right after you tap something and no other path saved it, save it and
+  // open it in the viewer. Sites do this many ways (blob links, pop-ups,
+  // previews in an iframe, fetch + FileSaver); this catches the PDF itself.
+  var lastTap = 0, saved = typeof WeakSet === 'function' ? new WeakSet() : null, savedUrls = {};
+  ['pointerdown', 'touchstart', 'mousedown', 'keydown', 'click'].forEach(function(t){ document.addEventListener(t, function(){ lastTap = Date.now() }, true) });
+  function recentTap(ms){ return Date.now() - lastTap < (ms || 5000) }
+  function isPdfBlob(b, cb){
+    if (!b) return cb(false);
+    if (/pdf/i.test(b.type || '')) return cb(true);
+    if (b.type && !/octet-stream|binary|download/i.test(b.type)) return cb(false);
+    try { var r = new FileReader(); r.onload = function(){ cb(String(r.result || '').indexOf('%PDF') === 0) }; r.onerror = function(){ cb(false) }; r.readAsText(b.slice(0, 5)) } catch (e) { cb(false) }
+  }
+  function maybePdf(b, url, how){
+    if (!recentTap(5000) || (saved && saved.has(b))) return;
+    isPdfBlob(b, function(yes){
+      if (!yes) return;
+      log('pdf made (' + how + ')', url);
+      // Give the normal paths a moment; save it ourselves if none did.
+      setTimeout(function(){ if (saved && saved.has(b)) return; if (saved) saved.add(b); send(b, nameFor(url || '', '', '', 'application/pdf'), 'application/pdf') }, 1200);
+    });
+  }
+  try {
+    var ofetch = window.fetch;
+    if (ofetch) window.fetch = function(){
+      var p = ofetch.apply(this, arguments);
+      try { p.then(function(r){ var ct = r.headers.get('content-type') || ''; if (/application\/pdf/i.test(ct) && recentTap(8000)) r.clone().blob().then(function(b){ maybePdf(b, r.url, 'fetch') }).catch(function(){}) }).catch(function(){}) } catch (e) {}
+      return p;
+    };
+    var xopen = XMLHttpRequest.prototype.open, xsend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(m, u){ this.__bitUrl = u; return xopen.apply(this, arguments) };
+    XMLHttpRequest.prototype.send = function(){
+      var x = this;
+      try { x.addEventListener('load', function(){ try { var ct = x.getResponseHeader('content-type') || ''; if (!/application\/pdf/i.test(ct) || !recentTap(8000)) return; var b = x.response instanceof Blob ? x.response : x.response instanceof ArrayBuffer ? new Blob([x.response], { type: 'application/pdf' }) : null; if (b) maybePdf(b, abs(x.__bitUrl), 'xhr') } catch (e) {} }) } catch (e) {}
+      return xsend.apply(this, arguments);
+    };
+  } catch (e) {}
+  // PDFs shown in an iframe/embed/object preview (the phone can't display those).
+  function checkFrame(el){
+    try {
+      var src = el.getAttribute('src') || el.getAttribute('data') || '';
+      if (!src || savedUrls[src] || !recentTap(8000)) return;
+      var url = abs(src);
+      if (/^blob:/i.test(url) || /^data:application\/pdf/i.test(url) || /\.pdf(?:[?#]|$)/i.test(url)) { savedUrls[src] = 1; log('pdf preview', url); grab(url) }
+    } catch (e) {}
+  }
+  try {
+    new MutationObserver(function(list){
+      list.forEach(function(m){
+        if (m.type === 'attributes') { if (/^(IFRAME|EMBED|OBJECT)$/.test(m.target.tagName)) checkFrame(m.target); return }
+        m.addedNodes && m.addedNodes.forEach(function(n){ if (!n.tagName) return; if (/^(IFRAME|EMBED|OBJECT)$/.test(n.tagName)) checkFrame(n); else if (n.querySelectorAll) n.querySelectorAll('iframe,embed,object').forEach(checkFrame) });
+      });
+    }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'data'] });
+  } catch (e) {}
   function abs(u){ try { return new URL(u, location.href).href } catch (e) { return String(u || '') } }
   function pathOf(u){ try { return new URL(u).pathname } catch (e) { return String(u || '').split(/[?#]/)[0] } }
   function cleanName(n){ return String(n || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/^\.+/, '').slice(0, 120) }
@@ -54,6 +110,8 @@ const SCRIPT = String.raw`(function(){
     return a.hasAttribute('download') && /^https?:/i.test(url);
   }
   function send(blob, name, mime){
+    try { if (saved) saved.add(blob) } catch (e) {}
+    log('saving ' + (mime || ''), name);
     var reader = new FileReader();
     reader.onload = function(){
       var s = String(reader.result || ''), b64 = s.slice(s.indexOf(',') + 1);
@@ -71,11 +129,12 @@ const SCRIPT = String.raw`(function(){
   function grab(url, filename){
     url = abs(url);
     if (busy[url] && Date.now() - busy[url] < 1500) return; busy[url] = Date.now();
+    log('grab', url);
     var kept = blobs[url];
     if (kept) return send(kept, nameFor(url, filename, '', kept.type), kept.type || 'application/octet-stream');
     var cross = false;
     try { cross = /^https?:/i.test(url) && new URL(url).origin !== location.origin } catch (e) {}
-    fetch(url, { credentials: cross ? 'omit' : 'include' }).then(function(r){
+    (ofetch || fetch).call(window, url, { credentials: cross ? "omit" : "include" }).then(function(r){
       if (!r.ok) throw new Error('The site said ' + r.status + '.');
       var cd = r.headers.get('content-disposition'), mime = (r.headers.get('content-type') || '').split(';')[0].trim();
       return r.blob().then(function(b){ send(b, nameFor(url, filename, cd, mime || b.type), mime || b.type || 'application/octet-stream') });
@@ -121,6 +180,7 @@ const SCRIPT = String.raw`(function(){
   }
   window.open = function(u){
     var url = u ? abs(u) : '';
+    log('window.open', url || '(blank)');
     if (url && isFileUrl(url)) { grab(url); return fakeWindow() }
     // The app shows one page per tab, so a blank pop-up can't exist; hand back
     // a stand-in that catches the file the page then sends to it.

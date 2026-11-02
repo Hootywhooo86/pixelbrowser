@@ -18,7 +18,7 @@ import { loadStore, getState, putRecord, addHistory, useStore, update, liveRecor
 import { setAIEnabled, session } from './src/ai'
 import { checkForAppUpdate } from './src/updates'
 import { startSync } from './src/sync'
-import { startDownload, looksLikeDownload, guessFilename, receiveChunk, isPdf, openPdf, onOpenPdf } from './src/downloads'
+import { startDownload, looksLikeDownload, guessFilename, receiveChunk, isPdf, openPdf, onOpenPdf, logDownloadEvent } from './src/downloads'
 import { CAPTURE_DOWNLOADS_JS, fetchInPageJS } from './src/download-capture'
 import PdfViewer from './src/PdfViewer'
 import { addBookmark, removeBookmark, isBookmarked } from './src/bookmarks'
@@ -290,8 +290,9 @@ function Browser() {
   // Android hands files it can't show (PDFs, attachments) to the app here,
   // with the page's sign-in cookies, instead of its own download manager.
   useEffect(() => {
-    const tabSub = nativeWeb?.addListener?.('onOpenTab', (e) => e?.url && /^https?:/i.test(e.url) && openTab(e.url, { private: !!tabsRef.current.find((t) => t.id === activeRef.current)?.private }))
+    const tabSub = nativeWeb?.addListener?.('onOpenTab', (e) => e?.url && /^https?:/i.test(e.url) && (logDownloadEvent('new window → tab', e.url), true) && openTab(e.url, { private: !!tabsRef.current.find((t) => t.id === activeRef.current)?.private }))
     const sub = nativeWeb?.addListener?.('onDownload', (e) => {
+      logDownloadEvent(`file from site (${e.mimetype || 'unknown type'})`, e.url)
       let filename = guessFilename(e.url, e.contentDisposition)
       if (/pdf/i.test(e.mimetype || '') && !/\.pdf$/i.test(filename)) filename += '.pdf'
       toast(`Opening ${filename}`)
@@ -587,6 +588,7 @@ function Browser() {
     if (!msg) return
     if (handleShieldsMessage(msg, tab.url)) return
     if (msg.__bitConsent) return
+    if (msg.__bitDlLog) return logDownloadEvent(msg.__bitDlLog.what, msg.__bitDlLog.url, msg.__bitDlLog.page)
     if (msg.__bitMedia) {
       if (msg.__bitMedia.playing) mediaTab.current = tab.id
       reportMedia(msg.__bitMedia)
@@ -666,6 +668,7 @@ function Browser() {
   }
 
   const download = (url, extra = {}) => {
+    logDownloadEvent('download', url)
     const filename = extra.filename || guessFilename(url)
     toast(`Downloading ${filename}`)
     startDownload({ url, ...extra, filename }).then((item) => {

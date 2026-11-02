@@ -1,7 +1,8 @@
 // Settings → Downloads: files saved from web pages.
 
-import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native'
-import { useDownloads, openDownload, shareDownload, deleteDownload, formatSize, isPdf, openPdf, printDownload } from './downloads'
+import { useState } from 'react'
+import { View, Text, StyleSheet, Alert, ScrollView, Share } from 'react-native'
+import { useDownloads, openDownload, shareDownload, deleteDownload, formatSize, isPdf, openPdf, printDownload, useDownloadLog } from './downloads'
 import { PButton, PText } from './ui'
 import { C } from './theme'
 
@@ -12,12 +13,36 @@ const run = (fn) => fn().catch((e) => Alert.alert("Couldn't do that", String(e?.
  * on its own (Menu → Downloads) pass `scroll` so it scrolls and has padding.
  */
 export default function DownloadsScreen({ scroll = false, bottomInset = 0 }) {
-  const body = <DownloadsList />
+  const body = (
+    <>
+      <DownloadsList />
+      <TroubleshootLog />
+    </>
+  )
   if (!scroll) return body
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 16 + bottomInset }} keyboardShouldPersistTaps="handled">
       {body}
     </ScrollView>
+  )
+}
+
+// What sites did when you tapped download buttons: helps explain a download
+// that didn't happen. In memory only; shared only if you tap SHARE.
+function TroubleshootLog() {
+  const log = useDownloadLog()
+  const [open, setOpen] = useState(false)
+  if (!log.length) return null
+  const text = log.map((e) => `${new Date(e.at).toLocaleTimeString()}  ${e.what}  ${e.url}${e.page ? `  (on ${e.page})` : ''}`).join('\n')
+  return (
+    <View style={{ marginTop: 18, gap: 8 }}>
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+        <PText style={{ color: C.muted, flex: 1 }}>DOWNLOAD LOG</PText>
+        <PButton small label={open ? 'HIDE' : 'SHOW'} onPress={() => setOpen(!open)} />
+        <PButton small label="SHARE" onPress={() => Share.share({ message: `Bit Browser download log\n\n${text}` }).catch(() => {})} />
+      </View>
+      {open && <Text style={[st.muted, { fontSize: 11, lineHeight: 15 }]} selectable>{text}</Text>}
+    </View>
   )
 }
 

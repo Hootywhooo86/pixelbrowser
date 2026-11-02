@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 // Downloads for the phone app. The web view can't save files by itself, so
 // links that look like files are fetched here into the app's documents
 // folder and listed in Settings → Downloads.
@@ -419,4 +420,27 @@ export function formatSize(bytes) {
     i++
   }
   return `${n < 10 && i ? n.toFixed(1) : Math.round(n)} ${units[i]}`
+}
+
+// ---------- troubleshooting log ----------
+// What happened with recent downloads (pages asking for files, pop-ups, saves),
+// so a failed download can be explained. Kept in memory only, never sent.
+const dlLog = []
+const dlLogListeners = new Set()
+export function logDownloadEvent(what, url = '', page = '') {
+  dlLog.push({ at: Date.now(), what: String(what).slice(0, 80), url: String(url).slice(0, 160), page: String(page).slice(0, 60) })
+  if (dlLog.length > 60) dlLog.shift()
+  for (const fn of dlLogListeners) fn()
+}
+export function getDownloadLog() {
+  return dlLog.slice()
+}
+export function useDownloadLog() {
+  const [, setN] = useState(0)
+  useEffect(() => {
+    const fn = () => setN((n) => n + 1)
+    dlLogListeners.add(fn)
+    return () => dlLogListeners.delete(fn)
+  }, [])
+  return dlLog
 }
