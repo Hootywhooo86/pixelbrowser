@@ -37,6 +37,8 @@ const SCRIPT = String.raw`(function(){
   var lastSend = 0, lastTap = 0, saved = typeof WeakSet === 'function' ? new WeakSet() : null, savedUrls = {};
   ['pointerdown', 'touchstart', 'mousedown', 'keydown', 'click'].forEach(function(t){ document.addEventListener(t, function(){ lastTap = Date.now() }, true) });
   function recentTap(ms){ return Date.now() - lastTap < (ms || 5000) }
+  addEventListener('error', function(e){ if (recentTap(15000)) log('page error: ' + String(e.message || '').slice(0, 90), e.filename || '') }, true);
+  addEventListener('unhandledrejection', function(e){ if (recentTap(15000)) log('page error: ' + String(e.reason && (e.reason.message || e.reason) || '').slice(0, 90), '') });
   function isPdfBlob(b, cb){
     if (!b) return cb(false);
     if (/pdf/i.test(b.type || '')) return cb(true);
@@ -56,14 +58,14 @@ const SCRIPT = String.raw`(function(){
     var ofetch = window.fetch;
     if (ofetch) window.fetch = function(){
       var p = ofetch.apply(this, arguments);
-      try { p.then(function(r){ var ct = r.headers.get('content-type') || ''; if (/application\/pdf/i.test(ct) && recentTap(8000)) r.clone().blob().then(function(b){ maybePdf(b, r.url, 'fetch') }).catch(function(){}) }).catch(function(){}) } catch (e) {}
+      try { p.then(function(r){ var ct = r.headers.get('content-type') || ''; if (recentTap(15000)) log('fetch ' + r.status + ' ' + ct.split(';')[0], r.url); if (/application\/pdf/i.test(ct) && recentTap(8000)) r.clone().blob().then(function(b){ maybePdf(b, r.url, 'fetch') }).catch(function(){}) }).catch(function(){}) } catch (e) {}
       return p;
     };
     var xopen = XMLHttpRequest.prototype.open, xsend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.open = function(m, u){ this.__bitUrl = u; return xopen.apply(this, arguments) };
     XMLHttpRequest.prototype.send = function(){
       var x = this;
-      try { x.addEventListener('load', function(){ try { var ct = x.getResponseHeader('content-type') || ''; if (!/application\/pdf/i.test(ct) || !recentTap(8000)) return; var b = x.response instanceof Blob ? x.response : x.response instanceof ArrayBuffer ? new Blob([x.response], { type: 'application/pdf' }) : null; if (b) maybePdf(b, abs(x.__bitUrl), 'xhr') } catch (e) {} }) } catch (e) {}
+      try { x.addEventListener('load', function(){ try { var ct = x.getResponseHeader('content-type') || ''; if (recentTap(15000)) log('xhr ' + x.status + ' ' + ct.split(';')[0], abs(x.__bitUrl)); if (!/application\/pdf/i.test(ct) || !recentTap(8000)) return; var b = x.response instanceof Blob ? x.response : x.response instanceof ArrayBuffer ? new Blob([x.response], { type: 'application/pdf' }) : null; if (b) maybePdf(b, abs(x.__bitUrl), 'xhr') } catch (e) {} }) } catch (e) {}
       return xsend.apply(this, arguments);
     };
   } catch (e) {}
@@ -208,11 +210,12 @@ const SCRIPT = String.raw`(function(){
       log('pop-up asks to print', (html || '').slice(0, 80));
       if (html && html.length > 40) { finish(); post({ __bitPrintHtml: { html: html.slice(0, 4000000), base: location.href } }) }
     }
+    var asked = {};
     var loc = { assign: go, replace: go, reload: function(){}, toString: function(){ return 'about:blank' } };
     Object.defineProperty(loc, 'href', { get: function(){ return 'about:blank' }, set: go });
-    var asked = {};
     var handler = {
       get: function(t, prop){
+        if (typeof prop === 'string' && !asked['g' + prop] && Object.keys(asked).length < 40) { asked['g' + prop] = 1; log('pop-up read ' + prop, '') }
         if (prop === 'location') return loc;
         if (prop === 'closed') return closed;
         if (prop === 'close') return function(){ closed = true; setTimeout(function(){ if (!done) scan(); try { frame.remove() } catch (e) {} }, 1500) };
@@ -224,6 +227,7 @@ const SCRIPT = String.raw`(function(){
         return typeof v === 'function' ? v.bind(frame.contentWindow) : v;
       },
       set: function(t, prop, value){
+        log('pop-up set ' + String(prop), String(value).slice(0, 120));
         if (prop === 'location') { go(value); return true }
         try { frame.contentWindow[prop] = value } catch (e) {}
         return true;
@@ -235,7 +239,7 @@ const SCRIPT = String.raw`(function(){
   }
   window.open = function(u){
     var url = u ? abs(u) : '';
-    log('window.open', url || '(blank)');
+    log('window.open ' + [arguments[1], arguments[2]].filter(Boolean).join(' '), url || '(blank)');
     if (url && isFileUrl(url)) { grab(url); return fakeWindow() }
     // The app shows one page per tab, so a blank pop-up can't exist; hand back
     // a stand-in that catches the file the page then sends to it.
