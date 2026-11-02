@@ -3,7 +3,7 @@
 // the same Comet-style AI and encrypted sync as the desktop app.
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { View, TextInput, Text, Pressable, StyleSheet, Platform, Linking, Alert, ToastAndroid, Modal, ScrollView, AppState, Dimensions, useWindowDimensions } from 'react-native'
+import { View, TextInput, Text, Pressable, StyleSheet, Platform, Linking, Alert, ToastAndroid, Modal, ScrollView, AppState, Dimensions, Animated, useWindowDimensions } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import { useFonts } from 'expo-font'
 import { WebView } from 'react-native-webview'
@@ -49,6 +49,35 @@ import PixelIcon from './src/PixelIcon'
 import { award, onXpEvent } from './src/xp'
 import { track, useQuests } from './src/quests'
 import { play } from './src/sounds'
+import './src/totp' // registers 2FA codes with the password manager's sync (before startPasswordSync)
+import ImportScreen from './src/ImportScreen'
+import BackupScreen from './src/BackupScreen'
+import AuthenticatorScreen from './src/AuthenticatorScreen'
+import SecurityCheckScreen from './src/SecurityCheckScreen'
+import { downloadAndInstallUpdate } from './src/app-update'
+import { findTotpFor, currentCode, otpFillJS } from './src/totp'
+import { maybeWeeklyCheck } from './src/breach'
+import PackagesScreen from './src/PackagesScreen'
+import { addPackage, foundOnPage, DETECT_TRACKING_JS } from './src/packages'
+import NotesScreen from './src/NotesScreen'
+import { addNote, CLIP_JS } from './src/notes'
+import ReadingListScreen from './src/ReadingListScreen'
+import { saveForLater } from './src/readlater'
+import CommandBar, { firstResult } from './src/CommandBar'
+import { useBottomBarGestures, neighbourTab } from './src/gestures'
+import { VoiceButton } from './src/voice'
+import MediaSheet from './src/MediaSheet'
+import { mediaPageJS, siteSpeedJS, setSpeed, reportMedia, setBackgroundPlay, onMediaControl, onPipChanged, setAutoPip, enterPip, setSleepTimer, sleepEnded, saveMedia, MEDIA_LIST_JS, PAUSE_ALL_JS, RESUME_JS } from './src/media'
+import { restoreTor } from './src/tor'
+import { upgradeUrl, noteUpgrade, fallbackFor, clearUpgrade } from './src/https-upgrade'
+import { autoconsentFor } from './src/autoconsent'
+import { fingerprintFor } from './src/fingerprint'
+import { kidsCheck, isKidsMode, KIDS_YOUTUBE_JS, KidsLock, useKids, startScreenTime } from './src/kids'
+import WatchersScreen from './src/WatchersScreen'
+import { startWatchers, onWatcherNotificationTap } from './src/watchers'
+import AliasesScreen from './src/AliasesScreen'
+import { fillAliasJS } from './src/aliases'
+import SharingScreen from './src/SharingScreen'
 
 let nextTabId = 1
 let warnedPrivate = false
@@ -75,7 +104,7 @@ function restoredTabs() {
   const s = getState()
   const saved = (s.savedTabs || []).filter((t) => t?.url && (s.restoreTabs !== false || t.pinned))
   if (!saved.length) return [newTab()]
-  return saved.map((t) => ({ ...newTab(t.url, { space: t.space }), title: t.title || t.url, pinned: !!t.pinned, loading: false }))
+  return saved.map((t) => ({ ...newTab(t.url, { space: t.space }), title: t.title || t.url, pinned: !!t.pinned, group: t.group || null, loading: false }))
 }
 
 const hostOf = (url) => {
@@ -173,7 +202,7 @@ const autoplayJS = (mode) => `(function(){
   }, true);
 })();`
 
-const injectedJS = (autoplay) => `${FULLSCREEN_JS}\n${CAPTURE_DOWNLOADS_JS}\n${autoplay === 'on' ? '' : autoplayJS(autoplay)}\n${CAPTURE_LOGIN_JS}\ntrue;`
+const injectedJS = (autoplay) => `${FULLSCREEN_JS}\n${mediaPageJS()}\n${CAPTURE_DOWNLOADS_JS}\n${autoplay === 'on' ? '' : autoplayJS(autoplay)}\n${CAPTURE_LOGIN_JS}\ntrue;`
 
 const PAUSE_MEDIA_JS = `document.querySelectorAll('video,audio').forEach(function(m){try{m.pause()}catch(e){}});true;`
 
@@ -192,6 +221,10 @@ export default function App() {
       installCrashHandler()
       initShields().catch(() => {})
       initPhishing().catch(() => {})
+      setBackgroundPlay(getState().backgroundPlay !== false)
+      restoreTor()
+      startWatchers()
+      startScreenTime()
     })
   }, [])
 
@@ -238,7 +271,21 @@ function Browser() {
   const [appUpdate, setAppUpdate] = useState(null)
   const [barsHidden, setBarsHidden] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
+  const fullscreenRef = useRef(false)
+  fullscreenRef.current = fullscreen
   const [fillOffer, setFillOffer] = useState(null) // { tabId, login }
+  const [otpOffer, setOtpOffer] = useState(null) // { tabId, id, issuer }
+  const [trackOffer, setTrackOffer] = useState(null) // { tabId, found }
+  const [updating, setUpdating] = useState(null) // update download progress 0–1
+  const [tool, setTool] = useState(null) // which tool screen is open (import, backup, packages…)
+  const [mediaOpen, setMediaOpen] = useState(false)
+  const [pip, setPip] = useState(false)
+  const mediaTab = useRef(null)
+  const [kidsBlocked, setKidsBlocked] = useState(null)
+  const kids = useKids()
+  useEffect(() => onPipChanged(setPip), [])
+  useEffect(() => onMediaControl((a) => mediaTab.current && views.current[mediaTab.current]?.injectJavaScript(a === 'play' ? RESUME_JS : PAUSE_ALL_JS)), [])
+  useEffect(() => onWatcherNotificationTap((url) => openTab(url)), [])
   const [pdf, setPdf] = useState(null) // downloaded PDF open in the viewer
   // Android hands files it can't show (PDFs, attachments) to the app here,
   // with the page's sign-in cookies, instead of its own download manager.
@@ -282,6 +329,9 @@ function Browser() {
     lockForDevice().catch(() => {})
     award('dailyVisit')
     track('streakDay')
+    maybeWeeklyCheck()
+      .then((r) => r?.newlyBreached?.length && Alert.alert('Password alert', `${r.newlyBreached.length} saved password(s) showed up in a data breach. Open Settings → Passwords and autofill → Password check.`))
+      .catch(() => {})
     return onXpEvent(({ levelUp, level, newBadges }) => {
       if (levelUp) toast(`Level up! You're level ${level}.`)
       else if (newBadges?.length) toast(`Badge unlocked: ${newBadges.map((b) => b.name || b.label || b.id || b).join(', ')}`)
@@ -367,7 +417,7 @@ function Browser() {
   const saveTabs = () => {
     const list = tabsRef.current.filter((t) => !t.private && /^https?:/i.test(t.url || ''))
     update((s) => {
-      s.savedTabs = list.map((t) => ({ url: t.url, title: t.title, space: t.space || 'personal', pinned: !!t.pinned }))
+      s.savedTabs = list.map((t) => ({ url: t.url, title: t.title, space: t.space || 'personal', pinned: !!t.pinned, group: t.group || null }))
       s.savedActive = Math.max(0, list.findIndex((t) => t.id === activeRef.current))
     })
   }
@@ -536,6 +586,31 @@ function Browser() {
     }
     if (!msg) return
     if (handleShieldsMessage(msg, tab.url)) return
+    if (msg.__bitConsent) return
+    if (msg.__bitMedia) {
+      if (msg.__bitMedia.playing) mediaTab.current = tab.id
+      reportMedia(msg.__bitMedia)
+      if (msg.__bitMedia.video && tab.id === activeRef.current) setAutoPip(fullscreenRef.current && msg.__bitMedia.playing, msg.__bitMedia.w, msg.__bitMedia.h)
+      return
+    }
+    if (msg.__bitImage) {
+      return Alert.alert('Save image?', msg.__bitImage.alt || '', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Save', onPress: () => saveMedia(msg.__bitImage, tab.url).then((i) => (i?.status === 'failed' ? Alert.alert('Download failed', i.error) : toast('Image saved to Downloads'))) },
+      ])
+    }
+    if (msg.__bitSleepEnded) return sleepEnded()
+    if (msg.__bitTrackingText) {
+      const found = foundOnPage(msg.__bitTrackingText)
+      if (found.length && tab.id === activeRef.current) setTrackOffer({ tabId: tab.id, found })
+      return
+    }
+    if (msg.__bitClip) {
+      addNote(msg.__bitClip)
+      return toast('Saved to notes')
+    }
+    if (msg.__bitOtpFilled !== undefined) return toast(msg.__bitOtpFilled ? 'Code filled' : 'No code box found')
+    if (msg.__bitAlias) return msg.__bitAlias.filled === false && toast('No email field found')
     // Files the page hands over (labels, invoices, blob: and data: downloads).
     if (msg.__bitFile) {
       if (msg.__bitFile.index === 0) toast(`Downloading ${msg.__bitFile.name}`)
@@ -551,7 +626,10 @@ function Browser() {
       return download(d.url, { filename: d.filename || undefined, cookie: d.cookie, referer: d.referer, userAgent: d.userAgent })
     }
     if (msg.__bitDownloadError) return Alert.alert('Download failed', msg.__bitDownloadError.message)
-    if (msg.__bitFullscreen !== undefined) return setVideoFullscreen(!!msg.__bitFullscreen)
+    if (msg.__bitFullscreen !== undefined) {
+      setAutoPip(!!msg.__bitFullscreen)
+      return setVideoFullscreen(!!msg.__bitFullscreen)
+    }
     if (msg.__bitVideo !== undefined) {
       videoPlaying.current = !!msg.__bitVideo && tab.id === activeRef.current
       return
@@ -574,6 +652,8 @@ function Browser() {
     if (msg.__bitLogin) return offerToSave(tab, msg.__bitLogin)
     if (msg.__bitNeedFill) {
       if (tab.private) return
+      const totp = findTotpFor(msg.__bitNeedFill.url)[0]
+      if (totp) setOtpOffer({ tabId: tab.id, id: totp.id, issuer: totp.issuer })
       findLogins(msg.__bitNeedFill.url)
         .then((list) => list?.length && setFillOffer({ tabId: tab.id, login: list[0] }))
         .catch(() => {})
@@ -612,6 +692,11 @@ function Browser() {
   const go = (text) => {
     setEditing(false)
     const q = String(text || '').trim()
+    if (q.startsWith('>')) {
+      const r = firstResult(q, spaceTabs)
+      if (r) runCommand(r.action, r.arg)
+      return
+    }
     if (!active.private && aiEnabled && (q.startsWith('?') || looksLikeQuestion(q))) {
       // Comet-style: results in the tab, AI answer in the panel.
       const question = q.replace(/^\?\s*/, '')
@@ -699,6 +784,57 @@ function Browser() {
     }
   }
 
+  const readLater = async () => {
+    setMenuOpen(false)
+    const article = await browser.run(active.id, READER_JS).catch(() => null)
+    await saveForLater({ url: active.url, title: active.title, article: isReadable(article) ? article : null })
+    toast('Saved to your reading list')
+  }
+
+  // Command bar: type ">" in the address bar.
+  const runCommand = (id, arg) => {
+    setEditing(false)
+    setAddress('')
+    const open = (fn) => () => fn()
+    const map = {
+      tab: () => setActiveId(arg),
+      open: () => openTab(arg),
+      settings: () => setSettingsOpen(true),
+      newTab: () => openTab(homeUrl()),
+      newPrivateTab: () => !isKidsMode() && openTab(homeUrl(), { private: true }),
+      find: () => setFind({ index: 0, total: 0 }),
+      reader: openReader,
+      readLater,
+      translate: () => (aiEnabled ? (setAiOpen(true), setAiRequest(translateRequest())) : navigate(active.id, translateUrl(active.url))),
+      print: () => printPage(() => browser.run(active.id, GET_HTML_SCRIPT)).catch((e) => Alert.alert('Print', e.message)),
+      savePdf: () => savePageAsPdf(() => browser.run(active.id, GET_HTML_SCRIPT)).catch((e) => Alert.alert('Save as PDF', e.message)),
+      pin: () => togglePin(active.id),
+      bookmark: toggleBookmark,
+      saveNote: () => views.current[active.id]?.injectJavaScript(CLIP_JS),
+      askBitter: () => setAiOpen(true),
+      takeOver,
+      packages: () => setTool('packages'),
+      notes: () => setTool('notes'),
+      readingList: () => setTool('reading'),
+      bookmarks: () => setBookmarksOpen(true),
+      history: () => setHistoryOpen(true),
+      downloads: () => setDownloadsOpen(true),
+      reopenClosed,
+      thisSite: () => setSiteSheet(true),
+      desktopSite: () => (setSite(active.url, { desktop: !getSite(active.url).desktop }), setTimeout(() => views.current[active.id]?.reload(), 50)),
+      fillBusiness: () => getState().businessProfile && views.current[active.id]?.injectJavaScript(fillBusinessJS(getState().businessProfile)),
+      backup: () => setTool('backup'),
+      panic,
+    }
+    ;(map[id] || open(() => {}))()
+  }
+
+  const gestures = useBottomBarGestures({
+    onPrevTab: () => setActiveId(neighbourTab(spaceTabs, active.id, -1)),
+    onNextTab: () => setActiveId(neighbourTab(spaceTabs, active.id, 1)),
+    onShowTabs: openTabs,
+  })
+
   const stopAgent = () => {
     session.stop()
     setAgentActive(false)
@@ -719,6 +855,11 @@ function Browser() {
       else delete views.current[id]
     },
     explain,
+    note: (t, text) => {
+      if (!String(text || '').trim()) return
+      addNote({ text, url: t.url, title: t.title })
+      toast('Saved to notes')
+    },
     onMessage: (t, e) => onMessage(t)(e),
     onScroll: (t, e) => {
       if (t.id !== activeRef.current || !getState().hideBarsOnScroll) return
@@ -733,6 +874,24 @@ function Browser() {
       else if (scrollRun.current < -70) showBars(true)
     },
     shouldStart: (req, t) => {
+      if (req.isTopFrame !== false) {
+        const k = kidsCheck(req.url)
+        if (k.redirect) {
+          navigate(t.id, k.redirect)
+          return false
+        }
+        if (k.blocked) {
+          setKidsBlocked({ tabId: t.id, host: hostOf(req.url) })
+          return false
+        }
+        // HTTPS upgrade: try the secure version first (falls back if it fails).
+        const up = upgradeUrl(req.url)
+        if (up) {
+          noteUpgrade(t.id, req.url, up)
+          navigate(t.id, up)
+          return false
+        }
+      }
       // Phishing and malware sites (checked on the phone against downloaded lists).
       const danger = req.isTopFrame !== false && isDangerous(req.url)
       if (danger) {
@@ -774,7 +933,14 @@ function Browser() {
       const js = siteScript(e.nativeEvent.url)
       if (js) views.current[t.id]?.injectJavaScript(js)
     },
+    onError: (t, e) => {
+      const http = fallbackFor(t.id, e.nativeEvent.url, e.nativeEvent.description, e.nativeEvent.code)
+      if (http) navigate(t.id, http)
+    },
     onLoadEnd: (t, e) => {
+      clearUpgrade(t.id)
+      const speed = siteSpeedJS(e.nativeEvent.url)
+      if (speed) views.current[t.id]?.injectJavaScript(speed)
       // Sites set to "always translate".
       if (!t.private && t.id === activeRef.current && getSite(e.nativeEvent.url).translate) {
         if (getState().aiEnabled) {
@@ -792,6 +958,7 @@ function Browser() {
       findLogins(e.nativeEvent.url)
         .then((list) => list?.length && setFillOffer({ tabId: t.id, login: list[0] }))
         .catch(() => {})
+      views.current[t.id]?.injectJavaScript(DETECT_TRACKING_JS)
     },
   })
 
@@ -834,6 +1001,7 @@ function Browser() {
             placeholderTextColor={C.muted}
             accessibilityLabel="Address and search bar"
           />
+          {!editing && <VoiceButton onText={(t) => go(t)} />}
           <ShieldButton url={active.url} on={shieldsOn} onPress={() => /^https?:/i.test(active.url || '') && setSiteSheet(true)} />
           <PSwitch
             value={aiEnabled}
@@ -876,7 +1044,20 @@ function Browser() {
       {!fullscreen && appUpdate && !barsHidden && (
         <View style={st.update}>
           <Text style={st.updateText}>BIT BROWSER {appUpdate.version} IS OUT</Text>
-          <PButton small hot color={C.orange} label="GET IT" onPress={() => Linking.openURL(appUpdate.url)} />
+          <PButton
+            small
+            hot
+            color={C.orange}
+            label={updating != null ? `${Math.round(updating * 100)}%` : 'UPDATE'}
+            disabled={updating != null}
+            onPress={() => {
+              if (Platform.OS !== 'android') return Linking.openURL(appUpdate.url)
+              setUpdating(0)
+              downloadAndInstallUpdate(appUpdate, setUpdating)
+                .catch((e) => Alert.alert('Update', e.message))
+                .finally(() => setUpdating(null))
+            }}
+          />
           <PButton small label="X" onPress={() => setAppUpdate(null)} />
         </View>
       )}
@@ -896,6 +1077,30 @@ function Browser() {
         </View>
       )}
 
+      {!fullscreen && otpOffer && otpOffer.tabId === active.id && (
+        <View style={st.update}>
+          <Text style={[st.updateText, { color: C.teal }]} numberOfLines={1}>FILL 2FA CODE{otpOffer.issuer ? ` FOR ${String(otpOffer.issuer).toUpperCase()}` : ''}?</Text>
+          <PButton small hot label="FILL" onPress={() => currentCode(otpOffer.id).then((c) => c && views.current[otpOffer.tabId]?.injectJavaScript(otpFillJS(c))).finally(() => setOtpOffer(null))} />
+          <PButton small label="X" onPress={() => setOtpOffer(null)} />
+        </View>
+      )}
+      {!fullscreen && trackOffer && trackOffer.tabId === active.id && (
+        <View style={st.update}>
+          <Text style={st.updateText} numberOfLines={1}>TRACK {trackOffer.found.length} PACKAGE{trackOffer.found.length > 1 ? 'S' : ''}?</Text>
+          <PButton
+            small
+            hot
+            color={C.orange}
+            label="TRACK"
+            onPress={() => {
+              trackOffer.found.forEach((f) => addPackage({ number: f.number, carrier: f.carrier, fromUrl: active.url }))
+              toast('Added to Packages (Menu → Packages)')
+              setTrackOffer(null)
+            }}
+          />
+          <PButton small label="X" onPress={() => setTrackOffer(null)} />
+        </View>
+      )}
       {!fullscreen && (
         <FindBar
           visible={!!find}
@@ -915,6 +1120,12 @@ function Browser() {
         />
       )}
 
+      {editing && address.startsWith('>') && (
+        <View style={{ position: 'relative', zIndex: 20 }}>
+          <CommandBar query={address} tabs={spaceTabs} onAction={runCommand} onClose={() => setAddress('')} />
+        </View>
+      )}
+
       {/* pages */}
       <View style={[{ flex: 1 }, wide && { flexDirection: 'row' }]}>
       <View style={[{ flex: 1 }, agentActive && !fullscreen && st.agentFrame]}>
@@ -925,6 +1136,8 @@ function Browser() {
             )
           ))}
         </View>
+        {kids.locked && <KidsLock reason="time" />}
+        {kidsBlocked && kidsBlocked.tabId === active.id && <KidsLock reason="blocked" host={kidsBlocked.host} onBack={() => setKidsBlocked(null)} />}
         {locked && active.private && !fullscreen && (
           <View style={st.lock}>
             <Text style={st.agentTitle}>PRIVATE TABS LOCKED</Text>
@@ -986,8 +1199,8 @@ function Browser() {
       </View>
 
       {/* bottom bar: icon + label, long-press for a hint */}
-      {!fullscreen && !barsHidden && (
-        <View style={[st.bottom, { borderTopColor: accent }]}>
+      {!fullscreen && !barsHidden && !pip && (
+        <Animated.View {...gestures.panHandlers} style={[st.bottom, gestures.style, { borderTopColor: accent }]}>
           <BarButton icon="back" label="Back" disabled={!active.canGoBack} onPress={() => views.current[active.id]?.goBack()} onLongPress={hint('Back: the previous page')} />
           <BarButton icon="forward" label="Forward" disabled={!active.canGoForward} onPress={() => views.current[active.id]?.goForward()} onLongPress={hint('Forward: the next page')} />
           <BarButton
@@ -999,15 +1212,15 @@ function Browser() {
           <BarButton count={spaceTabs.length} boxed label="Tabs" onPress={openTabs} onLongPress={hint('Tabs: see, search and close your tabs')} />
           {aiEnabled && <BarButton icon="bitter" label="Bitter" hot={aiOpen} onPress={() => setAiOpen(!aiOpen)} onLongPress={hint('Bitter: ask about this page or let it take over')} />}
           <BarButton icon="menu" label="Menu" onPress={() => setMenuOpen(true)} onLongPress={hint('Menu: new tab, downloads, settings')} />
-        </View>
+        </Animated.View>
       )}
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)} statusBarTranslucent navigationBarTranslucent>
         <Pressable style={st.scrim} onPress={() => setMenuOpen(false)}>
           <ScrollView style={[st.menu, { marginBottom: insets.bottom + 70, maxHeight: winHeight - insets.top - insets.bottom - 110 }]} bounces={false}>
             <MenuItem icon="plus" label="NEW TAB" onPress={() => (setMenuOpen(false), openTab(homeUrl()))} />
-            <MenuItem icon="lock" label="NEW PRIVATE TAB" onPress={() => (setMenuOpen(false), openTab(homeUrl(), { private: true }))} />
-            {aiEnabled && <MenuItem icon="bitter" label="LET BITTER TAKE OVER" color={C.pink} onPress={takeOver} />}
+            {!isKidsMode() && <MenuItem icon="lock" label="NEW PRIVATE TAB" onPress={() => (setMenuOpen(false), openTab(homeUrl(), { private: true }))} />}
+            {aiEnabled && !isKidsMode() && <MenuItem icon="bitter" label="LET BITTER TAKE OVER" color={C.pink} onPress={takeOver} />}
             {familyLinks.tracker !== false && TRACKER_PAGE.test(active.url) && <MenuItem icon="star" label="ADD TO 128BITTRACKER" color={C.orange} onPress={addToTracker} />}
             {!active.private && /^https?:/i.test(active.url || '') && (
               <MenuItem icon="bookmark" label={active.pinned ? 'UNPIN THIS TAB' : 'PIN THIS TAB'} color={C.orange} onPress={() => (setMenuOpen(false), togglePin(active.id))} />
@@ -1019,6 +1232,18 @@ function Browser() {
             <MenuItem icon="reload" label="HISTORY" onPress={() => (setMenuOpen(false), setHistoryOpen(true))} />
             <MenuItem icon="back" label="REOPEN CLOSED TAB" onPress={() => (setMenuOpen(false), reopenClosed())} />
             {/^https?:/i.test(active.url || '') && <MenuItem icon="home" label="READER MODE" onPress={openReader} />}
+            {/^https?:/i.test(active.url || '') && (
+              <>
+                <MenuItem icon="bookmark" label="READ LATER" onPress={readLater} />
+                <MenuItem icon="star" label="SAVE PAGE TO NOTES" onPress={() => (setMenuOpen(false), views.current[active.id]?.injectJavaScript(CLIP_JS))} />
+                <MenuItem icon="star" label="WATCH THIS PAGE" onPress={() => (setMenuOpen(false), setTool('watchers'))} />
+                <MenuItem icon="lock" label="HIDE MY EMAIL" onPress={() => (setMenuOpen(false), setTool('aliases'))} />
+                <MenuItem icon="star" label="MEDIA" onPress={() => (setMenuOpen(false), setMediaOpen(true))} />
+              </>
+            )}
+            <MenuItem icon="download" label="PACKAGES" onPress={() => (setMenuOpen(false), setTool('packages'))} />
+            <MenuItem icon="star" label="NOTES" onPress={() => (setMenuOpen(false), setTool('notes'))} />
+            <MenuItem icon="bookmark" label="READING LIST" onPress={() => (setMenuOpen(false), setTool('reading'))} />
             <MenuItem icon="download" label="DOWNLOADS" onPress={() => (setMenuOpen(false), setDownloadsOpen(true))} />
             {/^https?:/i.test(active.url || '') && (
               <>
@@ -1091,6 +1316,7 @@ function Browser() {
         onCloseAll={closeAllTabs}
         onSwitchSpace={switchSpace}
         onTogglePin={togglePin}
+        onGroupChange={(tabId, group) => patchTab(tabId, { group })}
         onNewTab={(opts) => {
           openTab(homeUrl(), opts)
           setTabsOpen(false)
@@ -1101,8 +1327,58 @@ function Browser() {
         }}
         onClose={() => setTabsOpen(false)}
       />
-      <SettingsScreen visible={settingsOpen} onClose={() => setSettingsOpen(false)} openUrl={openUrl} downloadsScreen={<DownloadsScreen />} />
-      <PdfViewer item={pdf} visible={!!pdf} onClose={() => setPdf(null)} />
+      <SettingsScreen
+        visible={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        openUrl={openUrl}
+        downloadsScreen={<DownloadsScreen />}
+        onOpenTool={(name) => {
+          setSettingsOpen(false)
+          setTimeout(() => setTool(name), 250)
+        }}
+      />
+      <PdfViewer
+        item={pdf}
+        visible={!!pdf}
+        onClose={() => setPdf(null)}
+        onAskPdf={({ title, text }) => {
+          setPdf(null)
+          setAiOpen(true)
+          setAiRequest({ input: `Summarize "${title}" and tell me what it says. I'll ask follow-up questions.`, mode: 'ask', includePage: false, documents: [{ title, text }], nonce: Date.now() })
+        }}
+      />
+      <ImportScreen visible={tool === 'import'} onClose={() => setTool(null)} />
+      <BackupScreen visible={tool === 'backup'} onClose={() => setTool(null)} />
+      <AuthenticatorScreen visible={tool === 'authenticator'} onClose={() => setTool(null)} />
+      <SecurityCheckScreen visible={tool === 'security'} onClose={() => setTool(null)} onOpen={(origin) => (setTool(null), openTab(origin))} />
+      <PackagesScreen
+        visible={tool === 'packages'}
+        onClose={() => setTool(null)}
+        onOpen={(u) => (setTool(null), openTab(u))}
+        onAsk={(u) => {
+          setTool(null)
+          openTab(u)
+          setTimeout(() => {
+            setAiOpen(true)
+            setAiRequest({ input: 'What is the delivery status of this package? Summarize where it is and when it should arrive.', mode: 'ask', includePage: true, nonce: Date.now() })
+          }, 4000)
+        }}
+      />
+      <NotesScreen visible={tool === 'notes'} onClose={() => setTool(null)} onOpen={(u) => (setTool(null), openTab(u))} />
+      <ReadingListScreen visible={tool === 'reading'} onClose={() => setTool(null)} onOpen={(u) => (setTool(null), openTab(u))} />
+      <WatchersScreen visible={tool === 'watchers'} currentUrl={/^https?:/i.test(active.url || '') ? active.url : ''} currentTitle={active.title} onClose={() => setTool(null)} onOpen={(u) => (setTool(null), openTab(u))} />
+      <AliasesScreen visible={tool === 'aliases'} pageHost={hostOf(active.url)} onClose={() => setTool(null)} onFill={(email) => views.current[active.id]?.injectJavaScript(fillAliasJS(email))} />
+      <SharingScreen visible={tool === 'sharing'} onClose={() => setTool(null)} onOpen={(u) => (setTool(null), openTab(u))} />
+      <MediaSheet
+        visible={mediaOpen}
+        url={active.url}
+        onClose={() => setMediaOpen(false)}
+        getMedia={() => browser.run(active.id, MEDIA_LIST_JS)}
+        onSpeed={(r) => views.current[active.id]?.injectJavaScript(setSpeed(active.url, r))}
+        onSleep={(c) => setSleepTimer(c, (js) => Object.values(views.current).forEach((v) => v?.injectJavaScript(js)))}
+        onPip={() => (setMediaOpen(false), enterPip())}
+        onSaved={(item) => (isPdf(item) ? openPdf(item) : toast(`Saved ${item.filename}`))}
+      />
       <BookmarksScreen visible={bookmarksOpen} onClose={() => setBookmarksOpen(false)} onOpen={(url) => (setBookmarksOpen(false), openTab(url))} />
       <HistoryScreen visible={historyOpen} onClose={() => setHistoryOpen(false)} onOpen={(url) => (setHistoryOpen(false), openTab(url))} />
       <ReaderView visible={!!reader} article={reader} onClose={() => setReader(null)} onOpen={(url) => (setReader(null), openTab(url))} />
@@ -1116,7 +1392,10 @@ function Browser() {
   )
 }
 
-const EXPLAIN_MENU = [{ label: 'Explain with Bitter', key: 'explain' }]
+const EXPLAIN_MENU = [
+  { label: 'Explain with Bitter', key: 'explain' },
+  { label: 'Save to notes', key: 'note' },
+]
 const NO_MENU = []
 
 // One tab's page. Memoized so typing in the address bar, agent steps or
@@ -1124,10 +1403,11 @@ const NO_MENU = []
 const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEnabled, watchScroll, shieldsJS, siteKey, h }) {
   // Per-site settings arrive as a JSON string so the memo comparison stays cheap.
   const site = useMemo(() => JSON.parse(siteKey || '{}'), [siteKey])
-  const js = useMemo(() => injectedJS(autoplay), [autoplay])
+  const js = useMemo(() => `${injectedJS(autoplay)}\n${autoconsentFor(site, getState())}\ntrue;`, [autoplay, site])
   const beforeJS = useMemo(
-    () => `${CAPTURE_DOWNLOADS_JS}\n${permissionsJS(site)}\n${Platform.OS === 'android' ? PULL_REFRESH_JS : ''}\n${shieldsJS || ''}`,
-    [shieldsJS, site]
+    () =>
+      `${fingerprintFor(t.url, site, getState())}\n${autoconsentFor(site, getState())}\n${isKidsMode() ? KIDS_YOUTUBE_JS : ''}\n${CAPTURE_DOWNLOADS_JS}\n${permissionsJS(site)}\n${Platform.OS === 'android' ? PULL_REFRESH_JS : ''}\n${shieldsJS || ''}`,
+    [shieldsJS, site, hostOf(t.url)]
   )
   // A tab woken from sleep reopens its last page; later navigations come in via t.source.
   const [source, setSource] = useState(() => ({ uri: t.url || t.source }))
@@ -1171,7 +1451,7 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
       textZoom={site.textZoom || textZoom}
       injectedJavaScript={js}
       menuItems={t.private || !aiEnabled ? NO_MENU : EXPLAIN_MENU}
-      onCustomMenuSelection={(e) => e.nativeEvent.key === 'explain' && h.explain(e.nativeEvent.selectedText)}
+      onCustomMenuSelection={(e) => (e.nativeEvent.key === 'note' ? h.note(t, e.nativeEvent.selectedText) : e.nativeEvent.key === 'explain' && h.explain(e.nativeEvent.selectedText))}
       onMessage={(e) => h.onMessage(t, e)}
       // Scroll events cross into JS on every frame, so only listen when the bars hide on scroll.
       onScroll={watchScroll ? (e) => h.onScroll(t, e) : undefined}
@@ -1180,6 +1460,7 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
       injectedJavaScriptBeforeContentLoadedForMainFrameOnly={false}
       onShouldStartLoadWithRequest={(req) => h.shouldStart(req, t)}
       onLoadStart={(e) => h.onLoadStart(t, e)}
+      onError={(e) => h.onError(t, e)}
       onFileDownload={(e) => h.download(e.nativeEvent.downloadUrl)}
       onNavigationStateChange={(nav) => h.onNav(t, nav)}
       onLoadEnd={(e) => h.onLoadEnd(t, e)}

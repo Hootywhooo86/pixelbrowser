@@ -27,6 +27,12 @@ import { BusinessProfileForm } from './formfill'
 import { CrashLogView } from './crash'
 import { chooseDownloadFolder, getDownloadFolder, clearDownloadFolder } from './downloads'
 import { useQuests } from './quests'
+import { OfflineAIForm } from './offline-ai'
+import Family128Screen from './Family128Screen'
+import KidsScreen from './KidsScreen'
+import { resetHttpOnly } from './https-upgrade'
+import { enableTor, disableTor, torOn, getOrbot, TOR_CHECK_URL } from './tor'
+import { setBackgroundPlay } from './media'
 
 const REPO_URL = 'https://github.com/Hootywhooo86/pixelbrowser'
 
@@ -42,8 +48,27 @@ const SECTIONS = [
     ],
   },
   {
+    title: 'TOOLS',
+    rows: [
+      { id: 'import', title: 'Import', sub: 'Bookmarks and passwords from Chrome, Brave, Edge', keywords: 'import chrome brave edge firefox bitwarden 1password bookmarks passwords csv html' },
+      { id: 'backup', title: 'Backup and restore', sub: 'One encrypted file with everything', keywords: 'backup restore export file encrypted drive new phone' },
+      { id: 'authenticator', title: '2FA codes', sub: 'Bit Authenticator', keywords: '2fa two factor totp authenticator codes otp' },
+      { id: 'security', title: 'Password check', sub: 'Weak, reused and breached passwords', keywords: 'breach pwned leak weak reused password check security' },
+      { id: 'packages', title: 'Packages', sub: 'Tracking numbers you saved', keywords: 'packages tracking shipping ups fedex usps canada post dhl purolator shippo' },
+      { id: 'notes', title: 'Notes', sub: 'Clips and notes by Space', keywords: 'notes clip highlight' },
+      { id: 'reading', title: 'Reading list', sub: 'Saved to read later, offline', keywords: 'read later reading list offline articles' },
+      { id: 'watchers', title: 'Watched pages', sub: 'Changes and price drops', keywords: 'watch page changes price tracking drop alert scheduled bitter tasks' },
+      { id: 'aliases', title: 'Hide my email', sub: 'Email aliases (SimpleLogin, addy.io)', keywords: 'email alias hide simplelogin addy' },
+      { id: 'sharing', title: 'Family sharing', sub: 'Share bookmarks or passwords, encrypted', keywords: 'family share sharing bookmarks passwords space' },
+    ],
+  },
+  {
     title: 'GENERAL',
     rows: [
+      { id: 'protections', title: 'Privacy protections', sub: 'HTTPS upgrade, cookie banners, fingerprinting, Tor', keywords: 'https upgrade secure cookie banner consent reject fingerprint fingerprinting tor orbot proxy background play media' },
+      { id: 'offlineai', title: 'AI on my computer', sub: 'Use Ollama or LM Studio over Wi-Fi', keywords: 'offline ai ollama lm studio local computer wifi' },
+      { id: 'account128', title: '128bit account', sub: 'Coming soon', keywords: '128bit account sign in family xp sync' },
+      { id: 'kids', title: 'Kids mode', sub: 'Safe search, allowed sites, time limits', keywords: 'kids children parental controls safe search time limit pin' },
       { id: 'search', title: 'Search engines', sub: 'Address bar search', keywords: 'search engine duckduckgo brave google bing startpage' },
       { id: 'homepage', title: 'Homepage', sub: 'Page for new tabs', keywords: 'home page start new tab' },
       { id: 'sync', title: 'Sync', sub: 'Encrypted sync with your computer', keywords: 'sync' },
@@ -102,7 +127,10 @@ const TITLES = {
 // Where BACK goes from a sub-page.
 const PARENT = { data: 'shields', agentlog: 'ai', spaces: 'tabs' }
 
-export default function SettingsScreen({ visible, onClose, openUrl, downloadsScreen }) {
+// Rows that open their own full screen (from App) instead of a settings page.
+const TOOL_IDS = new Set(['import', 'backup', 'authenticator', 'security', 'packages', 'notes', 'reading', 'watchers', 'aliases', 'sharing'])
+
+export default function SettingsScreen({ visible, onClose, openUrl, downloadsScreen, onOpenTool }) {
   const insets = useSafeAreaInsets()
   const [page, setPage] = useState(null)
   const [query, setQuery] = useState('')
@@ -189,7 +217,7 @@ function SettingsList({ sections, query, setQuery, page, setPage }) {
             {s.rows.map((r, i) => (
               <Pressable
                 key={`${s.title}-${r.id}`}
-                onPress={() => setPage(r.id)}
+                onPress={() => (TOOL_IDS.has(r.id) ? onOpenTool?.(r.id) : setPage(r.id))}
                 accessibilityRole="button"
                 style={({ pressed }) => [st.navRow, i > 0 && st.navDivider, page === r.id && { backgroundColor: C.edge }, pressed && { backgroundColor: C.edge }]}
               >
@@ -246,6 +274,14 @@ function Page({ id, go, open, downloadsScreen, onScan }) {
       )
     case 'business':
       return <BusinessProfileForm />
+    case 'protections':
+      return <ProtectionsPage go={go} />
+    case 'offlineai':
+      return <OfflineAIForm />
+    case 'account128':
+      return <Family128Screen modal={false} />
+    case 'kids':
+      return <KidsScreen modal={false} />
     case 'crash':
       return <CrashPage />
     case 'default':
@@ -1170,6 +1206,50 @@ function DownloadSettings() {
         </>
       )}
       <PText style={st.h}>YOUR DOWNLOADS</PText>
+    </>
+  )
+}
+
+function ProtectionsPage({ go }) {
+  const s = useStore()
+  const [torStatus, setTorStatus] = useState('')
+  const [needsOrbot, setNeedsOrbot] = useState(false)
+  const tor = torOn()
+  return (
+    <>
+      <Toggle value={s.httpsUpgrade !== false} onChange={(v) => update((x) => (x.httpsUpgrade = v))} label="HTTPS upgrade" note="Open the secure version of sites when there is one. Falls back if a site doesn't have it." />
+      <PButton small label="FORGET HTTP-ONLY SITES" onPress={() => (resetHttpOnly(), Alert.alert('Done', 'Bit Browser will try the secure version of every site again.'))} />
+      <Toggle value={s.autoconsent !== false} onChange={(v) => update((x) => (x.autoconsent = v))} label="Reject cookie banners" note={'Clicks "Reject all" for you. Turn it off for one site from Menu → This site.'} />
+      <Toggle value={s.fingerprintProtection !== false} onChange={(v) => update((x) => (x.fingerprintProtection = v))} label="Fingerprinting protection" note="Stops sites recognising your phone from small details like your screen and graphics chip." />
+      <Toggle
+        value={s.backgroundPlay !== false}
+        onChange={(v) => {
+          update((x) => (x.backgroundPlay = v))
+          setBackgroundPlay(v)
+        }}
+        label="Keep playing in the background"
+        note="Videos and podcasts keep playing when you leave the app or turn the screen off."
+      />
+      <PText style={st.h}>TOR</PText>
+      <Text style={st.muted}>Sends every tab through Tor using the free Orbot app. Slower, but sites can't see where you are. While it's on it covers all tabs, not just private ones.</Text>
+      <Toggle
+        value={tor}
+        label="Use Tor (through Orbot)"
+        onChange={async (on) => {
+          setTorStatus('')
+          if (!on) return disableTor().then(() => setTorStatus('Tor is off.'))
+          const r = await enableTor(setTorStatus)
+          if (!r?.ok) {
+            setTorStatus(r?.why || "Couldn't turn on Tor.")
+            setNeedsOrbot(!!r?.needsOrbot)
+          } else setTorStatus('Tor is on.')
+        }}
+      />
+      {!!torStatus && <Text style={st.muted}>{torStatus}</Text>}
+      <View style={st.row}>
+        {needsOrbot && <PButton small hot label="GET ORBOT" onPress={getOrbot} />}
+        {tor && <PButton small label="CHECK" onPress={() => go(TOR_CHECK_URL)} />}
+      </View>
     </>
   )
 }

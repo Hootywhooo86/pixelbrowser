@@ -16,7 +16,11 @@
         "NSLocationWhenInUseUsageDescription": "Websites you allow can see your location.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoadsInWebContent": true
-        }
+        },
+        "UIBackgroundModes": [
+          "audio"
+        ],
+        "NSSpeechRecognitionUsageDescription": "Bit Browser uses speech recognition for voice search and Bitter questions."
       }
     },
     "android": {
@@ -112,7 +116,20 @@
       ],
       "expo-asset",
       "./plugins/with-shields",
-      "./plugins/with-cleartext"
+      "./plugins/with-cleartext",
+      "expo-notifications",
+      "expo-background-task",
+      "./plugins/with-pip",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Websites you allow, and voice search, can use the microphone.",
+          "speechRecognitionPermission": "Bit Browser uses speech recognition for voice search and Bitter questions.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ]
     ],
     "scheme": "pixelbrowser",
     "backgroundColor": "#0b0b16"

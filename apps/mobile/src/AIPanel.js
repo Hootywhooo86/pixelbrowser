@@ -113,7 +113,7 @@ export default function AIPanel({ browser, visible, side = false, request, onClo
     if (!request) return
     // "Let Bitter take over" switches to Agent mode and waits for the task.
     if (request.mode === 'agent' && !request.input) return setMode('agent')
-    send(request.input, { search: request.search, includePage: request.includePage, video: request.video, mode: request.mode || 'ask' })
+    send(request.input, { search: request.search, includePage: request.includePage, video: request.video, documents: request.documents, mode: request.mode || 'ask' })
   }, [request?.nonce])
 
   // Each Space has its own chat.

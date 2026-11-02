@@ -483,7 +483,7 @@ $('totp-add').onsubmit = async (e) => {
 }
 
 // Security check
-function renderSecurity(r) {
+function renderSecCheck(r) {
   $('sec-on').checked = r.enabled
   const c = r.counts
   say('sec-summary', `${c.total} logins: ${c.weak} weak, ${c.reused} reused${r.lastRun ? `, ${c.breached} found in breaches (checked ${new Date(r.lastRun).toLocaleDateString()})` : ''}.`)
@@ -493,10 +493,10 @@ function renderSecurity(r) {
     )
   )
 }
-$('sec-on').onchange = async () => renderSecurity(await v05('security-enable', $('sec-on').checked))
+$('sec-on').onchange = async () => renderSecCheck(await v05('security-enable', $('sec-on').checked))
 $('sec-run').onclick = async () => {
   say('sec-summary', 'Checking…')
-  renderSecurity(await v05('security-run').catch((err) => (fail('sec-summary')(err), v05('security-report'))))
+  renderSecCheck(await v05('security-run').catch((err) => (fail('sec-summary')(err), v05('security-report'))))
 }
 
 // Import & backup
@@ -631,7 +631,7 @@ $('lai-find').onclick = async () => {
 function render05() {
   renderPrivacy5().catch(() => {})
   renderTotp().catch(() => {})
-  v05('security-report').then(renderSecurity).catch(() => {})
+  v05('security-report').then(renderSecCheck).catch(() => {})
   renderProfiles().catch(() => {})
   renderKids().catch(() => {})
   renderAccount().catch(() => {})

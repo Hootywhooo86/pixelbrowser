@@ -116,7 +116,7 @@ export function setAIEnabled(on) {
 }
 
 /** Run one question. onEvent receives the same events as desktop. */
-export async function ask({ browser, input, mode, tabIds, search = false, includePage = true, video = false, onEvent }) {
+export async function ask({ browser, input, mode, tabIds, search = false, includePage = true, video = false, documents, onEvent }) {
   if (!getState().aiEnabled) return onEvent({ type: 'error', message: 'AI is off. Turn on the AI slider to use Bitter.' })
   if (session.abort) session.stop()
   const provider = await currentProvider()
@@ -148,6 +148,7 @@ export async function ask({ browser, input, mode, tabIds, search = false, includ
       search,
       includePage,
       video,
+      documents,
       spend: spendApi(),
       memory: {
         enabled: getState().memoryEnabled,

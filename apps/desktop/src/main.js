@@ -2453,7 +2453,7 @@ if (process.env.PIXEL_E2E) {
     runPanic, shields, xp, setTheme, windows, history: store.history, records: store.records, downloads,
     bookmarks, vault, quests, store, openLibrary, toggleBookmark, appMenu, isNtp, NTP_URL, realUrl,
     sitePermission, setSitePermission, lastAutoPrint: () => lastAutoPrint, crashlog,
-    v05, openWindow,
+    v05, openWindow, tools: require('./tools'),
   }
 }
 

@@ -333,8 +333,8 @@ export async function addLocalFile({ path, filename, mime }) {
 /** Print a PDF (shipping labels print at their real size). */
 export async function printDownload(item) {
   if (!item || item.status !== 'done') return
-  const Print = require('expo-print')
-  await Print.printAsync({ uri: item.path })
+  // Uses the saved label preset (paper, orientation, printer on iPhone).
+  await require('./label-presets').printPdf(item.path)
 }
 
 /**
