@@ -1,6 +1,6 @@
 {
   "name": "@pixelbrowser/mobile",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "main": "index.js",
   "dependencies": {
     "@expo/metro-runtime": "~57.0.17",
