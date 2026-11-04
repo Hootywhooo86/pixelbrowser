@@ -35,8 +35,27 @@ const SCRIPT = String.raw`(function(){
   // open it in the viewer. Sites do this many ways (blob links, pop-ups,
   // previews in an iframe, fetch + FileSaver); this catches the PDF itself.
   var lastSend = 0, lastTap = 0, saved = typeof WeakSet === 'function' ? new WeakSet() : null, savedUrls = {};
-  ['pointerdown', 'touchstart', 'mousedown', 'keydown', 'click'].forEach(function(t){ document.addEventListener(t, function(){ lastTap = Date.now() }, true) });
+  ['pointerdown', 'touchstart', 'mousedown', 'keydown', 'click'].forEach(function(t){ document.addEventListener(t, function(e){ lastTap = Date.now(); if (isDownloadControl(e.target)) lastDownloadTap = lastTap }, true) });
   function recentTap(ms){ return Date.now() - lastTap < (ms || 5000) }
+  // The safety nets below only act right after you tap something that says it
+  // downloads or prints a file ("Download label", "Invoice", "Print", "Export"…),
+  // so ordinary pages that load PDFs or file links in the background are left alone.
+  var lastDownloadTap = 0;
+  var DOWNLOAD_WORDS = /download|descarg|t\u00e9l\u00e9charg|telecharg|herunterlad|scaric|\blabels?\b|invoice|receipt|\bpdf\b|\bprint|export|statement|packing slip|attachment|boarding pass|\bticket|\bbill\b|save (as|a copy|pdf|file)|\bdocument/i;
+  function isDownloadControl(el){
+    try {
+      for (var n = el, i = 0; n && n.nodeType === 1 && i < 6; n = n.parentElement, i++) {
+        if (n.hasAttribute && n.hasAttribute('download')) return true;
+        var words = [n.getAttribute('aria-label'), n.getAttribute('title'), n.getAttribute('data-testid'), n.getAttribute('name'), n.id, typeof n.className === 'string' ? n.className : ''].join(' ');
+        if (DOWNLOAD_WORDS.test(words)) return true;
+        var text = (n.innerText || n.textContent || '').trim();
+        if (text && text.length <= 60 && DOWNLOAD_WORDS.test(text)) return true;
+        if (/^(A|BUTTON|LI)$/.test(n.tagName) || /button|menuitem|link/.test(n.getAttribute('role') || '')) break;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function recentDownloadTap(ms){ return Date.now() - lastDownloadTap < (ms || 8000) }
   // A JSON answer right after a tap that contains a file link (Shippo's
   // label_regen returns the label's address): if nothing else saves the file
   // within a moment, save it from that link.
@@ -49,7 +68,7 @@ const SCRIPT = String.raw`(function(){
     return out;
   }
   function checkJson(text, from){
-    if (!recentTap(10000) || !text || text.length > 2000000) return;
+    if (!recentDownloadTap(10000) || !text || text.length > 2000000) return;
     var links = fileLinksIn(text); if (!links.length) return;
     var pdf = links.filter(function(u){ return /\.pdf(?:[?#]|$)/i.test(u) })[0] || links[0];
     log('file link in ' + from, pdf);
@@ -65,7 +84,7 @@ const SCRIPT = String.raw`(function(){
     try { var r = new FileReader(); r.onload = function(){ cb(String(r.result || '').indexOf('%PDF') === 0) }; r.onerror = function(){ cb(false) }; r.readAsText(b.slice(0, 5)) } catch (e) { cb(false) }
   }
   function maybePdf(b, url, how){
-    if (!recentTap(5000) || (saved && saved.has(b))) return;
+    if (!recentDownloadTap(8000) || (saved && saved.has(b))) return;
     isPdfBlob(b, function(yes){
       if (!yes) return;
       log('pdf made (' + how + ')', url);
@@ -77,14 +96,14 @@ const SCRIPT = String.raw`(function(){
     var ofetch = window.fetch;
     if (ofetch) window.fetch = function(){
       var p = ofetch.apply(this, arguments);
-      try { p.then(function(r){ var ct = r.headers.get('content-type') || ''; if (recentTap(15000)) log('fetch ' + r.status + ' ' + ct.split(';')[0], r.url); if (/json|text\/plain/i.test(ct) && recentTap(10000)) r.clone().text().then(function(t){ checkJson(t, 'answer') }).catch(function(){}); if (/application\/pdf/i.test(ct) && recentTap(8000)) r.clone().blob().then(function(b){ maybePdf(b, r.url, 'fetch') }).catch(function(){}) }).catch(function(){}) } catch (e) {}
+      try { p.then(function(r){ var ct = r.headers.get('content-type') || ''; if (recentTap(15000)) log('fetch ' + r.status + ' ' + ct.split(';')[0], r.url); if (/json|text\/plain/i.test(ct) && recentDownloadTap(10000)) r.clone().text().then(function(t){ checkJson(t, 'answer') }).catch(function(){}); if (/application\/pdf/i.test(ct) && recentDownloadTap(8000)) r.clone().blob().then(function(b){ maybePdf(b, r.url, 'fetch') }).catch(function(){}) }).catch(function(){}) } catch (e) {}
       return p;
     };
     var xopen = XMLHttpRequest.prototype.open, xsend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.open = function(m, u){ this.__bitUrl = u; return xopen.apply(this, arguments) };
     XMLHttpRequest.prototype.send = function(){
       var x = this;
-      try { x.addEventListener('load', function(){ try { var ct = x.getResponseHeader('content-type') || ''; if (recentTap(15000)) log('xhr ' + x.status + ' ' + ct.split(';')[0], abs(x.__bitUrl)); if (/json|text\/plain/i.test(ct) && recentTap(10000)) { try { checkJson(x.responseType === 'json' ? JSON.stringify(x.response) : (!x.responseType || x.responseType === 'text') ? x.responseText : '', 'answer') } catch (e) {} } if (!/application\/pdf/i.test(ct) || !recentTap(8000)) return; var b = x.response instanceof Blob ? x.response : x.response instanceof ArrayBuffer ? new Blob([x.response], { type: 'application/pdf' }) : null; if (b) maybePdf(b, abs(x.__bitUrl), 'xhr') } catch (e) {} }) } catch (e) {}
+      try { x.addEventListener('load', function(){ try { var ct = x.getResponseHeader('content-type') || ''; if (recentTap(15000)) log('xhr ' + x.status + ' ' + ct.split(';')[0], abs(x.__bitUrl)); if (/json|text\/plain/i.test(ct) && recentDownloadTap(10000)) { try { checkJson(x.responseType === 'json' ? JSON.stringify(x.response) : (!x.responseType || x.responseType === 'text') ? x.responseText : '', 'answer') } catch (e) {} } if (!/application\/pdf/i.test(ct) || !recentDownloadTap(8000)) return; var b = x.response instanceof Blob ? x.response : x.response instanceof ArrayBuffer ? new Blob([x.response], { type: 'application/pdf' }) : null; if (b) maybePdf(b, abs(x.__bitUrl), 'xhr') } catch (e) {} }) } catch (e) {}
       return xsend.apply(this, arguments);
     };
   } catch (e) {}
@@ -92,7 +111,7 @@ const SCRIPT = String.raw`(function(){
   function checkFrame(el){
     try {
       var src = el.getAttribute('src') || el.getAttribute('data') || '';
-      if (!src || savedUrls[src] || !recentTap(8000)) return;
+      if (!src || savedUrls[src] || !recentDownloadTap(8000)) return;
       var url = abs(src);
       if (/^blob:/i.test(url) || /^data:application\/pdf/i.test(url) || /\.pdf(?:[?#]|$)/i.test(url)) { savedUrls[src] = 1; log('pdf preview', url); grab(url) }
     } catch (e) {}
