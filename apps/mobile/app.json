@@ -2,14 +2,14 @@
   "expo": {
     "name": "Bit Browser",
     "slug": "pixelbrowser",
-    "version": "0.5.8",
+    "version": "0.5.9",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.pixelbrowser.app",
-      "buildNumber": "508",
+      "buildNumber": "509",
       "requireFullScreen": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Websites you allow can use the microphone.",
@@ -31,7 +31,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.pixelbrowser.app",
-      "versionCode": 508,
+      "versionCode": 509,
       "permissions": [
         "android.permission.REQUEST_INSTALL_PACKAGES",
         "android.permission.RECORD_AUDIO",
