@@ -231,3 +231,7 @@ body.vertical .tab { width: 100%; max-width: none; flex: none; }
 body.vertical .tab.pinned { width: 100%; justify-content: flex-start; padding: 0 8px; }
 body.vertical #shell > :not(#tabstrip) { margin-left: 220px; }
 body.vertical .gchip { max-width: none; }
+
+/* The Bit Globe logo (scripts/make-icons.py): pixel art, kept crisp. */
+.logo, .mark { background: none !important; box-shadow: none !important; }
+.logo-img { width: 100%; height: 100%; image-rendering: pixelated; display: block; }

@@ -59,3 +59,7 @@ section#stats-box, section#tabs-box { background: var(--panel); border: 3px soli
 .links a:hover { color: var(--teal); }
 .links .device { font: 7px/1.6 'Press Start 2P', monospace; color: var(--muted); margin-top: 6px; }
 .muted { color: var(--muted); font-size: 12px; }
+
+/* The Bit Globe logo (scripts/make-icons.py): pixel art, kept crisp. */
+.logo, .mark { background: none !important; box-shadow: none !important; }
+.logo-img { width: 100%; height: 100%; image-rendering: pixelated; display: block; }

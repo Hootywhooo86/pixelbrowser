@@ -3,7 +3,7 @@
 // the same Comet-style AI and encrypted sync as the desktop app.
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { View, TextInput, Text, Pressable, StyleSheet, Platform, Linking, Alert, ToastAndroid, Modal, ScrollView, AppState, Dimensions, Animated, useWindowDimensions } from 'react-native'
+import { View, TextInput, Text, Pressable, StyleSheet, Platform, Linking, Alert, ToastAndroid, Modal, ScrollView, AppState, Dimensions, Animated, Image, useWindowDimensions } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import { useFonts } from 'expo-font'
 import { WebView } from 'react-native-webview'
@@ -78,6 +78,8 @@ import { startWatchers, onWatcherNotificationTap } from './src/watchers'
 import AliasesScreen from './src/AliasesScreen'
 import { fillAliasJS } from './src/aliases'
 import SharingScreen from './src/SharingScreen'
+
+const LOGO = require('./assets/logo.png') // the Bit Globe (scripts/make-icons.py)
 
 let nextTabId = 1
 let warnedPrivate = false
@@ -985,8 +987,8 @@ function Browser() {
       {/* address bar (slides away while you scroll down) */}
       {!fullscreen && !barsHidden && (
         <View style={[st.top, { borderBottomColor: accent }]}>
-          <Pressable onLongPress={panic} delayLongPress={600} style={[st.logo, { backgroundColor: accent }]} accessibilityLabel="Bit Browser. Long-press for the panic button">
-            <Text style={st.logoText}>B</Text>
+          <Pressable onLongPress={panic} delayLongPress={600} style={[st.logo, { borderBottomColor: accent }]} accessibilityLabel="Bit Browser. Long-press for the panic button">
+            <Image source={LOGO} style={st.logoImg} fadeDuration={0} />
           </Pressable>
           {/^http:\/\//i.test(active.url || '') && !editing && (
             <Pressable onPress={() => Alert.alert('Not secure', "This site doesn't use encryption (http). Others on your network could see what you send. Don't enter passwords or card numbers here.")} hitSlop={8} accessibilityLabel="Not secure: this site doesn't use encryption">
@@ -1524,7 +1526,8 @@ function MenuItem({ label, icon, onPress, color }) {
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.panel },
   top: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: C.panel, borderBottomWidth: 3 },
-  logo: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRightWidth: 3, borderBottomWidth: 3, borderColor: 'rgba(0,0,0,0.35)' },
+  logo: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 3 },
+  logoImg: { width: 30, height: 30 },
   logoText: { ...px(12), color: C.bg },
   address: { flex: 1, height: 44, backgroundColor: C.bg, borderWidth: 3, borderColor: C.edge, color: C.ink, paddingHorizontal: 10, paddingVertical: 0, fontSize: 15, textAlignVertical: 'center', includeFontPadding: false },
   mini: { height: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: C.panel, borderBottomWidth: 2 },
