@@ -117,6 +117,16 @@ class BitMediaService : Service() {
     return b.build()
   }
 
+  // Swiped Bit Browser away from recent apps: closing the browser stops the
+  // music/video too, instead of leaving it playing with no app on screen.
+  override fun onTaskRemoved(rootIntent: Intent?) {
+    BitShields.silenceAll()
+    BitMedia.controlListener?.invoke("pause")
+    try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (e: Throwable) {}
+    stopSelf()
+    super.onTaskRemoved(rootIntent)
+  }
+
   override fun onDestroy() {
     running = false
     hold(false)

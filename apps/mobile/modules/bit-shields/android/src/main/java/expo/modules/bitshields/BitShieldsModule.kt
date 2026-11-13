@@ -51,6 +51,13 @@ class BitShieldsModule : Module() {
     // Home pressed while a video is full screen (Android below 12) -> PiP.
     OnUserLeavesActivity { BitMedia.onUserLeave(appContext.currentActivity) }
 
+    // Leaving with Back on the last screen (the app closes): stop all media
+    // and the background-play notification.
+    OnActivityDestroys {
+      BitShields.silenceAll()
+      appContext.reactContext?.let { BitMedia.stopMedia(it) }
+    }
+
     // ---------- background play ----------
 
     Function("setBackgroundPlay") { on: Boolean ->

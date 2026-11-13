@@ -222,6 +222,20 @@ object BitShields {
     return true
   }
 
+  /**
+   * Bit Browser was closed (swiped away or exited): stop every page's audio and
+   * video so nothing keeps playing in the background after the app is gone.
+   */
+  fun silenceAll() {
+    val pause = "document.querySelectorAll('video,audio').forEach(function(m){try{m.pause()}catch(e){}});"
+    val run = Runnable {
+      synchronized(views) { views.keys.toList() }.forEach { v ->
+        try { v.evaluateJavascript(pause, null); v.onPause() } catch (e: Throwable) {}
+      }
+    }
+    if (Looper.myLooper() == Looper.getMainLooper()) run.run() else main.post(run)
+  }
+
   @JvmStatic
   fun onWebViewCreated(view: WebView) {
     views[view] = null
