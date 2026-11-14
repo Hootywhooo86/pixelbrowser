@@ -71,6 +71,12 @@ function defaults() {
     activeSpace: 'personal',
     privateLock: false, // fingerprint/face to open private tabs
     phishing: { enabled: true, lastUpdate: 0 },
+    // v0.6.1
+    cleanLinks: true, // remove tracking tags from links, skip AMP and redirect trackers
+    linksCleaned: 0,
+    hiddenElements: {}, // host -> [CSS selectors] hidden with "Hide part of this page"
+    forgetVisited: {}, // site -> [hosts] visited on "forget when closed" sites, wiped once closed
+    homeShortcuts: [], // addresses put on the home screen
     xp: { total: 0, streak: 0, lastDay: '', badges: {}, counters: {} },
     familyLinks: { bitcaller: true, tracker: true },
     // v0.4

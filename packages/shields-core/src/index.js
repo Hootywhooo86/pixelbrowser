@@ -3,3 +3,4 @@ export { createCompiler, compileLists, compileListsSync, preprocess, parseScript
 export { createMatcher, hostOf, parents, siteOf, findIn, pathHit, parseHostsList } from './matcher.js'
 export { buildPageScript, buildSiteScript, hostSelectors, hostKeys, siteScriptlets, prepareScriptlets, indexScriptlets, resolveScriptlet, EARLY_SITES } from './page-script.js'
 export { YOUTUBE_JS } from './youtube.js'
+export { cleanUrl, unwrapRedirect, deAmp, DE_AMP_JS } from './clean-url.js'

@@ -497,7 +497,8 @@ class PixelWindow {
           { type: 'separator' },
           { label: 'Translate this page', submenu: this.translateItems() },
           { label: 'Save page as PDF', click: () => this.savePdf() },
-          { label: 'Print…', click: () => wc.print({}) }
+          { label: 'Print…', click: () => wc.print({}) },
+          { label: 'QR code for this page', click: () => showPageQr(this, tab) }
         )
       }
       items.push(...v05.contextItems(this, tab, params))
@@ -1633,10 +1634,45 @@ function appMenu(pw) {
     { type: 'separator' },
     { label: 'Save page as PDF', accelerator: 'CmdOrCtrl+Shift+S', enabled: !!tab, click: () => pw.savePdf() },
     { label: 'Print…', accelerator: 'CmdOrCtrl+P', enabled: !!tab, click: () => tab?.view.webContents.print({}) },
+    { label: 'QR code for this page', enabled: web, click: () => showPageQr(pw, tab) },
     { type: 'separator' },
     { label: 'Passwords…', click: () => openSettings('passwords') },
     { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
   ]).popup({ window: pw.win })
+}
+
+// ---------- QR code for the page ----------
+
+// A small window with a QR code: scan it with a phone to open the page there.
+async function showPageQr(pw, tab) {
+  const url = tab && realUrl(tab)
+  if (!/^https?:/.test(url || '')) return
+  let img
+  try {
+    img = await require('qrcode').toDataURL(url, { margin: 2, scale: 8, errorCorrectionLevel: 'M', color: { dark: '#0b0b16', light: '#ffffff' } })
+  } catch {
+    return dialog.showMessageBox(pw.win, { type: 'info', message: 'This address is too long for a QR code.' })
+  }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+  const html = `<!doctype html><meta charset="utf-8"><title>QR code</title><style>
+body{margin:0;background:#0b0b16;color:#f4f1ff;font:14px system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;gap:12px;padding:20px;text-align:center}
+h1{font:bold 13px monospace;letter-spacing:2px;color:#2ee6c8;margin:4px 0}img{width:300px;height:300px;image-rendering:pixelated;border:4px solid #2ee6c8}
+p{margin:0;word-break:break-all;user-select:text;color:#b9b6d3;font-size:12px}b{color:#f4f1ff;font-size:14px}</style>
+<h1>SCAN TO OPEN ON YOUR PHONE</h1><img src="${img}" alt="QR code"><b>${esc(tab.title || '')}</b><p>${esc(url)}</p>`
+  const win = new BrowserWindow({
+    parent: pw.win,
+    width: 380,
+    height: 520,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    autoHideMenuBar: true,
+    title: 'QR code',
+    backgroundColor: '#0b0b16',
+    webPreferences: { sandbox: true, contextIsolation: true, javascript: false },
+  })
+  win.webContents.on('will-navigate', (e) => e.preventDefault())
+  win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
 }
 
 // ---------- themes ----------
@@ -2080,6 +2116,7 @@ function settingsState() {
     privacy: { doh: s.privacy.doh, dohCustom: s.privacy.dohCustom, panicRange: s.privacy.panicRange },
     privateLock: { enabled: s.privateLock.enabled, hasPin: !!s.privateLock.pin, minutes: s.privateLock.minutes },
     phishing: { enabled: s.phishing.enabled, lastUpdate: s.phishing.lastUpdate, hosts: phishing.count() },
+    cleanLinks: { enabled: s.cleanLinks !== false, count: s.linksCleaned || 0 },
     spaces: spaceList(),
     xp: xp.summary(),
     familyLinks: s.familyLinks,
@@ -2170,6 +2207,7 @@ ipcMain.handle('settings:update', async (_e, patch = {}) => {
     if (typeof patch.privateLock.enabled === 'boolean') l.enabled = patch.privateLock.enabled && !!l.pin
     if (patch.privateLock.minutes) l.minutes = Math.max(1, Math.min(120, Number(patch.privateLock.minutes) || 5))
   }
+  if (typeof patch.cleanLinks === 'boolean') s.cleanLinks = patch.cleanLinks
   if (patch.phishing && typeof patch.phishing.enabled === 'boolean') {
     s.phishing.enabled = patch.phishing.enabled
     if (patch.phishing.enabled && !phishing.count()) phishing.refresh().catch(() => {})

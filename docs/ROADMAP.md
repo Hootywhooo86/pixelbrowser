@@ -83,6 +83,7 @@ blobs it can't read.
 ### Privacy and security
 - [ ] HTTPS-only mode, fingerprinting protection, and blocking third-party cookies by default on desktop
 - [x] Ad and tracker blocking on the phone (Android request filtering; iPhone page-level. Full iOS content rules still to do)
+- [x] Clean links (tracking tags, AMP, redirect trackers), forget a site when closed, hide part of a page (phone)
 - [ ] A per-site "never let AI read this site" list
 - [ ] An outside security review of the agent and the sync code before launch
 - [x] Opt-in crash reports (kept on the device; shared only when you choose)
@@ -90,6 +91,7 @@ blobs it can't read.
 ### Phone
 - [ ] Android extensions through GeckoView (uBlock Origin, Dark Reader…)
 - [x] Downloads and file sharing
+- [x] Add to home screen and QR codes (show and scan)
 - [ ] Share sheet: "Ask Bitter about this link" from other apps
 
 ### AI polish

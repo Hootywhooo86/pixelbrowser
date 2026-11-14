@@ -1,11 +1,13 @@
 // "This site" sheet: Shields, desktop site, camera/microphone/location,
 // text size and always-translate for the page you're on.
 
+import { useEffect, useState } from 'react'
 import { Modal, View, Text, Pressable, ScrollView, StyleSheet } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { siteShieldsOn, setSiteShields } from './shields'
 import { useSite, setSite, resetSite, hostKey } from './site-settings'
 import { useStore } from './store'
+import { useHidden, removeHidden, forgetSupported, forgetSiteNow } from './site-tools'
 import { PButton, PSwitch } from './ui'
 import PixelIcon from './PixelIcon'
 import { C, px } from './theme'
@@ -17,7 +19,7 @@ const CHOICES = [
 ]
 
 /**
- * onChanged(what): 'shields' | 'desktop' | 'permissions' | 'textZoom' | 'translate'
+ * onChanged(what): 'shields' | 'desktop' | 'permissions' | 'textZoom' | 'translate' | 'forget' | 'forgotten' | 'hidden'
  * so the app can reload the page or re-apply settings.
  */
 export default function SiteSettingsSheet({ visible, url, onClose, onChanged }) {
@@ -26,6 +28,9 @@ export default function SiteSettingsSheet({ visible, url, onClose, onChanged }) 
   const site = useSite(host)
   useStore((s) => s.shields) // re-render when Shields change
   const baseZoom = useStore((s) => s.textZoom || 100)
+  const hidden = useHidden(url)
+  const [cleared, setCleared] = useState('')
+  useEffect(() => setCleared(''), [visible, host])
   if (!visible) return null
   const shieldsUp = siteShieldsOn(url)
   const zoom = site.textZoom || baseZoom
@@ -95,9 +100,38 @@ export default function SiteSettingsSheet({ visible, url, onClose, onChanged }) 
               <PSwitch label="ON" value={!!site.translate} onChange={(v) => change({ translate: v }, 'translate')} />
             </Row>
 
-            <Text style={st.note}>
-              Clearing one site's cookies isn't possible in the phone's web engine. To sign out, use the site's own sign-out, or Settings → Shields & privacy → clear data.
-            </Text>
+            {forgetSupported() && (
+              <>
+                <Text style={st.h}>COOKIES AND SIGN-IN</Text>
+                <Row icon="lock" label="Forget this site when I close it" note="Signs you out and deletes its cookies and saved data once its last tab closes">
+                  <PSwitch label="ON" value={!!site.forget} onChange={(v) => change({ forget: v }, 'forget')} />
+                </Row>
+                <PButton
+                  small
+                  label="CLEAR THIS SITE'S COOKIES NOW"
+                  style={{ alignSelf: 'flex-start' }}
+                  onPress={() => {
+                    const n = forgetSiteNow(url)
+                    onChanged?.('forgotten')
+                    setCleared(n < 0 ? "Couldn't clear this site" : 'Cleared. Other sites stay signed in.')
+                  }}
+                />
+                {!!cleared && <Text style={st.note}>{cleared}</Text>}
+              </>
+            )}
+
+            {hidden.length > 0 && (
+              <>
+                <Text style={st.h}>HIDDEN ON THIS SITE</Text>
+                {hidden.map((sel) => (
+                  <View key={sel} style={st.row}>
+                    <Text style={[st.sub, { flex: 1 }]} numberOfLines={2}>{sel}</Text>
+                    <PButton small label="SHOW" onPress={() => (removeHidden(host, sel), onChanged?.('hidden'))} />
+                  </View>
+                ))}
+              </>
+            )}
+
             <PButton small label="RESET THIS SITE" onPress={() => (resetSite(host), onChanged?.('permissions'))} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
           </ScrollView>
         )}

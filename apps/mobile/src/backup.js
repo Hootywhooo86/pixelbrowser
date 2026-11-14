@@ -19,7 +19,7 @@ const RECORD_KINDS = ['bookmarks', 'notes', 'readlater', 'packages', 'memory', '
 const SETTING_KEYS = [
   'searchEngine', 'customSearchUrl', 'homepage', 'theme', 'customTheme', 'tabSkin', 'sounds', 'autoplay', 'textZoom',
   'spaces', 'activeSpace', 'shields', 'siteSettings', 'xp', 'quests', 'businessProfile', 'ntp', 'restoreTabs',
-  'hideBarsOnScroll', 'fullscreenVideo', 'rotateFullscreen', 'familyLinks', 'phishing', 'autoPrintLabels', 'deviceName',
+  'hideBarsOnScroll', 'fullscreenVideo', 'rotateFullscreen', 'familyLinks', 'phishing', 'cleanLinks', 'hiddenElements', 'homeShortcuts', 'autoPrintLabels', 'deviceName',
 ]
 
 /** Everything worth keeping, with secrets decrypted (only ever written out encrypted). */

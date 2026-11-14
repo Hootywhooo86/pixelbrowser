@@ -1,6 +1,6 @@
 {
   "name": "@pixelbrowser/desktop",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "Bit Browser desktop: Chromium engine (via Electron), pixel shell, Chrome extensions, built-in ad/tracker blocking.",
   "main": "src/main.js",
@@ -14,6 +14,7 @@
   "dependencies": {
     "@ghostery/adblocker-electron": "^2.20.1",
     "@pixelbrowser/ai-core": "*",
+    "@pixelbrowser/shields-core": "*",
     "@pixelbrowser/sync-core": "*",
     "@pixelbrowser/tools-core": "*",
     "@pixelbrowser/tracking-core": "*",

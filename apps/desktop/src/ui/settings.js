@@ -242,6 +242,10 @@ function renderShields() {
       ? `${fmt(state.phishing.hosts)} dangerous sites on the list, checked on this device. Updated ${state.phishing.lastUpdate ? new Date(state.phishing.lastUpdate).toLocaleString() : 'just now'}.`
       : 'Downloading the list…'
     : 'Off.'
+  if (state.cleanLinks) {
+    $('clean-links-on').checked = state.cleanLinks.enabled
+    $('clean-links-status').textContent = state.cleanLinks.count ? `${fmt(state.cleanLinks.count)} links cleaned so far.` : ''
+  }
 }
 async function upSite(host) {
   applyState(await api.set({ siteUp: host }))
@@ -252,6 +256,7 @@ $('lists-update').onclick = async () => {
   await set({ updateLists: true })
 }
 $('phishing-on').onchange = () => set({ phishing: { enabled: $('phishing-on').checked } })
+$('clean-links-on').onchange = () => set({ cleanLinks: $('clean-links-on').checked })
 
 // ---------- security ----------
 

@@ -145,6 +145,19 @@ class BitShieldsModule : Module() {
     // around to it, so closing the app right after logging in doesn't lose them.
     Function("flushCookies") { android.webkit.CookieManager.getInstance().flush() }
 
+    // "Forget this site when I close it": one site's cookies and storage.
+    Function("forgetSite") { hosts: List<String>, site: String -> BitSites.forget(hosts, site) }
+
+    // Add to home screen.
+    Function("pinShortcutSupported") { appContext.reactContext?.let { BitSites.pinSupported(it) } ?: false }
+
+    AsyncFunction("addToHomeScreen") { url: String, title: String, iconUrl: String?, promise: expo.modules.kotlin.Promise ->
+      val ctx = appContext.reactContext ?: return@AsyncFunction promise.resolve("unsupported")
+      Thread {
+        try { promise.resolve(BitSites.addToHomeScreen(ctx, url, title, iconUrl)) } catch (e: Throwable) { promise.resolve("failed") }
+      }.start()
+    }
+
     // The system WebView's user agent, so JS can drop the "; wv" WebView marker
     // that makes sites like Google treat Bit Browser as an embedded app.
     Function("defaultUserAgent") {

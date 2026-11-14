@@ -63,6 +63,8 @@ const settings = new JsonFile('pixel-settings.json', {
   privacy: { doh: 'automatic', dohCustom: '', panicRange: '1h' },
   privateLock: { enabled: false, pin: '', minutes: 5 }, // pin = salted hash
   phishing: { enabled: true, lastUpdate: 0 },
+  cleanLinks: true, // remove tracking tags from links, skip AMP and redirect trackers
+  linksCleaned: 0,
   spaces: {
     list: [
       { id: 'personal', name: 'Personal' },

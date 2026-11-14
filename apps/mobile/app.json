@@ -2,14 +2,14 @@
   "expo": {
     "name": "Bit Browser",
     "slug": "pixelbrowser",
-    "version": "0.6.0",
+    "version": "0.6.1",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.pixelbrowser.app",
-      "buildNumber": "600",
+      "buildNumber": "601",
       "requireFullScreen": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Websites you allow can use the microphone.",
@@ -31,7 +31,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.pixelbrowser.app",
-      "versionCode": 600,
+      "versionCode": 601,
       "permissions": [
         "android.permission.REQUEST_INSTALL_PACKAGES",
         "android.permission.RECORD_AUDIO",
@@ -83,7 +83,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Bit Browser uses the camera only to scan the sync QR code from your computer.",
+          "cameraPermission": "Bit Browser uses the camera only when you scan a QR code.",
           "microphonePermission": "Websites you allow can use the microphone.",
           "recordAudioAndroid": true
         }

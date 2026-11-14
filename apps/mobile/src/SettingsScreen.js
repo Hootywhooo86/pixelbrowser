@@ -22,7 +22,8 @@ import { THEMES, SWATCHES, themeColors } from './themes'
 import { BADGES, levelOf, progressOf } from './xp'
 import DataDashboard from './DataDashboard'
 import Mascot from './Mascot'
-import { resetSite } from './site-settings'
+import { resetSite, setSite } from './site-settings'
+import { useForgetSites } from './site-tools'
 import { BusinessProfileForm } from './formfill'
 import { CrashLogView } from './crash'
 import { chooseDownloadFolder, getDownloadFolder, clearDownloadFolder } from './downloads'
@@ -41,7 +42,7 @@ const SECTIONS = [
   {
     title: 'FEATURES',
     rows: [
-      { id: 'shields', title: 'Shields & privacy', sub: 'Blocking, cookies, clear data', keywords: 'privacy tracker ads cookies https clear history data shields block blocker youtube phishing malware dns lock dashboard' },
+      { id: 'shields', title: 'Shields & privacy', sub: 'Blocking, cookies, clear data', keywords: 'privacy tracker ads cookies https clear history data shields block blocker youtube phishing malware dns lock dashboard clean links utm tracking forget' },
       { id: 'ai', title: 'Bitter AI', sub: 'AI slider, model, keys, memory', keywords: 'ai bitter model provider key api memory claude chatgpt gemini spending cap budget cost activity log' },
       { id: 'sync', title: 'Sync', sub: 'Encrypted sync with your computer', keywords: 'sync qr code devices tabs encrypted' },
       { id: 'family', title: '128bit family', sub: 'Account, XP and streaks', keywords: '128bit family account xp streak quests events badges level bitcaller tracker' },
@@ -371,6 +372,9 @@ function ShieldsPage({ open }) {
   const sh = useStore((s) => s.shields)
   const phishing = useStore((s) => s.phishing?.enabled !== false)
   const privateLock = useStore((s) => !!s.privateLock)
+  const cleanLinks = useStore((s) => s.cleanLinks !== false)
+  const linksCleaned = useStore((s) => s.linksCleaned || 0)
+  const forgetSites = useForgetSites()
   const history = useStore((s) => Object.keys(s.records.history).length)
   const siteOff = Object.keys(sh?.siteOff || {}).filter((h) => sh.siteOff[h]).sort()
   const totals = sh?.totals || {}
@@ -405,8 +409,18 @@ function ShieldsPage({ open }) {
         </View>
       ))}
 
+      <PHeader>FORGET WHEN CLOSED</PHeader>
+      {!forgetSites.length && <Text style={st.muted}>No sites. Turn it on for a site from Menu → This site: it signs you out and deletes the site's cookies once its last tab closes.</Text>}
+      {forgetSites.map((host) => (
+        <View key={host} style={st.itemRow}>
+          <Text style={[st.rowTitle, { flex: 1 }]} numberOfLines={1}>{host}</Text>
+          <PButton small label="KEEP SIGNED IN" onPress={() => setSite(host, { forget: false })} />
+        </View>
+      ))}
+
       <PHeader>SAFETY</PHeader>
       <Toggle value={phishing} onChange={(v) => update((s) => (s.phishing = { ...s.phishing, enabled: v }))} label="Warn me about phishing and malware sites" note="Checked on this phone against free blocklists. The sites you visit are never sent anywhere." />
+      <Toggle value={cleanLinks} onChange={(v) => update((s) => (s.cleanLinks = v))} label="Clean links" note={`Removes tracking tags (utm_, fbclid, gclid…) from links, skips Google AMP copies and redirect trackers.${linksCleaned ? ` ${fmt(linksCleaned)} links cleaned so far.` : ''}`} />
       <Toggle value={privateLock} onChange={(v) => update((s) => (s.privateLock = v))} label="Lock private tabs with fingerprint or face" note="Asks before showing private tabs when you come back to the app" />
       <Text style={st.label}>Secure DNS (DNS over HTTPS)</Text>
       <Text style={st.body2}>

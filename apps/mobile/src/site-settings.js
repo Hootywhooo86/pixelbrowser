@@ -12,7 +12,7 @@ import { Platform } from 'react-native'
 import { getState, update, putRecord, useStore } from './store'
 
 export const PERMISSIONS = ['camera', 'microphone', 'location']
-const DEFAULTS = { desktop: false, camera: 'ask', microphone: 'ask', location: 'ask', notifications: 'block', textZoom: 0, translate: false }
+const DEFAULTS = { desktop: false, camera: 'ask', microphone: 'ask', location: 'ask', notifications: 'block', textZoom: 0, translate: false, forget: false }
 
 /** A desktop Chrome user agent, for "Desktop site". */
 export const DESKTOP_UA =

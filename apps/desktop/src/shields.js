@@ -10,6 +10,7 @@ const { app, ipcMain } = require('electron')
 const { ElectronBlocker, fromElectronDetails } = require('@ghostery/adblocker-electron')
 const store = require('./store')
 const phishing = require('./phishing')
+const { cleanUrl } = require('@pixelbrowser/shields-core')
 
 const PRELOAD_PATH = require.resolve('@ghostery/adblocker-electron-preload')
 const UPDATE_EVERY_MS = 24 * 60 * 60 * 1000
@@ -136,6 +137,8 @@ function countBlocked(wcId, type) {
   for (const fn of listeners.blocked) fn(wcId, pageCount.get(wcId), kind)
 }
 
+const lastCleaned = new Map() // webContents id -> { from, at }: a site that insists on its tracked address isn't looped
+
 function onBeforeRequest(details, callback) {
   const wcId = details.webContentsId
   if (details.resourceType === 'mainFrame') {
@@ -149,6 +152,17 @@ function onBeforeRequest(details, callback) {
       callback({ cancel: true })
       for (const fn of listeners.warn) fn(wcId, details.url)
       return
+    }
+    // Clean links: drop tracking tags, skip AMP copies and redirect trackers.
+    // Only for plain page loads (not form posts), and not where Shields are down.
+    if (store.settings.data.cleanLinks !== false && details.method === 'GET' && /^https?:/.test(details.url) && !siteDown(host)) {
+      const clean = cleanUrl(details.url)
+      const last = lastCleaned.get(wcId)
+      if (clean !== details.url && !(last && last.from === details.url && Date.now() - last.at < 8000)) {
+        lastCleaned.set(wcId, { from: details.url, at: Date.now() })
+        store.settings.data.linksCleaned = (store.settings.data.linksCleaned || 0) + 1
+        return callback({ redirectURL: clean })
+      }
     }
     return callback({})
   }

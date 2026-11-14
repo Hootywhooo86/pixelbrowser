@@ -78,6 +78,10 @@ import { startWatchers, onWatcherNotificationTap } from './src/watchers'
 import AliasesScreen from './src/AliasesScreen'
 import { fillAliasJS } from './src/aliases'
 import SharingScreen from './src/SharingScreen'
+import DangerScreen from './src/DangerScreen'
+import QrSheet from './src/QrSheet'
+import { cleanUrl, DE_AMP_JS } from '@pixelbrowser/shields-core'
+import { noteVisit, forgetsOnClose, forgetClosedSites, CLEAR_PAGE_STORAGE_JS, hiddenElementsJS, addHidden, PICKER_JS, addToHomeScreen, homeScreenSupported, isHomeShortcut } from './src/site-tools'
 
 const LOGO = require('./assets/logo.png') // the Bit Globe (scripts/make-icons.py)
 
@@ -284,6 +288,9 @@ function Browser() {
   const [pip, setPip] = useState(false)
   const mediaTab = useRef(null)
   const [kidsBlocked, setKidsBlocked] = useState(null)
+  const [danger, setDanger] = useState(null) // { tabId, url, host, list }: phishing warning over the tab
+  const [qr, setQr] = useState(null) // 'show' | 'scan'
+  const cleaned = useRef({}) // tab id -> { from, at }: links we cleaned, so a site that insists isn't looped
   const kids = useKids()
   useEffect(() => onPipChanged(setPip), [])
   useEffect(() => onMediaControl((a) => mediaTab.current && views.current[mediaTab.current]?.injectJavaScript(a === 'play' ? RESUME_JS : PAUSE_ALL_JS)), [])
@@ -354,7 +361,9 @@ function Browser() {
   const patchTab = (id, patch) => setTabs((list) => list.map((t) => (t.id === id ? { ...t, ...patch } : t)))
 
   const openTab = (url, opts) => {
-    const tab = newTab(url, opts)
+    const risky = url && isDangerous(url)
+    const tab = newTab(risky ? homeUrl() : url ? cleanLink(url) : url, opts)
+    if (risky) setTimeout(() => setDanger({ tabId: tab.id, url, ...risky }), 0)
     setTabs((list) => [...list, tab])
     setActiveId(tab.id)
     if (!tab.private) emit('tab.opened')
@@ -371,6 +380,7 @@ function Browser() {
     if (tabsRef.current.find((t) => t.id === id)?.pinned) return toast('Pinned tab: unpin it first to close it')
     const list = tabsRef.current.filter((t) => t.id !== id)
     if (tabsRef.current.find((t) => t.id === id)?.private && !list.some((t) => t.private)) setTimeout(clearPrivateData, 300)
+    forgetAfterClose(id, list)
     delete views.current[id]
     if (!list.length) {
       const t = newTab()
@@ -392,9 +402,11 @@ function Browser() {
     const closing = tabsRef.current.filter(goes)
     const keep = tabsRef.current.filter((t) => !goes(t))
     for (const t of closing) {
+      if (!t.private && forgetsOnClose(t.url)) views.current[t.id]?.injectJavaScript(CLEAR_PAGE_STORAGE_JS)
       delete views.current[t.id]
       rememberClosed(t)
     }
+    if (!priv) setTimeout(() => announceForgotten(forgetClosedSites(keepUrls(keep))), 300)
     if (priv) setTimeout(clearPrivateData, 300)
     if (!priv && closing.length) {
       award('tabCleaned', closing.length)
@@ -405,7 +417,36 @@ function Browser() {
     if (!keep.some((t) => t.id === activeRef.current)) setActiveId(keep[keep.length - 1].id)
   }
 
-  const navigate = (id, url) => patchTab(id, { source: url, url, loading: true })
+  // Clean links: drop tracking tags and skip AMP and redirect trackers
+  // (Settings → Shields & privacy). Off where Shields are down.
+  const cleanLink = (url) => {
+    if (getState().cleanLinks === false || !/^https?:/i.test(url || '') || !siteShieldsOn(url)) return url
+    const out = cleanUrl(url)
+    if (out !== url) update((s) => (s.linksCleaned = (s.linksCleaned || 0) + 1))
+    return out
+  }
+
+  const navigate = (id, url) => {
+    const risky = isDangerous(url)
+    if (risky) return setDanger({ tabId: id, url, ...risky })
+    const clean = cleanLink(url)
+    patchTab(id, { source: clean, url: clean, loading: true })
+  }
+
+  // "Forget this site when I close it": once no open tab shows the site, its
+  // cookies and storage are wiped (the page clears its own storage first).
+  const keepUrls = (list) => list.filter((t) => !t.private).map((t) => t.url)
+  const announceForgotten = (gone) => gone.length && toast(`Forgot ${gone.join(', ')}: signed out and cookies cleared`)
+  const forgetAfterClose = (id, remaining) => {
+    const t = tabsRef.current.find((x) => x.id === id)
+    if (!t || t.private) return
+    if (forgetsOnClose(t.url)) views.current[id]?.injectJavaScript(CLEAR_PAGE_STORAGE_JS)
+    setTimeout(() => announceForgotten(forgetClosedSites(keepUrls(remaining))), 300)
+  }
+  useEffect(() => {
+    // Sites left over from last time (the app was swiped away with them open).
+    forgetClosedSites(keepUrls(tabsRef.current))
+  }, [])
 
   // Pinned tabs stay put: they reopen every time and can't be closed by accident.
   const togglePin = (id) => {
@@ -480,7 +521,19 @@ function Browser() {
 
   // Links opened from other apps (Bit Browser as the default browser) open as new tabs.
   useEffect(() => {
-    const open = (url) => url && /^https?:/i.test(url) && openTab(url)
+    const open = (url) => {
+      if (!url || !/^https?:/i.test(url)) return
+      // A home-screen shortcut: go back to its tab if it's still open.
+      if (isHomeShortcut(url)) {
+        const host = hostOf(url)
+        const t = tabsRef.current.find((x) => !x.private && hostOf(x.url) === host)
+        if (t) {
+          if ((t.space || 'personal') !== (getState().activeSpace || 'personal')) update((s) => (s.activeSpace = t.space || 'personal'))
+          return setActiveId(t.id)
+        }
+      }
+      openTab(url)
+    }
     Linking.getInitialURL().then(open).catch(() => {})
     const sub = Linking.addEventListener('url', (e) => open(e.url))
     return () => sub.remove()
@@ -613,6 +666,11 @@ function Browser() {
       ])
     }
     if (msg.__bitSleepEnded) return sleepEnded()
+    if (msg.__bitPick !== undefined) {
+      if (!msg.__bitPick) return
+      addHidden(tab.url, msg.__bitPick.selector)
+      return toast(msg.__bitPick.count > 1 ? `Hidden (${msg.__bitPick.count} like it). Undo in Menu → This site.` : 'Hidden for good on this site. Undo in Menu → This site.')
+    }
     if (msg.__bitTrackingText) {
       const found = foundOnPage(msg.__bitTrackingText)
       if (found.length && tab.id === activeRef.current) setTrackOffer({ tabId: tab.id, found })
@@ -680,6 +738,13 @@ function Browser() {
 
   const download = (url, extra = {}) => {
     logDownloadEvent('download', url)
+    const risky = /^https?:/i.test(url) && isDangerous(url)
+    if (risky) {
+      return Alert.alert('Dangerous download blocked', `${risky.host} is on the ${risky.list} list of phishing and malware sites, so this file wasn't downloaded.`, [
+        { text: 'OK', style: 'cancel' },
+        { text: 'Download anyway', style: 'destructive', onPress: () => (allowOnce(risky.host), download(url, extra)) },
+      ])
+    }
     const filename = extra.filename || guessFilename(url)
     toast(`Downloading ${filename}`)
     startDownload({ url, ...extra, filename }).then((item) => {
@@ -805,6 +870,24 @@ function Browser() {
     toast('Saved to your reading list')
   }
 
+  // Block an element: tap the annoying part of the page to hide it for good.
+  const startPicker = () => {
+    setMenuOpen(false)
+    if (!/^https?:/i.test(active.url || '')) return
+    views.current[active.id]?.injectJavaScript(PICKER_JS)
+  }
+
+  // Add to home screen: the site gets its own icon that opens it in Bit Browser.
+  const pinToHome = async () => {
+    setMenuOpen(false)
+    const t = active
+    if (!/^https?:/i.test(t.url || '')) return
+    const res = await addToHomeScreen({ url: t.url, title: t.title, run: (code) => browser.run(t.id, code) }).catch(() => 'failed')
+    if (res === 'asked') toast('Tap ADD to put it on your home screen')
+    else if (res === 'unsupported') Alert.alert('Add to home screen', "This phone's home screen app doesn't let other apps add icons. Try Bookmarks or pinning the tab instead.")
+    else Alert.alert('Add to home screen', "Couldn't add the icon. Try again.")
+  }
+
   // Command bar: type ">" in the address bar.
   const runCommand = (id, arg) => {
     setEditing(false)
@@ -835,6 +918,10 @@ function Browser() {
       downloads: () => setDownloadsOpen(true),
       reopenClosed,
       thisSite: () => setSiteSheet(true),
+      qr: () => setQr('show'),
+      scanQr: () => setQr('scan'),
+      hideElement: () => startPicker(),
+      homeScreen: () => pinToHome(),
       desktopSite: () => (setSite(active.url, { desktop: !getSite(active.url).desktop }), setTimeout(() => views.current[active.id]?.reload(), 50)),
       fillBusiness: () => getState().businessProfile && views.current[active.id]?.injectJavaScript(fillBusinessJS(getState().businessProfile)),
       backup: () => setTool('backup'),
@@ -907,13 +994,21 @@ function Browser() {
         }
       }
       // Phishing and malware sites (checked on the phone against downloaded lists).
-      const danger = req.isTopFrame !== false && isDangerous(req.url)
-      if (danger) {
-        Alert.alert('Dangerous site blocked', `${danger.host} is on the ${danger.list} list of phishing or malware sites. It may try to steal your passwords or harm your phone.`, [
-          { text: 'Go back', style: 'cancel' },
-          { text: 'Continue anyway', style: 'destructive', onPress: () => (allowOnce(danger.host), navigate(t.id, req.url)) },
-        ])
+      const risky = req.isTopFrame !== false && isDangerous(req.url)
+      if (risky) {
+        setDanger({ tabId: t.id, url: req.url, ...risky })
         return false
+      }
+      // Clean links (tracking tags, AMP, redirect trackers). If the site sends
+      // us straight back to the tracked address, let it have its way.
+      if (req.isTopFrame !== false && /^https?:/i.test(req.url)) {
+        const clean = cleanLink(req.url)
+        const last = cleaned.current[t.id]
+        if (clean !== req.url && !(last && last.from === req.url && Date.now() - last.at < 8000)) {
+          cleaned.current[t.id] = { from: req.url, at: Date.now() }
+          patchTab(t.id, { source: clean, url: clean, loading: true })
+          return false
+        }
       }
       if (req.isTopFrame === false && isBlocked(req.url, t.url)) return false
       if (/^tel:/i.test(req.url)) {
@@ -942,8 +1037,16 @@ function Browser() {
     onNav: (t, nav) => {
       patchTab(t.id, { url: nav.url, title: nav.title || nav.url, loading: nav.loading, canGoBack: nav.canGoBack, canGoForward: nav.canGoForward })
       if (!nav.loading && !t.private) addHistory(nav.url, nav.title)
+      if (!t.private) noteVisit(nav.url)
     },
     onLoadStart: (t, e) => {
+      // Safety net for loads that skip the check above (restored tabs, redirects).
+      const risky = isDangerous(e.nativeEvent.url)
+      if (risky) {
+        views.current[t.id]?.stopLoading()
+        setDanger({ tabId: t.id, url: e.nativeEvent.url, ...risky })
+        return
+      }
       const js = siteScript(e.nativeEvent.url)
       if (js) views.current[t.id]?.injectJavaScript(js)
     },
@@ -955,6 +1058,9 @@ function Browser() {
       clearUpgrade(t.id)
       const speed = siteSpeedJS(e.nativeEvent.url)
       if (speed) views.current[t.id]?.injectJavaScript(speed)
+      const hidden = hiddenElementsJS(e.nativeEvent.url)
+      if (hidden) views.current[t.id]?.injectJavaScript(hidden)
+      if (getState().cleanLinks !== false && siteShieldsOn(e.nativeEvent.url)) views.current[t.id]?.injectJavaScript(DE_AMP_JS)
       // Sites set to "always translate".
       if (!t.private && t.id === activeRef.current && getSite(e.nativeEvent.url).translate) {
         if (getState().aiEnabled) {
@@ -1152,6 +1258,22 @@ function Browser() {
         </View>
         {kids.locked && <KidsLock reason="time" />}
         {kidsBlocked && kidsBlocked.tabId === active.id && <KidsLock reason="blocked" host={kidsBlocked.host} onBack={() => setKidsBlocked(null)} />}
+        {danger && danger.tabId === active.id && (
+          <DangerScreen
+            {...danger}
+            onBack={() => {
+              const t = tabsRef.current.find((x) => x.id === danger.tabId)
+              setDanger(null)
+              if (t?.canGoBack) views.current[t.id]?.goBack()
+              else if (t) patchTab(t.id, { source: homeUrl(), url: homeUrl(), loading: true })
+            }}
+            onContinue={() => {
+              allowOnce(danger.host)
+              patchTab(danger.tabId, { source: danger.url, url: danger.url, loading: true })
+              setDanger(null)
+            }}
+          />
+        )}
         {locked && active.private && !fullscreen && (
           <View style={st.lock}>
             <Text style={st.agentTitle}>PRIVATE TABS LOCKED</Text>
@@ -1259,10 +1381,14 @@ function Browser() {
             <MenuItem icon="star" label="NOTES" onPress={() => (setMenuOpen(false), setTool('notes'))} />
             <MenuItem icon="bookmark" label="READING LIST" onPress={() => (setMenuOpen(false), setTool('reading'))} />
             <MenuItem icon="download" label="DOWNLOADS" onPress={() => (setMenuOpen(false), setDownloadsOpen(true))} />
+            <MenuItem icon="search" label="SCAN QR CODE" onPress={() => (setMenuOpen(false), setQr('scan'))} />
             {/^https?:/i.test(active.url || '') && (
               <>
                 <MenuItem icon="search" label="FIND IN PAGE" onPress={() => (setMenuOpen(false), setFind({ index: 0, total: 0 }))} />
                 <MenuItem icon="settings" label="THIS SITE" onPress={() => (setMenuOpen(false), setSiteSheet(true))} />
+                {!active.private && <MenuItem icon="close" label="HIDE PART OF THIS PAGE" color={C.pink} onPress={startPicker} />}
+                {!active.private && homeScreenSupported() && <MenuItem icon="home" label="ADD TO HOME SCREEN" onPress={pinToHome} />}
+                <MenuItem icon="share" label="QR CODE FOR THIS PAGE" onPress={() => (setMenuOpen(false), setQr('show'))} />
                 <MenuItem
                   icon="bitter"
                   label="TRANSLATE PAGE"
@@ -1400,8 +1526,9 @@ function Browser() {
         visible={siteSheet}
         url={active.url}
         onClose={() => setSiteSheet(false)}
-        onChanged={(what) => ['desktop', 'permissions', 'shields'].includes(what) && views.current[active.id]?.reload()}
+        onChanged={(what) => ['desktop', 'permissions', 'shields', 'hidden', 'forgotten'].includes(what) && views.current[active.id]?.reload()}
       />
+      <QrSheet visible={!!qr} mode={qr || 'show'} url={active.url} title={active.title} onOpen={(url) => openTab(url)} onClose={() => setQr(null)} />
     </View>
   )
 }
