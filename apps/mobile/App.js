@@ -220,6 +220,8 @@ document.addEventListener('click',function(e){try{var a=e.target&&e.target.close
 var h=a.getAttribute('href')||'';if(!/^(tel|sms|smsto|mailto|geo|intent):/i.test(h)||!window.ReactNativeWebView)return;
 e.preventDefault();e.stopImmediatePropagation();window.ReactNativeWebView.postMessage(JSON.stringify({__bitExternal:a.href||h}))}catch(_){}},true)})();`
 
+const ORIGIN_ALL = ['*']
+
 const PAUSE_MEDIA_JS = `document.querySelectorAll('video,audio').forEach(function(m){try{m.pause()}catch(e){}});true;`
 
 const TRACKER_PAGE = /^https?:\/\/(www\.|m\.)?(imdb\.com\/title\/tt\d+|themoviedb\.org\/(movie|tv)\/\d+)/i
@@ -869,6 +871,7 @@ function Browser() {
   // "intent:" links (Google uses these for Call and Directions buttons).
   const openExternal = (url) => {
     const u = String(url || '')
+    logDownloadEvent('app link', u.slice(0, 200)) // shows in Downloads → troubleshooting log
     if (/^tel:/i.test(u)) return openTel(u)
     if (/^intent:/i.test(u)) {
       const m = u.match(/^intent:(\/\/[^#]*)?#Intent;(.*?)(;end;?)?$/i)
@@ -1081,7 +1084,8 @@ function Browser() {
         }
       }
       if (req.isTopFrame === false && isBlocked(req.url, t.url)) return false
-      if (/^(tel|sms|smsto|mailto|geo|intent|market|whatsapp|fb-messenger|maps):/i.test(req.url)) {
+      // Phone numbers, email, texts, maps, intent: and other app links open their app.
+      if (!/^(https?|about|blob|data|javascript|file):/i.test(req.url)) {
         openExternal(req.url)
         return false
       }
@@ -1666,6 +1670,10 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
       injectedJavaScriptBeforeContentLoaded={beforeJS}
       // Also in frames: many sites build documents inside an iframe.
       injectedJavaScriptBeforeContentLoadedForMainFrameOnly={false}
+      // Every address comes to shouldStart, including tel:, mailto: and intent:.
+      // (The default only lets http(s) through and quietly drops the rest on
+      // Android 11+, which is why Call buttons did nothing.)
+      originWhitelist={ORIGIN_ALL}
       onShouldStartLoadWithRequest={(req) => h.shouldStart(req, t)}
       onLoadStart={(e) => h.onLoadStart(t, e)}
       onError={(e) => h.onError(t, e)}
