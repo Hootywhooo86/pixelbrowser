@@ -145,6 +145,18 @@ class BitShieldsModule : Module() {
     // around to it, so closing the app right after logging in doesn't lose them.
     Function("flushCookies") { android.webkit.CookieManager.getInstance().flush() }
 
+    // Phone numbers: open the phone app's keypad with the number filled in.
+    Function("dial") { number: String ->
+      val act = appContext.currentActivity
+      val ctx = act ?: appContext.reactContext ?: return@Function false
+      try {
+        val intent = android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.fromParts("tel", number, null))
+        if (act == null) intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(intent)
+        true
+      } catch (e: Throwable) { false }
+    }
+
     // "Forget this site when I close it": one site's cookies and storage.
     Function("forgetSite") { hosts: List<String>, site: String -> BitSites.forget(hosts, site) }
 

@@ -213,6 +213,13 @@ const autoplayJS = (mode) => `(function(){
 
 const injectedJS = (autoplay) => `${FULLSCREEN_JS}\n${mediaPageJS()}\n${CAPTURE_DOWNLOADS_JS}\n${autoplay === 'on' ? '' : autoplayJS(autoplay)}\n${CAPTURE_LOGIN_JS}\ntrue;`
 
+// Taps on phone, text, email and app links go straight to the app, whatever
+// the page does with them (new window, frames, script navigation).
+const EXTERNAL_LINKS_JS = `(function(){if(window.__bitExt)return;window.__bitExt=1;
+document.addEventListener('click',function(e){try{var a=e.target&&e.target.closest&&e.target.closest('a[href]');if(!a)return;
+var h=a.getAttribute('href')||'';if(!/^(tel|sms|smsto|mailto|geo|intent):/i.test(h)||!window.ReactNativeWebView)return;
+e.preventDefault();e.stopImmediatePropagation();window.ReactNativeWebView.postMessage(JSON.stringify({__bitExternal:a.href||h}))}catch(_){}},true)})();`
+
 const PAUSE_MEDIA_JS = `document.querySelectorAll('video,audio').forEach(function(m){try{m.pause()}catch(e){}});true;`
 
 const TRACKER_PAGE = /^https?:\/\/(www\.|m\.)?(imdb\.com\/title\/tt\d+|themoviedb\.org\/(movie|tv)\/\d+)/i
@@ -303,7 +310,13 @@ function Browser() {
   // Android hands files it can't show (PDFs, attachments) to the app here,
   // with the page's sign-in cookies, instead of its own download manager.
   useEffect(() => {
-    const tabSub = nativeWeb?.addListener?.('onOpenTab', (e) => e?.url && /^https?:/i.test(e.url) && (logDownloadEvent('new window → tab', e.url), true) && openTab(e.url, { private: !!tabsRef.current.find((t) => t.id === activeRef.current)?.private }))
+    const tabSub = nativeWeb?.addListener?.('onOpenTab', (e) => {
+      if (!e?.url) return
+      // A pop-up for a phone number, email or app link (Google's Call button): open that app.
+      if (!/^https?:/i.test(e.url)) return openExternal(e.url)
+      logDownloadEvent('new window → tab', e.url)
+      openTab(e.url, { private: !!tabsRef.current.find((t) => t.id === activeRef.current)?.private })
+    })
     const sub = nativeWeb?.addListener?.('onDownload', (e) => {
       logDownloadEvent(`file from site (${e.mimetype || 'unknown type'})`, e.url)
       let filename = guessFilename(e.url, e.contentDisposition)
@@ -670,6 +683,7 @@ function Browser() {
       ])
     }
     if (msg.__bitSleepEnded) return sleepEnded()
+    if (msg.__bitExternal) return openExternal(msg.__bitExternal)
     if (msg.__bitPick !== undefined) {
       if (!msg.__bitPick) return
       addHidden(tab.url, msg.__bitPick.selector)
@@ -840,9 +854,45 @@ function Browser() {
     } catch {}
     number = number.replace(/[^\d+*#]/g, '')
     if (!number) return
-    const dial = () => Linking.openURL(`tel:${number.replace(/#/g, '%23')}`).catch(() => Alert.alert('Call', `Couldn't open the phone app. The number is ${number}.`))
+    const viaLink = () => Linking.openURL(`tel:${number.replace(/#/g, '%23')}`).catch(() => Alert.alert('Call', `Couldn't open the phone app. The number is ${number}.`))
+    const dial = () => {
+      try {
+        if (nativeWeb?.dial?.(number)) return
+      } catch {}
+      viaLink()
+    }
     if (getState().callWith !== 'bitcaller') return dial()
     Linking.openURL(`bitcaller://call?number=${encodeURIComponent(number)}`).catch(dial)
+  }
+
+  // Links for other apps: phone numbers, texts, email, maps and Android
+  // "intent:" links (Google uses these for Call and Directions buttons).
+  const openExternal = (url) => {
+    const u = String(url || '')
+    if (/^tel:/i.test(u)) return openTel(u)
+    if (/^intent:/i.test(u)) {
+      const m = u.match(/^intent:(\/\/[^#]*)?#Intent;(.*?)(;end;?)?$/i)
+      const extras = {}
+      for (const part of (m?.[2] || '').split(';')) {
+        const i = part.indexOf('=')
+        if (i > 0) extras[part.slice(0, i)] = part.slice(i + 1)
+      }
+      const scheme = extras.scheme
+      const rest = m?.[1] || ''
+      let fallback = extras['S.browser_fallback_url']
+      try {
+        fallback = fallback && decodeURIComponent(fallback)
+      } catch {}
+      if (scheme && /^tel$/i.test(scheme)) return openTel(`tel:${rest.replace(/^\/\//, '')}`)
+      const target = scheme ? `${scheme}:${rest}` : ''
+      const useFallback = () => {
+        if (fallback && /^https?:/i.test(fallback)) return openTab(fallback)
+        if (/^https?:\/\//i.test(target)) openTab(target)
+      }
+      if (!target || /^(https?|javascript|file|content):/i.test(target)) return useFallback()
+      return Linking.openURL(target).catch(useFallback)
+    }
+    Linking.openURL(u).catch(() => toast("No app on this phone opens that link"))
   }
 
   const reopenClosed = () => {
@@ -1031,8 +1081,8 @@ function Browser() {
         }
       }
       if (req.isTopFrame === false && isBlocked(req.url, t.url)) return false
-      if (/^tel:/i.test(req.url)) {
-        openTel(req.url)
+      if (/^(tel|sms|smsto|mailto|geo|intent|market|whatsapp|fb-messenger|maps):/i.test(req.url)) {
+        openExternal(req.url)
         return false
       }
       if (/^(blob|data):/i.test(req.url)) {
@@ -1564,7 +1614,7 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
   const js = useMemo(() => `${injectedJS(autoplay)}\n${autoconsentFor(site, getState())}\ntrue;`, [autoplay, site])
   const beforeJS = useMemo(
     () =>
-      `${fingerprintFor(t.url, site, getState())}\n${autoconsentFor(site, getState())}\n${isKidsMode() ? KIDS_YOUTUBE_JS : ''}\n${CAPTURE_DOWNLOADS_JS}\n${permissionsJS(site)}\n${Platform.OS === 'android' && getState().pullToRefresh !== false ? PULL_REFRESH_JS : ''}\n${site.desktop ? DESKTOP_FIT_JS : ''}\n${shieldsJS || ''}`,
+      `${fingerprintFor(t.url, site, getState())}\n${autoconsentFor(site, getState())}\n${isKidsMode() ? KIDS_YOUTUBE_JS : ''}\n${CAPTURE_DOWNLOADS_JS}\n${permissionsJS(site)}\n${Platform.OS === 'android' && getState().pullToRefresh !== false ? PULL_REFRESH_JS : ''}\n${EXTERNAL_LINKS_JS}\n${site.desktop ? DESKTOP_FIT_JS : ''}\n${shieldsJS || ''}`,
     [shieldsJS, site, hostOf(t.url)]
   )
   // A tab woken from sleep reopens its last page; later navigations come in via t.source.
