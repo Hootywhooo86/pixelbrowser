@@ -110,7 +110,10 @@ function restoredTabs() {
   const s = getState()
   const saved = (s.savedTabs || []).filter((t) => t?.url && (s.restoreTabs !== false || t.pinned))
   if (!saved.length) return [newTab()]
-  return saved.map((t) => ({ ...newTab(t.url, { space: t.space }), title: t.title || t.url, pinned: !!t.pinned, group: t.group || null, loading: false }))
+  const list = saved.map((t) => ({ ...newTab(t.url, { space: t.space }), title: t.title || t.url, pinned: !!t.pinned, group: t.group || null, loading: false }))
+  // Every launch starts on a fresh homepage; the old tabs wait in the tab grid.
+  if (s.startOnHome !== false) list.push(newTab())
+  return list
 }
 
 const hostOf = (url) => {
@@ -258,6 +261,7 @@ function Browser() {
   const [tabs, setTabs] = useState(restoredTabs)
   const [activeId, setActiveId] = useState(() => {
     const space = getState().activeSpace || 'personal'
+    if (getState().startOnHome !== false) return tabs[tabs.length - 1].id
     const saved = tabs[getState().savedActive]
     if (saved && (saved.space || 'personal') === space) return saved.id
     const mine = tabs.filter((t) => (t.space || 'personal') === space)
@@ -827,12 +831,18 @@ function Browser() {
     Linking.openURL(`128bittracker://add?${q}`).catch(() => Alert.alert('128bittracker', "128bittracker isn't installed on this phone yet."))
   }
 
-  // Phone numbers open in BitCaller when it's installed, else the phone app.
+  // Phone numbers open the phone app with the number already typed in (you
+  // press call). BitCaller instead only if chosen in Settings → 128bit family.
   const openTel = (url) => {
-    const number = decodeURIComponent(url.replace(/^tel:/i, '')).replace(/[^\d+]/g, '')
-    const fallback = () => Linking.openURL(url).catch(() => {})
-    if (getState().familyLinks?.bitcaller === false) return fallback()
-    Linking.openURL(`bitcaller://call?number=${encodeURIComponent(number)}`).catch(fallback)
+    let number = String(url).replace(/^tel:/i, '').split(/[;?]/)[0]
+    try {
+      number = decodeURIComponent(number)
+    } catch {}
+    number = number.replace(/[^\d+*#]/g, '')
+    if (!number) return
+    const dial = () => Linking.openURL(`tel:${number.replace(/#/g, '%23')}`).catch(() => Alert.alert('Call', `Couldn't open the phone app. The number is ${number}.`))
+    if (getState().callWith !== 'bitcaller') return dial()
+    Linking.openURL(`bitcaller://call?number=${encodeURIComponent(number)}`).catch(dial)
   }
 
   const reopenClosed = () => {

@@ -79,6 +79,8 @@ function defaults() {
     homeShortcuts: [], // addresses put on the home screen
     xp: { total: 0, streak: 0, lastDay: '', badges: {}, counters: {} },
     familyLinks: { bitcaller: true, tracker: true },
+    callWith: 'phone', // phone numbers on pages: 'phone' (phone app, number filled in) or 'bitcaller'
+    startOnHome: true, // open a fresh homepage tab every launch
     // v0.4
     closedTabs: [], // [{ url, title, space, closedAt }] newest last, for "Reopen closed tab"
     siteSettings: {}, // host -> { desktop, camera, microphone, location, notifications: 'ask'|'allow'|'block', textZoom, translate }

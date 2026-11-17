@@ -678,6 +678,7 @@ function FamilyPage() {
   const f = useStore((s) => s.family)
   const xp = useStore((s) => s.xp) || {}
   const links = useStore((s) => s.familyLinks) || {}
+  const callWith = useStore((s) => s.callWith || 'phone')
   const prog = progressOf(xp.total || 0)
   const earned = BADGES.filter((b) => xp.badges?.[b.id]).length
   return (
@@ -715,7 +716,7 @@ function FamilyPage() {
       </View>
 
       <PHeader>FAMILY APPS</PHeader>
-      <Toggle value={links.bitcaller !== false} onChange={(v) => update((s) => (s.familyLinks = { ...s.familyLinks, bitcaller: v }))} label="Open phone numbers in BitCaller" note="Tap a phone number on a page to call with BitCaller (or your phone app if BitCaller isn't installed)" />
+      <Toggle value={callWith === 'bitcaller'} onChange={(v) => update((s) => (s.callWith = v ? 'bitcaller' : 'phone'))} label="Call phone numbers with BitCaller" note="Off: tapping a phone number on a page opens your phone app with the number filled in. On: it opens BitCaller instead (or the phone app if BitCaller isn't installed)." />
       <Toggle value={links.tracker !== false} onChange={(v) => update((s) => (s.familyLinks = { ...s.familyLinks, tracker: v }))} label='Show "Add to 128bittracker"' note="On TV show and movie pages (IMDb, TMDB and streaming sites)" />
       {FAMILY_APPS.map((a) => (
         <View key={a.id} style={st.itemRow}>
@@ -897,6 +898,12 @@ function TabsPage({ open }) {
         onChange={(v) => update((x) => (x.pullToRefresh = v))}
         label="Pull down to refresh"
         note="Pull down from the very top of a page and hold for a moment to reload. Applies to pages you open after changing it."
+      />
+      <Toggle
+        value={s.startOnHome !== false}
+        onChange={(v) => update((x) => (x.startOnHome = v))}
+        label="Start on a new homepage"
+        note="Every time you open Bit Browser it shows a fresh homepage. Your other tabs are still there in Tabs."
       />
       <Toggle
         value={s.restoreTabs !== false}
