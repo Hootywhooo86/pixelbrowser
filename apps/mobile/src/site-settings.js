@@ -20,6 +20,30 @@ export const DESKTOP_UA =
     ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'
     : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
 
+/**
+ * Desktop view that fits the screen, like Chrome's "Desktop site": lay the
+ * page out at a computer-sized width (sites still send phone layouts to
+ * phone-sized screens otherwise), zoomed out so the whole width shows.
+ * Pinch to zoom in. Top frame only.
+ */
+export const DESKTOP_FIT_JS = String.raw`(function(){
+if(window.top!==window||window.__bitDesktopFit)return;window.__bitDesktopFit=1;
+var W=1200;
+function fix(){try{
+ var sw=Math.min(screen.width,screen.height)>0?Math.max(320,Math.min(window.outerWidth||screen.width,screen.width)):360;
+ var s=Math.max(0.2,Math.min(1,sw/W)).toFixed(3);
+ var c='width='+W+', initial-scale='+s+', minimum-scale=0.1, maximum-scale=5, user-scalable=yes';
+ var ms=document.querySelectorAll('meta[name="viewport"]');
+ for(var i=1;i<ms.length;i++)ms[i].remove();
+ var m=ms[0];
+ if(!m){m=document.createElement('meta');m.name='viewport';var h=document.head||document.documentElement;if(!h)return;h.insertBefore(m,h.firstChild)}
+ if(m.content!==c)m.content=c;
+}catch(e){}}
+fix();
+document.addEventListener('DOMContentLoaded',function(){fix();try{new MutationObserver(fix).observe(document.head,{childList:true})}catch(e){}},{once:true});
+window.addEventListener('load',fix,{once:true});
+})();`
+
 /** The site key: host without "www.". */
 export function hostKey(urlOrHost) {
   let h = String(urlOrHost || '')

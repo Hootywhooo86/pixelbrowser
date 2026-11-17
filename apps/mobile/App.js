@@ -31,7 +31,7 @@ import { READER_JS, isReadable } from './src/reader'
 import FindBar from './src/FindBar'
 import { findJS, clearFindJS } from './src/find'
 import SiteSettingsSheet from './src/SiteSettingsSheet'
-import { getSite, setSite, DESKTOP_UA, permissionsJS, permissionReplyJS, PULL_REFRESH_JS } from './src/site-settings'
+import { getSite, setSite, DESKTOP_UA, DESKTOP_FIT_JS, permissionsJS, permissionReplyJS, PULL_REFRESH_JS } from './src/site-settings'
 import { translateRequest, translateUrl, savePageAsPdf, printPage, GET_HTML_SCRIPT } from './src/page-tools'
 import { fillBusinessJS } from './src/formfill'
 import { installCrashHandler } from './src/crash'
@@ -898,6 +898,16 @@ function Browser() {
     else Alert.alert('Add to home screen', "Couldn't add the icon. Try again.")
   }
 
+  // Mobile / desktop view for this site (remembered per site).
+  const toggleDesktop = () => {
+    setMenuOpen(false)
+    if (!/^https?:/i.test(active.url || '')) return
+    const on = !getSite(active.url).desktop
+    setSite(active.url, { desktop: on })
+    toast(on ? 'Desktop view: pinch to zoom in' : 'Mobile view')
+    setTimeout(() => views.current[active.id]?.reload(), 50)
+  }
+
   // Command bar: type ">" in the address bar.
   const runCommand = (id, arg) => {
     setEditing(false)
@@ -932,7 +942,7 @@ function Browser() {
       scanQr: () => setQr('scan'),
       hideElement: () => startPicker(),
       homeScreen: () => pinToHome(),
-      desktopSite: () => (setSite(active.url, { desktop: !getSite(active.url).desktop }), setTimeout(() => views.current[active.id]?.reload(), 50)),
+      desktopSite: toggleDesktop,
       fillBusiness: () => getState().businessProfile && views.current[active.id]?.injectJavaScript(fillBusinessJS(getState().businessProfile)),
       backup: () => setTool('backup'),
       panic,
@@ -1131,6 +1141,7 @@ function Browser() {
             placeholderTextColor={C.muted}
             accessibilityLabel="Address and search bar"
           />
+          {!editing && /^https?:/i.test(active.url || '') && <ViewToggle desktop={!!getSite(active.url).desktop} onPress={toggleDesktop} />}
           {!editing && <VoiceButton onText={(t) => go(t)} />}
           <ShieldButton url={active.url} on={shieldsOn} onPress={() => /^https?:/i.test(active.url || '') && setSiteSheet(true)} />
           <PSwitch
@@ -1425,11 +1436,7 @@ function Browser() {
                 <MenuItem
                   icon="home"
                   label={getSite(active.url).desktop ? 'MOBILE SITE' : 'DESKTOP SITE'}
-                  onPress={() => {
-                    setMenuOpen(false)
-                    setSite(active.url, { desktop: !getSite(active.url).desktop })
-                    setTimeout(() => views.current[active.id]?.reload(), 50)
-                  }}
+                  onPress={toggleDesktop}
                 />
               </>
             )}
@@ -1557,7 +1564,7 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
   const js = useMemo(() => `${injectedJS(autoplay)}\n${autoconsentFor(site, getState())}\ntrue;`, [autoplay, site])
   const beforeJS = useMemo(
     () =>
-      `${fingerprintFor(t.url, site, getState())}\n${autoconsentFor(site, getState())}\n${isKidsMode() ? KIDS_YOUTUBE_JS : ''}\n${CAPTURE_DOWNLOADS_JS}\n${permissionsJS(site)}\n${Platform.OS === 'android' && getState().pullToRefresh !== false ? PULL_REFRESH_JS : ''}\n${shieldsJS || ''}`,
+      `${fingerprintFor(t.url, site, getState())}\n${autoconsentFor(site, getState())}\n${isKidsMode() ? KIDS_YOUTUBE_JS : ''}\n${CAPTURE_DOWNLOADS_JS}\n${permissionsJS(site)}\n${Platform.OS === 'android' && getState().pullToRefresh !== false ? PULL_REFRESH_JS : ''}\n${site.desktop ? DESKTOP_FIT_JS : ''}\n${shieldsJS || ''}`,
     [shieldsJS, site, hostOf(t.url)]
   )
   // A tab woken from sleep reopens its last page; later navigations come in via t.source.
@@ -1618,6 +1625,22 @@ const TabView = memo(function TabView({ tab: t, active, autoplay, textZoom, aiEn
     />
   )
 })
+
+// Address bar button: switch this site between mobile and desktop view.
+function ViewToggle({ desktop, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      style={[st.viewToggle, desktop && { backgroundColor: C.orange, borderColor: C.orange }]}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: desktop }}
+      accessibilityLabel={desktop ? 'Desktop view. Tap for mobile view' : 'Mobile view. Tap for desktop view'}
+    >
+      <Text style={[st.viewToggleText, desktop && { color: C.bg }]}>PC</Text>
+    </Pressable>
+  )
+}
 
 // Shield in the address bar: how many ads and trackers this page had blocked.
 function ShieldButton({ url, on, onPress }) {
@@ -1693,6 +1716,8 @@ const st = StyleSheet.create({
   menuText: { ...px(9), color: C.ink, flexShrink: 1 },
   sheet: { flex: 1, backgroundColor: C.bg },
   shield: { minWidth: 34, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: C.edge, backgroundColor: C.bg, paddingHorizontal: 3 },
+  viewToggle: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: C.edge, backgroundColor: C.bg },
+  viewToggleText: { ...px(7), color: C.muted },
   shieldIcon: { ...px(10), color: C.orange },
   shieldCount: { color: C.ink, fontSize: 10, lineHeight: 12, marginTop: 2, includeFontPadding: false },
   strip: { flexGrow: 0, backgroundColor: C.panel, borderBottomWidth: 2, borderBottomColor: C.edge },
